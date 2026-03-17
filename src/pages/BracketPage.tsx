@@ -1,29 +1,73 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Loader2, Trophy, Clock, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Loader2, Trophy, ArrowLeft } from 'lucide-react';
 import { Match } from '../store/slices/matchSlice';
 import API from '../api/axios';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS - competitor extraction
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Layout constants ─────────────────────────────────────────────────────────
+const CARD_H = 100;   // px — fixed card height
+const CARD_W = 292;   // px — fixed card width
+const CARD_GAP = 16;  // px — vertical gap between cards in round 0
+const CONN_W = 52;    // px — SVG connector column width
+const S = CARD_H + CARD_GAP; // slot unit = 116
+
+/**
+ * Computes absolute top-Y positions for every card using actual nextMatchId links.
+ * - Round 0: evenly spaced from the top (ci * S)
+ * - Later rounds: each card is centered over the source cards from the previous
+ *   round that feed into it (via nextMatchId).
+ * This correctly handles bye-heavy brackets where rounds don't simply halve.
+ */
+function computeCardPositions(
+    visible: { name: string; matches: Match[] }[]
+): number[][] {
+    if (visible.length === 0) return [];
+    const positions: number[][] = [];
+    // Round 0: stack evenly from the top
+    positions[0] = visible[0].matches.map((_, ci) => ci * S);
+    // Each subsequent round: center each card over its source cards
+    for (let ri = 1; ri < visible.length; ri++) {
+        const prev = positions[ri - 1];
+        const prevMatches = visible[ri - 1].matches;
+        positions[ri] = visible[ri].matches.map((match, ci) => {
+            const sources = prevMatches
+                .map((m, prevCi) => ({ m, prevCi }))
+                .filter(({ m }) => m.nextMatchId === match._id);
+            if (sources.length > 0) {
+                const avgCenterY =
+                    sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
+                    sources.length;
+                return avgCenterY - CARD_H / 2;
+            }
+            // Fallback: evenly spaced (shouldn't occur in well-formed brackets)
+            return ci * S;
+        });
+    }
+    return positions;
+}
+
+// ─── Competitor extraction helpers ───────────────────────────────────────────
 
 function getC1(match: Match, cType: 'player' | 'team') {
     if (cType === 'player' && match.player1) {
-        return { id: match.player1.registrationId, name: match.player1.name, teamName: match.player1.teamName, isTBD: match.player1.registrationId === 'TBD', isBye: match.player1.name === 'TBD' && match.player1.registrationId === 'TBD' };
+        const { registrationId: id, name, teamName } = match.player1;
+        return { id, name, teamName, isTBD: id === 'TBD', isBye: name === 'TBD' && id === 'TBD' };
     }
-    return { id: match.teams?.team1Id || '', name: match.teams?.team1Name || 'TBD', teamName: '', isTBD: match.teams?.team1Name === 'TBD', isBye: match.teams?.team1Name === 'BYE' };
+    const name = match.teams?.team1Name || 'TBD';
+    return { id: match.teams?.team1Id || '', name, teamName: '', isTBD: name === 'TBD', isBye: name === 'BYE' };
 }
 
 function getC2(match: Match, cType: 'player' | 'team') {
     if (cType === 'player' && match.player2) {
-        return { id: match.player2.registrationId, name: match.player2.name, teamName: match.player2.teamName, isTBD: match.player2.registrationId === 'TBD', isBye: match.player2.name === 'TBD' && match.player2.registrationId === 'TBD' };
+        const { registrationId: id, name, teamName } = match.player2;
+        return { id, name, teamName, isTBD: id === 'TBD', isBye: name === 'TBD' && id === 'TBD' };
     }
-    return { id: match.teams?.team2Id || '', name: match.teams?.team2Name || 'TBD', teamName: '', isTBD: match.teams?.team2Name === 'TBD', isBye: match.teams?.team2Name === 'BYE' };
+    const name = match.teams?.team2Name || 'TBD';
+    return { id: match.teams?.team2Id || '', name, teamName: '', isTBD: name === 'TBD', isBye: name === 'BYE' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BRACKET PAGE — Full-page dedicated bracket view
+// BRACKET PAGE — full-page dedicated bracket view
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const BracketPage: React.FC = () => {
@@ -32,7 +76,6 @@ const BracketPage: React.FC = () => {
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
     const [competitorType, setCompetitorType] = useState<'player' | 'team'>('player');
     const [isLoading, setIsLoading] = useState(true);
-    const [categoryName, setCategoryName] = useState('');
 
     useEffect(() => {
         if (!categoryId) return;
@@ -54,123 +97,307 @@ const BracketPage: React.FC = () => {
         fetchData();
     }, [categoryId]);
 
-    // Sort round names by round number from the matches
     const sortedRoundNames = Object.keys(rounds).sort((a, b) => {
-        const aMatch = rounds[a]?.[0];
-        const bMatch = rounds[b]?.[0];
-        return ((aMatch as any)?.roundNumber || 0) - ((bMatch as any)?.roundNumber || 0);
+        const aM = rounds[a]?.[0];
+        const bM = rounds[b]?.[0];
+        return ((aM as any)?.roundNumber || 0) - ((bM as any)?.roundNumber || 0);
     });
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-10">
-            {/* Header */}
-            <div className="max-w-[1800px] mx-auto mb-8">
+        <div className="min-h-screen bg-[#0a0a0a] text-white">
+            <div className="max-w-[1920px] mx-auto px-6 md:px-10 pt-8 pb-16">
+                {/* Back link */}
                 <Link
                     to={tournamentId ? `/player/tournament/${tournamentId}` : '/player/home'}
-                    className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-primary transition-colors mb-4"
+                    className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-white transition-colors mb-8 group"
                 >
-                    <ArrowLeft className="h-4 w-4" />
+                    <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
                     Back to Tournament
                 </Link>
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-primary/10 rounded-xl text-primary"><Trophy className="h-6 w-6" /></div>
+
+                {/* Page header */}
+                <div className="flex items-center gap-4 mb-10">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                        <Trophy className="h-5 w-5" />
+                    </div>
                     <div>
                         <h1 className="text-3xl font-oswald font-bold tracking-wide">Tournament Bracket</h1>
-                        {categoryName && <p className="text-sm text-gray-400 mt-0.5">{categoryName}</p>}
+                        {matches.length > 0 && (
+                            <p className="text-[10px] text-gray-600 mt-0.5 uppercase tracking-widest font-medium">
+                                {matches.length} matches total
+                            </p>
+                        )}
                     </div>
                 </div>
+
+                {/* Content */}
+                {isLoading ? (
+                    <div className="flex justify-center py-20">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : matches.length === 0 ? (
+                    <div className="max-w-md mx-auto bg-white/[0.03] border border-white/[0.06] rounded-2xl p-12 text-center">
+                        <Trophy className="h-10 w-10 text-gray-700 mx-auto mb-3" />
+                        <p className="text-gray-500 text-sm">Bracket not generated yet.</p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto no-scrollbar">
+                        <BracketGrid
+                            sortedRoundNames={sortedRoundNames}
+                            rounds={rounds}
+                            competitorType={competitorType}
+                        />
+                    </div>
+                )}
             </div>
-
-            {/* Bracket content */}
-            {isLoading ? (
-                <div className="flex justify-center p-20"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
-            ) : matches.length === 0 ? (
-                <div className="max-w-lg mx-auto bg-white/5 border border-white/10 rounded-3xl p-12 text-center text-gray-400 flex flex-col items-center gap-4">
-                    <Trophy className="h-12 w-12 opacity-30" />
-                    <p className="text-lg">Bracket not generated yet.</p>
-                </div>
-            ) : (
-                <div className="overflow-x-auto no-scrollbar pb-8">
-                    <div className="flex gap-6 min-w-max px-4">
-                        {sortedRoundNames.map((roundName, ri) => {
-                            const roundMatches = rounds[roundName] || [];
-                            // Filter out bye matches for cleaner display
-                            const visibleMatches = roundMatches.filter(m => {
-                                const c1 = getC1(m, competitorType);
-                                const c2 = getC2(m, competitorType);
-                                // Hide matches where one side is TBD and it's a walkover (bye)
-                                if (m.status === 'walkover' && m.winReason === 'bye') return false;
-                                return true;
-                            });
-
-                            // If all matches in this round are byes, skip the round entirely
-                            if (visibleMatches.length === 0) return null;
-
-                            return (
-                                <div key={roundName} className="flex flex-col min-w-[320px]">
-                                    <div className="text-center mb-4 sticky top-0 bg-[#0a0a0a] py-2 z-10">
-                                        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary">{roundName}</h3>
-                                        <p className="text-[10px] text-gray-600 mt-0.5">{visibleMatches.length} match{visibleMatches.length !== 1 ? 'es' : ''}</p>
-                                    </div>
-                                    <div
-                                        className="flex flex-col justify-around flex-1 gap-3"
-                                        style={{ paddingTop: ri > 0 ? `${Math.pow(2, ri) * 12}px` : '0' }}
-                                    >
-                                        {visibleMatches.map(match => (
-                                            <BracketMatchCard key={match._id} match={match} competitorType={competitorType} />
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BRACKET MATCH CARD
+// BRACKET GRID — lays out rounds in columns with SVG connector lines
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const BracketMatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> = ({ match, competitorType }) => {
-    const c1 = getC1(match, competitorType);
-    const c2 = getC2(match, competitorType);
-    const isCompleted = match.status === 'completed' || match.status === 'walkover';
-    const isC1Winner = isCompleted && match.winnerId === c1.id;
-    const isC2Winner = isCompleted && match.winnerId === c2.id;
+const BracketGrid: React.FC<{
+    sortedRoundNames: string[];
+    rounds: Record<string, Match[]>;
+    competitorType: 'player' | 'team';
+}> = ({ sortedRoundNames, rounds, competitorType }) => {
+    // Filter out rounds that consist entirely of bye walkovers
+    const visible = sortedRoundNames
+        .map(name => ({
+            name,
+            matches: (rounds[name] || [])
+                .filter(m => !(m.status === 'walkover' && m.winReason === 'bye'))
+                .sort((a, b) => (a.positionInRound ?? a.matchNumber) - (b.positionInRound ?? b.matchNumber)),
+        }))
+        .filter(r => r.matches.length > 0);
+
+    if (visible.length === 0) return null;
+
+    const cardPos = computeCardPositions(visible);
+    const bHeight = cardPos.reduce((maxH, rPos) => {
+        if (rPos.length === 0) return maxH;
+        return Math.max(maxH, Math.max(...rPos) + CARD_H);
+    }, 0);
 
     return (
-        <div className={`rounded-xl border overflow-hidden transition-all min-w-[300px] ${isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
-                <span className="text-[10px] text-gray-600 font-mono">M{match.matchNumber}</span>
-                {isCompleted ? (
-                    <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1">
-                        <CheckCircle2 className="h-2.5 w-2.5" /> Done
+        <div className="pb-8">
+            {/* Stage header labels */}
+            <div className="flex mb-6">
+                {visible.map((round, ri) => (
+                    <React.Fragment key={round.name}>
+                        <div className="text-center" style={{ width: CARD_W }}>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                                {round.name}
+                            </p>
+                            <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
+                                {round.matches.length} match{round.matches.length !== 1 ? 'es' : ''}
+                            </p>
+                        </div>
+                        {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
+                    </React.Fragment>
+                ))}
+            </div>
+
+            {/* Bracket body: absolutely-positioned cards + SVG connectors */}
+            <div className="flex items-start">
+                {visible.map((round, ri) => {
+                    const isLast = ri === visible.length - 1;
+                    return (
+                        <React.Fragment key={round.name}>
+                            {/* Cards column */}
+                            <div
+                                className="relative shrink-0"
+                                style={{ width: CARD_W, height: bHeight }}
+                            >
+                                {round.matches.map((match, ci) => (
+                                    <div
+                                        key={match._id}
+                                        className="absolute"
+                                        style={{
+                                            top: cardPos[ri][ci],
+                                            left: 0,
+                                            width: CARD_W,
+                                            height: CARD_H,
+                                        }}
+                                    >
+                                        <MatchCard match={match} competitorType={competitorType} />
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* SVG connector to next round */}
+                            {!isLast && (
+                                <ConnectorSvg
+                                    currentMatches={round.matches}
+                                    nextMatches={visible[ri + 1].matches}
+                                    currentPositions={cardPos[ri]}
+                                    nextPositions={cardPos[ri + 1]}
+                                    height={bHeight}
+                                />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONNECTOR SVG — draws bracket lines between adjacent round columns
+// Uses nextMatchId on each match to draw accurate connections instead of
+// assuming a simple 2:1 halving pattern (which breaks with bye-heavy brackets).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ConnectorSvg: React.FC<{
+    currentMatches: Match[];
+    nextMatches: Match[];
+    currentPositions: number[];
+    nextPositions: number[];
+    height: number;
+}> = ({ currentMatches, nextMatches, currentPositions, nextPositions, height }) => {
+    const midX = CONN_W / 2;
+    const stroke = 'rgba(255,255,255,0.10)';
+    const sw = 1.5;
+
+    // Group current-round match indices by the next-round match they feed into
+    const groups = new Map<string, number[]>();
+    currentMatches.forEach((match, ci) => {
+        if (!match.nextMatchId) return;
+        if (!groups.has(match.nextMatchId)) groups.set(match.nextMatchId, []);
+        groups.get(match.nextMatchId)!.push(ci);
+    });
+
+    const paths: React.ReactNode[] = [];
+
+    groups.forEach((cis, nextMatchId) => {
+        const nextCi = nextMatches.findIndex(m => m._id === nextMatchId);
+        if (nextCi < 0) return;
+
+        const midY = nextPositions[nextCi] + CARD_H / 2;
+
+        if (cis.length === 1) {
+            // Single source → step connector (right → vertical → right)
+            const topY = currentPositions[cis[0]] + CARD_H / 2;
+            paths.push(
+                <path
+                    key={nextMatchId}
+                    d={`M 0 ${topY} H ${midX} V ${midY} H ${CONN_W}`}
+                    fill="none"
+                    stroke={stroke}
+                    strokeWidth={sw}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                />
+            );
+        } else if (cis.length >= 2) {
+            // Two sources → C-shape spine + exit line
+            const sorted = [...cis].sort((a, b) => a - b);
+            const topY = currentPositions[sorted[0]] + CARD_H / 2;
+            const botY = currentPositions[sorted[sorted.length - 1]] + CARD_H / 2;
+            paths.push(
+                <g key={nextMatchId}>
+                    <path
+                        d={`M 0 ${topY} H ${midX} V ${botY} H 0`}
+                        fill="none"
+                        stroke={stroke}
+                        strokeWidth={sw}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                    <path
+                        d={`M ${midX} ${midY} H ${CONN_W}`}
+                        fill="none"
+                        stroke={stroke}
+                        strokeWidth={sw}
+                        strokeLinecap="round"
+                    />
+                </g>
+            );
+        }
+    });
+
+    return (
+        <svg
+            width={CONN_W}
+            height={height}
+            className="shrink-0"
+            style={{ display: 'block', overflow: 'visible' }}
+        >
+            {paths}
+        </svg>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATCH CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> = ({ match, competitorType }) => {
+    const c1 = getC1(match, competitorType);
+    const c2 = getC2(match, competitorType);
+    const done = match.status === 'completed' || match.status === 'walkover';
+    const isC1W = done && match.winnerId === c1.id;
+    const isC2W = done && match.winnerId === c2.id;
+    const pending = !done && (c1.isTBD || c2.isTBD);
+
+    // Build per-game score chips from gameScores array (e.g. "21–15 · 21–18")
+    const gameChips = (match.gameScores || [])
+        .filter(g => g.team1Score > 0 || g.team2Score > 0)
+        .sort((a, b) => a.gameNumber - b.gameNumber)
+        .map(g => `${g.team1Score}–${g.team2Score}`);
+
+    return (
+        <div className={`h-full flex flex-col rounded-xl overflow-hidden border transition-colors ${
+            done
+                ? 'border-white/[0.07] bg-[#141414]'
+                : pending
+                    ? 'border-white/[0.04] bg-[#0d0d0d]'
+                    : 'border-primary/25 bg-[#111] hover:border-primary/40'
+        }`}>
+            {/* Header: match number + game scores + status pill */}
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.05] bg-black/20 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[9px] font-mono text-gray-600 tracking-widest shrink-0">
+                        M{match.matchNumber}
                     </span>
-                ) : (c1.isTBD || c2.isTBD) ? (
-                    <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">Pending</span>
-                ) : (
-                    <span className="text-[9px] text-primary font-bold uppercase tracking-widest">Upcoming</span>
-                )}
+                    {done && gameChips.length > 0 && (
+                        <span className="text-[9px] text-gray-500 truncate">
+                            {gameChips.join(' · ')}
+                        </span>
+                    )}
+                </div>
+                <span className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${
+                    done
+                        ? 'bg-emerald-500/15 text-emerald-500'
+                        : pending
+                            ? 'bg-white/5 text-gray-600'
+                            : 'bg-primary/15 text-primary'
+                }`}>
+                    {done ? 'Done' : pending ? 'Pending' : 'Upcoming'}
+                </span>
             </div>
 
             {/* Competitor 1 */}
             <CompetitorRow
-                name={c1.name} teamName={c1.teamName}
-                isWinner={isC1Winner} isTBD={c1.isTBD} isBye={c1.isBye}
+                name={c1.name}
+                teamName={c1.teamName}
+                isWinner={isC1W}
+                isTBD={c1.isTBD || c1.isBye}
                 score={match.result?.team1Total}
                 competitorType={competitorType}
             />
 
-            <div className="h-px bg-white/5" />
+            <div className="h-px bg-white/[0.04] shrink-0" />
 
             {/* Competitor 2 */}
             <CompetitorRow
-                name={c2.name} teamName={c2.teamName}
-                isWinner={isC2Winner} isTBD={c2.isTBD} isBye={c2.isBye}
+                name={c2.name}
+                teamName={c2.teamName}
+                isWinner={isC2W}
+                isTBD={c2.isTBD || c2.isBye}
                 score={match.result?.team2Total}
                 competitorType={competitorType}
             />
@@ -179,29 +406,40 @@ const BracketMatchCard: React.FC<{ match: Match; competitorType: 'player' | 'tea
 };
 
 const CompetitorRow: React.FC<{
-    name: string; teamName: string;
-    isWinner: boolean; isTBD: boolean; isBye: boolean;
+    name: string;
+    teamName: string;
+    isWinner: boolean;
+    isTBD: boolean;
     score: number | null | undefined;
     competitorType: 'player' | 'team';
-}> = ({ name, teamName, isWinner, isTBD, isBye, score, competitorType }) => {
-    return (
-        <div className={`flex items-center justify-between px-3 py-2.5 ${isWinner ? 'bg-emerald-500/5' : ''} ${isTBD || isBye ? 'opacity-30' : ''}`}>
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-                {isWinner && <div className="w-1 h-4 bg-emerald-400 rounded-full shrink-0" />}
-                <div className="min-w-0">
-                    <p className={`text-sm font-semibold truncate ${isWinner ? 'text-emerald-400' : isTBD ? 'text-gray-600 italic' : 'text-white'}`}>
-                        {name}
-                    </p>
-                    {competitorType === 'player' && teamName && !isTBD && !isBye && (
-                        <p className="text-[10px] text-primary/60 truncate">{teamName}</p>
-                    )}
-                </div>
+}> = ({ name, teamName, isWinner, isTBD, score, competitorType }) => (
+    <div className={`flex items-center flex-1 relative overflow-hidden ${isWinner ? 'bg-emerald-500/[0.05]' : ''} ${isTBD ? 'opacity-25' : ''}`}>
+        {/* Winner accent bar */}
+        {isWinner && (
+            <div className="absolute left-0 inset-y-0 w-[3px] bg-emerald-400 rounded-r" />
+        )}
+        <div className={`flex items-center flex-1 min-w-0 gap-2 px-3 ${isWinner ? 'pl-[18px]' : ''}`}>
+            <div className="min-w-0 flex-1">
+                <p className={`text-[13px] font-semibold truncate leading-tight ${
+                    isWinner
+                        ? 'text-emerald-400'
+                        : isTBD
+                            ? 'text-gray-600 italic text-xs'
+                            : 'text-white/85'
+                }`}>
+                    {name}
+                </p>
+                {competitorType === 'player' && teamName && !isTBD && (
+                    <p className="text-[10px] text-primary/50 truncate mt-0.5">{teamName}</p>
+                )}
             </div>
             {score !== null && score !== undefined && (
-                <span className={`text-base font-bold tabular-nums ml-2 shrink-0 ${isWinner ? 'text-emerald-400' : 'text-gray-500'}`}>{score}</span>
+                <span className={`text-[17px] font-black tabular-nums shrink-0 ${isWinner ? 'text-emerald-400' : 'text-gray-600'}`}>
+                    {score}
+                </span>
             )}
         </div>
-    );
-};
+    </div>
+);
 
 export default BracketPage;
