@@ -208,6 +208,21 @@ export const uploadPlayerProfileImage = createAsyncThunk(
     }
 );
 
+// Organizer Profile Image Upload
+export const uploadOrganizerProfileImage = createAsyncThunk(
+    'auth/uploadOrganizerProfileImage',
+    async (file: File, { rejectWithValue }) => {
+        try {
+            const formData = new FormData();
+            formData.append('image', file);
+            const response = await API.put('/organizer/auth/profile-image', formData);
+            return response.data?.data?.data || response.data?.data;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 // Profile Update
 export const updateProfile = createAsyncThunk(
     'auth/updateProfile',
@@ -323,6 +338,16 @@ export const authSlice = createSlice({
             }
         });
         builder.addCase(uploadPlayerProfileImage.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
+
+        // UPLOAD ORGANIZER PROFILE IMAGE
+        builder.addCase(uploadOrganizerProfileImage.pending, (state) => { state.isLoading = true; state.error = null; });
+        builder.addCase(uploadOrganizerProfileImage.fulfilled, (state, action) => {
+            state.isLoading = false;
+            if (state.user && action.payload) {
+                state.user = { ...state.user, ...action.payload };
+            }
+        });
+        builder.addCase(uploadOrganizerProfileImage.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
 
         // FETCH PROFILE (rehydrate on refresh)
         builder.addCase(fetchProfile.pending, (state) => { state.isLoading = true; state.error = null; });

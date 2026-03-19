@@ -17,10 +17,11 @@ import PlayersTab from './player-tournament/PlayersTab';
 import TeamsTab from './player-tournament/TeamsTab';
 import AuctionTab from './player-tournament/AuctionTab';
 import BracketTab from './player-tournament/BracketTab';
+import LeaderboardTab from './player-tournament/LeaderboardTab';
 
-type TabKey = 'overview' | 'categories' | 'players' | 'teams' | 'auction' | 'bracket';
+type TabKey = 'overview' | 'categories' | 'players' | 'teams' | 'auction' | 'bracket' | 'leaderboard';
 
-const TABS: TabKey[] = ['overview', 'categories', 'players', 'teams', 'auction', 'bracket'];
+const TABS: TabKey[] = ['overview', 'categories', 'players', 'teams', 'auction', 'bracket', 'leaderboard'];
 
 const PlayerTournamentDetailPage = () => {
     const { id } = useParams<{ id: string }>();
@@ -250,6 +251,13 @@ const PlayerTournamentDetailPage = () => {
                                 <BracketTab
                                     categories={categories}
                                     tournamentId={id}
+                                />
+                            )}
+                            {activeTab === 'leaderboard' && id && tournament && (
+                                <LeaderboardTab
+                                    categories={categories}
+                                    tournamentId={id}
+                                    sport={tournament.sport}
                                 />
                             )}
                         </div>

@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, UserPlus, Share2, Settings, CalendarCheck, Bookmark, FileText,
     Users, Newspaper, User, PlusCircle, Store, Pencil, Save, Loader2,
-    Trophy, TrendingUp, CheckCircle2, Building2,
+    Trophy, TrendingUp, CheckCircle2, Building2, Camera,
 } from 'lucide-react';
 import HoverFooter from '@/components/HoverFooter';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { logout, updateProfile, fetchOrganizerStats, OrganizerStats } from '../../store/slices/authSlice';
+import { logout, updateProfile, fetchOrganizerStats, OrganizerStats, uploadOrganizerProfileImage } from '../../store/slices/authSlice';
 import { fetchMyTournaments, Tournament } from '../../store/slices/tournamentSlice';
 import { Badge } from '@/components/ui/badge';
 
@@ -64,6 +64,14 @@ const OrganizerProfilePage = () => {
     const [isEditing,  setIsEditing]  = useState(false);
     const [editData,   setEditData]   = useState({ firstName: '', lastName: '', phone: '' });
     const [activeView, setActiveView] = useState<'dashboard' | 'tournaments'>('dashboard');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        await dispatch(uploadOrganizerProfileImage(file));
+        e.target.value = '';
+    };
 
     React.useEffect(() => {
         dispatch(fetchOrganizerStats());
@@ -119,10 +127,39 @@ const OrganizerProfilePage = () => {
 
                     {/* Avatar + name */}
                     <div className="flex flex-col items-center gap-4 mb-8">
-                        <div className="h-28 w-28 rounded-full border-2 border-primary bg-black flex items-center justify-center">
-                            <div className="h-full w-full rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center font-bold text-4xl">
-                                {user ? user.firstName[0].toUpperCase() : 'O'}
+                        {/* Hidden file input */}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpg,image/jpeg,image/gif"
+                            className="hidden"
+                            onChange={handleImageUpload}
+                        />
+
+                        <div className="relative group">
+                            <div className="h-28 w-28 rounded-full border-2 border-primary bg-black flex items-center justify-center">
+                                <div className="h-full w-full rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center font-bold text-4xl">
+                                    {user?.profileImage ? (
+                                        <img src={user.profileImage} alt="Profile" className="h-full w-full object-cover" />
+                                    ) : (
+                                        user ? user.firstName[0].toUpperCase() : 'O'
+                                    )}
+                                </div>
                             </div>
+
+                            {/* Camera upload overlay */}
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isLoading}
+                                className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                                title="Change photo"
+                            >
+                                {isLoading ? (
+                                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                                ) : (
+                                    <Camera className="h-6 w-6 text-white" />
+                                )}
+                            </button>
                         </div>
 
                         {isEditing ? (

@@ -30,6 +30,8 @@ export interface Tournament {
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
+    registeredPlayersCount?: number;
+    teamsCount?: number;
 }
 
 interface TournamentState {

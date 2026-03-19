@@ -122,7 +122,8 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
 
     const selectedCategory = categories.find(c => c._id === selectedCat);
     const hasBracket = matches.length > 0;
-    const canGenerate = selectedCategory && selectedCategory.status === 'auction';
+    const hasScoringStarted = matches.some(m => m.status === 'completed');
+    const canGenerate = selectedCategory && selectedCategory.status === 'auction' && !hasScoringStarted;
 
     return (
         <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
@@ -151,6 +152,13 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
                         {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
                         Generate Bracket
                     </button>
+                )}
+
+                {selectedCategory?.status === 'auction' && hasScoringStarted && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/70 text-sm font-medium">
+                        <Swords className="h-4 w-4 opacity-50" />
+                        Scoring in progress — bracket locked
+                    </div>
                 )}
             </div>
 

@@ -1,11 +1,71 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import { ArrowLeft, Save, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon, Loader2, Navigation, Search } from 'lucide-react';
+
 import HoverFooter from '@/components/HoverFooter';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { createTournament } from '../../store/slices/tournamentSlice';
+
+// Fix Leaflet's default icon issue with bundlers
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// Component to handle map clicks and drag events
+const LocationMarker: React.FC<{
+    lat: string | number;
+    lng: string | number;
+    onChange: (lat: number, lng: number) => void;
+}> = ({ lat, lng, onChange }) => {
+    const position = (lat && lng) ? new L.LatLng(Number(lat), Number(lng)) : null;
+
+    useMapEvents({
+        click(e) {
+            onChange(parseFloat(e.latlng.lat.toFixed(6)), parseFloat(e.latlng.lng.toFixed(6)));
+        },
+    });
+
+    const markerRef = React.useRef<L.Marker>(null);
+
+    return position === null ? null : (
+        <Marker
+            position={position}
+            draggable={true}
+            ref={markerRef}
+            eventHandlers={{
+                dragend() {
+                    const marker = markerRef.current;
+                    if (marker != null) {
+                        const p = marker.getLatLng();
+                        onChange(parseFloat(p.lat.toFixed(6)), parseFloat(p.lng.toFixed(6)));
+                    }
+                },
+            }}
+        />
+    );
+};
+
+const MapController: React.FC<{ lat: string | number; lng: string | number }> = ({ lat, lng }) => {
+    const map = useMap();
+    React.useEffect(() => {
+        if (lat && lng) {
+            map.flyTo([Number(lat), Number(lng)], map.getZoom() < 13 ? 14 : map.getZoom(), {
+                animate: true,
+                duration: 1.5
+            });
+        }
+    }, [lat, lng, map]);
+    return null;
+};
+
 
 const CreateTournamentPage = () => {
     const navigate = useNavigate();
@@ -25,6 +85,10 @@ const CreateTournamentPage = () => {
             name: '',
             address: '',
             city: '',
+            coordinates: {
+                lat: '' as string | number,
+                lng: '' as string | number,
+            },
         },
         settings: {
             maxTeams: 8,
@@ -37,7 +101,16 @@ const CreateTournamentPage = () => {
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
 
-        if (name.startsWith('venue.')) {
+        if (name.startsWith('venue.coordinates.')) {
+            const coordField = name.split('.')[2];
+            setFormData(prev => ({
+                ...prev,
+                venue: {
+                    ...prev.venue,
+                    coordinates: { ...prev.venue.coordinates, [coordField]: value === '' ? '' : Number(value) }
+                }
+            }));
+        } else if (name.startsWith('venue.')) {
             const venueField = name.split('.')[1];
             setFormData(prev => ({
                 ...prev,
@@ -57,6 +130,54 @@ const CreateTournamentPage = () => {
             }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const [geoLoading, setGeoLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+
+    const handleGetLocation = () => {
+        if (!navigator.geolocation) return;
+        setGeoLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const lat = parseFloat(pos.coords.latitude.toFixed(6));
+                const lng = parseFloat(pos.coords.longitude.toFixed(6));
+                setFormData(prev => ({
+                    ...prev,
+                    venue: {
+                        ...prev.venue,
+                        coordinates: { lat, lng }
+                    }
+                }));
+                setGeoLoading(false);
+            },
+            () => setGeoLoading(false)
+        );
+    };
+
+    const handleSearchLocation = async (e?: React.SyntheticEvent) => {
+        if (e) e.preventDefault();
+        if (!searchQuery.trim()) return;
+        setSearchLoading(true);
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(searchQuery)}`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+                const lat = parseFloat(Number(data[0].lat).toFixed(6));
+                const lng = parseFloat(Number(data[0].lon).toFixed(6));
+                setFormData(prev => ({
+                    ...prev,
+                    venue: { ...prev.venue, coordinates: { lat, lng } }
+                }));
+            } else {
+                alert('Location not found. Try a different search term.');
+            }
+        } catch (error) {
+            console.error('Failed to search location:', error);
+        } finally {
+            setSearchLoading(false);
         }
     };
 
@@ -225,6 +346,79 @@ const CreateTournamentPage = () => {
                                     className="bg-black/50 border-white/10 text-white py-6"
                                     value={formData.venue.address} onChange={handleInputChange}
                                 />
+                            </div>
+                            {/* Coordinates */}
+                            <div className="md:col-span-2 flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-gray-400 flex items-center gap-1.5">
+                                        <MapPin className="h-3.5 w-3.5 text-primary" />
+                                        Coordinates <span className="text-gray-600 text-xs font-normal">(optional — map drag or search)</span>
+                                    </Label>
+                                    <button
+                                        type="button"
+                                        onClick={handleGetLocation}
+                                        disabled={geoLoading}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+                                    >
+                                        {geoLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Navigation className="h-3 w-3" />}
+                                        Get my location
+                                    </button>
+                                </div>
+                                <div className="flex gap-2 w-full mt-2">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                                        <Input
+                                            type="text"
+                                            placeholder="Search a location to pin (e.g. Bangalore, Kanteerava)..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation(e)}
+                                            className="bg-black/50 border-white/10 text-white pl-9 text-sm h-10"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleSearchLocation}
+                                        disabled={searchLoading || !searchQuery.trim()}
+                                        className="flex items-center justify-center gap-2 px-4 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-medium transition-colors disabled:opacity-50 border border-white/10"
+                                    >
+                                        {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+                                    </button>
+                                </div>
+                                <div className="mt-4 border border-white/10 rounded-xl overflow-hidden shadow-lg shadow-black/20" style={{ height: '300px' }}>
+                                    <MapContainer
+                                        center={(formData.venue.coordinates.lat && formData.venue.coordinates.lng)
+                                            ? [Number(formData.venue.coordinates.lat), Number(formData.venue.coordinates.lng)]
+                                            : [20.5937, 78.9629] // Default India center
+                                        }
+                                        zoom={(formData.venue.coordinates.lat && formData.venue.coordinates.lng) ? 14 : 4}
+                                        scrollWheelZoom={true}
+                                        className="h-full w-full bg-zinc-900"
+                                    >
+                                        <TileLayer
+                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            className="map-tiles"
+                                        />
+                                        <LocationMarker
+                                            lat={formData.venue.coordinates.lat}
+                                            lng={formData.venue.coordinates.lng}
+                                            onChange={(lat, lng) => setFormData(prev => ({
+                                                ...prev,
+                                                venue: { ...prev.venue, coordinates: { lat, lng } }
+                                            }))}
+                                        />
+                                        <MapController lat={formData.venue.coordinates.lat} lng={formData.venue.coordinates.lng} />
+                                    </MapContainer>
+                                </div>
+                                <div className="flex gap-3 mt-2 text-xs text-gray-400">
+                                    <span className="bg-black/40 px-3 py-1.5 rounded-md border border-white/5">
+                                        Lat: {formData.venue.coordinates.lat || '—'}
+                                    </span>
+                                    <span className="bg-black/40 px-3 py-1.5 rounded-md border border-white/5">
+                                        Lng: {formData.venue.coordinates.lng || '—'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </section>

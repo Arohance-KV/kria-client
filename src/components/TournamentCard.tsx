@@ -1,8 +1,6 @@
 import React from 'react';
-import { Calendar, Users, Trophy, MapPin, Clock } from 'lucide-react';
+import { Calendar, Users, Trophy, MapPin, Clock, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-
 import { Tournament } from '@/store/slices/tournamentSlice';
 
 interface TournamentCardProps {
@@ -10,112 +8,147 @@ interface TournamentCardProps {
     onClick?: () => void;
 }
 
-export function TournamentCard({ tournament, onClick }: TournamentCardProps) {
-    const getStatusConfig = (status: Tournament['status']) => {
-        switch (status) {
-            case 'registration_open':
-                return { label: 'Registration Open', className: 'bg-green-500/10 text-green-500 border-green-500/20' };
-            case 'registration_closed':
-                return { label: 'Registration Closed', className: 'bg-red-500/10 text-red-500 border-red-500/20' };
-            case 'ongoing':
-                return { label: 'Ongoing', className: 'bg-primary/10 text-primary border-primary/20' };
-            case 'upcoming':
-                return { label: 'Upcoming', className: 'bg-blue-500/10 text-blue-500 border-blue-500/20' };
-            case 'completed':
-                return { label: 'Completed', className: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
-            default:
-                return { label: status, className: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
-        }
-    };
+const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string }> = {
+    registration_open: { label: 'Open', dot: 'bg-green-400', text: 'text-green-400' },
+    registration_closed: { label: 'Closed', dot: 'bg-red-400', text: 'text-red-400' },
+    ongoing: { label: 'Live', dot: 'bg-primary animate-pulse', text: 'text-primary' },
+    upcoming: { label: 'Upcoming', dot: 'bg-blue-400', text: 'text-blue-400' },
+    completed: { label: 'Ended', dot: 'bg-gray-500', text: 'text-gray-500' },
+    draft: { label: 'Draft', dot: 'bg-gray-500', text: 'text-gray-500' },
+};
 
-    const statusConfig = getStatusConfig(tournament.status as any);
+export function TournamentCard({ tournament, onClick }: TournamentCardProps) {
+    const statusCfg = STATUS_CONFIG[tournament.status] ?? STATUS_CONFIG.draft;
+
+    const deadlineDate = new Date(tournament.registrationDeadline);
+    const now = new Date();
+    const daysLeft = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const showCountdown = tournament.status === 'registration_open' && daysLeft > 0 && daysLeft <= 7;
 
     return (
         <div
-            className="group relative w-full rounded-3xl overflow-hidden bg-white/5 border border-white/10 transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl hover:shadow-primary/20 hover:border-primary/50 cursor-pointer flex flex-col"
             onClick={onClick}
+            className={cn(
+                'group relative w-full rounded-2xl sm:rounded-3xl overflow-hidden cursor-pointer',
+                'bg-[#161616] border border-white/8',
+                'transition-all duration-500',
+                'hover:-translate-y-1 sm:hover:-translate-y-2',
+                'hover:border-white/20 hover:shadow-2xl hover:shadow-black/60',
+                'active:scale-[0.99]',
+                'flex flex-col',
+            )}
         >
-            {/* Image Section */}
-            <div className="relative h-64 w-full overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 transition-opacity duration-500 group-hover:opacity-80" />
+            {/* ── Image ──────────────────────────────────────────────────── */}
+            <div className="relative h-44 sm:h-56 w-full overflow-hidden flex-shrink-0">
+                {/* Gradient overlays */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#161616] via-[#161616]/20 to-transparent z-10" />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent z-10" />
+
                 <img
                     src={tournament.bannerImage || 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=3269&auto=format&fit=crop'}
                     alt={tournament.name}
-                    className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                    className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                    loading="lazy"
                 />
 
-                {/* Top Badges */}
-                <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20">
-                    <Badge variant="outline" className={cn("px-3 py-1 uppercase tracking-wider text-[10px] font-bold backdrop-blur-md", statusConfig.className)}>
-                        {statusConfig.label}
-                    </Badge>
-                    <Badge variant="secondary" className="bg-black/50 text-white backdrop-blur-md border border-white/10">
-                        {tournament.sport}
-                    </Badge>
+                {/* Top badges */}
+                <div className="absolute top-3 left-3 right-3 flex items-start justify-between z-20">
+                    {/* Status pill */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10">
+                        <span className={cn('h-1.5 w-1.5 rounded-full flex-shrink-0', statusCfg.dot)} />
+                        <span className={cn('text-[10px] font-bold uppercase tracking-wider', statusCfg.text)}>
+                            {statusCfg.label}
+                        </span>
+                    </div>
+
+                    {/* Sport badge */}
+                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/70 capitalize">
+                            {tournament.sport?.replace('_', ' ')}
+                        </span>
+                    </div>
                 </div>
 
-                {/* Bottom Info inside Image */}
-                <div className="absolute bottom-4 left-4 right-4 z-20 flex flex-col gap-2">
-                    <h3 className="text-2xl font-oswald font-bold text-white tracking-wide line-clamp-2">
+                {/* Bottom — title overlay on image */}
+                <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-3">
+                    {showCountdown && (
+                        <div className="flex items-center gap-1 mb-1.5">
+                            <Clock className="h-3 w-3 text-amber-400" />
+                            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
+                                {daysLeft === 1 ? 'Last day' : `${daysLeft} days left`}
+                            </span>
+                        </div>
+                    )}
+                    <h3 className="text-base sm:text-xl font-oswald font-bold text-white tracking-wide leading-tight line-clamp-2">
                         {tournament.name}
                     </h3>
-                    <div className="flex items-center gap-2 text-gray-300 text-sm font-medium">
-                        <MapPin className="h-4 w-4 text-primary" />
-                        <span className="truncate">{tournament.venue?.city || 'TBD'}</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                        <MapPin className="h-3 w-3 text-primary flex-shrink-0" />
+                        <span className="text-xs text-gray-300 font-medium truncate">
+                            {tournament.venue?.city || 'TBD'}
+                        </span>
                     </div>
                 </div>
             </div>
 
-            {/* Content Section */}
-            <div className="p-6 flex flex-col gap-5 relative bg-gradient-to-b from-transparent to-black/20 flex-1">
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center gap-3 bg-black/20 p-3 rounded-2xl border border-white/5 transition-colors group-hover:bg-primary/5 group-hover:border-primary/20">
-                        <div className="p-2 bg-primary/20 rounded-xl text-primary">
-                            <Users className="h-5 w-5" />
+            {/* ── Stats + Dates ───────────────────────────────────────────── */}
+            <div className="flex-1 flex flex-col px-4 pt-3 pb-4 sm:px-5 sm:pt-4 sm:pb-5 gap-3 sm:gap-4">
+                {/* Stats row */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2.5 transition-colors group-hover:bg-white/[0.06]">
+                        <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+                            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-xl font-bold text-white">{0}</span>
-                            <span className="text-[10px] uppercase tracking-wider text-gray-500">Reg. Players</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 bg-black/20 p-3 rounded-2xl border border-white/5 transition-colors group-hover:bg-primary/5 group-hover:border-primary/20">
-                        <div className="p-2 bg-primary/20 rounded-xl text-primary">
-                            <Trophy className="h-5 w-5" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-xl font-bold text-white">{0} / {tournament.settings?.maxTeams || '∞'}</span>
-                            <span className="text-[10px] uppercase tracking-wider text-gray-500">Teams</span>
+                        <div className="min-w-0">
+                            <p className="text-sm sm:text-base font-bold text-white leading-tight">{tournament.registeredPlayersCount ?? 0}</p>
+                            <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-gray-600 font-bold">Players</p>
                         </div>
                     </div>
-                </div>
-
-                {/* Dates Section */}
-                <div className="flex flex-col gap-3 pt-2">
-                    <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2 text-gray-400">
-                            <Clock className="h-4 w-4 text-red-400/70" />
-                            <span>Reg. Closes:</span>
+                    <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/8 rounded-xl px-3 py-2.5 transition-colors group-hover:bg-white/[0.06]">
+                        <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                            <Trophy className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-400" />
                         </div>
-                        <span className="text-red-400/90 font-medium">
-                            {new Date(tournament.registrationDeadline).toLocaleDateString()}
-                        </span>
-                    </div>
-                    <div className="h-px w-full bg-white/10 my-1" />
-                    <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2 text-primary font-medium">
-                            <Calendar className="h-4 w-4" />
-                            <span>Dates:</span>
+                        <div className="min-w-0">
+                            <p className="text-sm sm:text-base font-bold text-white leading-tight">
+                                {tournament.teamsCount ?? 0}
+                                <span className="text-gray-600 font-normal text-xs">/{tournament.settings?.maxTeams || '∞'}</span>
+                            </p>
+                            <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-gray-600 font-bold">Teams</p>
                         </div>
-                        <span className="text-white font-bold whitespace-nowrap">
-                            {new Date(tournament.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - {new Date(tournament.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                        </span>
                     </div>
                 </div>
 
-                {/* Hover overlay glow effect */}
-                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none rounded-b-3xl" />
+                {/* Divider */}
+                <div className="h-px bg-white/6" />
+
+                {/* Dates + CTA row */}
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                            <Clock className="h-3 w-3 text-gray-600 flex-shrink-0" />
+                            <span className="text-[10px] text-gray-600 font-medium truncate">
+                                Reg. closes {new Date(tournament.registrationDeadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3 w-3 text-primary flex-shrink-0" />
+                            <span className="text-[10px] text-gray-400 font-semibold truncate">
+                                {new Date(tournament.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                {' – '}
+                                {new Date(tournament.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Arrow CTA */}
+                    <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full border border-white/10 flex items-center justify-center flex-shrink-0 text-gray-500 group-hover:border-primary group-hover:text-primary group-hover:bg-primary/10 transition-all duration-300">
+                        <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </div>
+                </div>
             </div>
+
+            {/* Subtle primary glow on hover */}
+            <div className="absolute inset-0 rounded-2xl sm:rounded-3xl ring-1 ring-primary/0 group-hover:ring-primary/20 transition-all duration-500 pointer-events-none" />
         </div>
     );
 }

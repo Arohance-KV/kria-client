@@ -56,6 +56,39 @@ function getC2(m: Match, ct: 'player' | 'team') {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// BRACKET LAYOUT CONSTANTS & POSITION CALCULATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CARD_H = 170;  // taller than player view to fit Score button and prevent overlap
+const CARD_W = 340;
+const CARD_GAP = 20;
+const CONN_W = 44;
+const S = CARD_H + CARD_GAP;
+
+function computeCardPositions(visible: { name: string; matches: Match[] }[]): number[][] {
+    if (visible.length === 0) return [];
+    const positions: number[][] = [];
+    positions[0] = visible[0].matches.map((_, ci) => ci * S);
+    for (let ri = 1; ri < visible.length; ri++) {
+        const prev = positions[ri - 1];
+        const prevMatches = visible[ri - 1].matches;
+        positions[ri] = visible[ri].matches.map((match, ci) => {
+            const sources = prevMatches
+                .map((m, prevCi) => ({ m, prevCi }))
+                .filter(({ m }) => m.nextMatchId === match._id);
+            if (sources.length > 0) {
+                const avgCenterY =
+                    sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
+                    sources.length;
+                return avgCenterY - CARD_H / 2;
+            }
+            return ci * S;
+        });
+    }
+    return positions;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -239,45 +272,176 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
                     {canGenerate && <p className="text-sm text-gray-600">Click "Generate Bracket" above.</p>}
                 </div>
             ) : (
-                <div className="overflow-x-auto no-scrollbar pb-4">
-                    <div className="flex gap-6 min-w-max">
-                        {sortedRoundNames.map((roundName, ri) => {
-                            const roundMatches = rounds[roundName] || [];
-                            // In swap mode, show bye matches so they can be swapped; otherwise hide them
-                            const visible = swapMode
-                                ? roundMatches
-                                : roundMatches.filter(m => !(m.status === 'walkover' && m.winReason === 'bye'));
-                            if (visible.length === 0) return null;
+                <BracketKnockoutView
+                    sortedRoundNames={sortedRoundNames}
+                    rounds={rounds}
+                    competitorType={competitorType}
+                    swapMode={swapMode}
+                    swapSelection={swapSelection}
+                    onSwapClick={handleSwapClick}
+                    scoringMatchId={scoringMatchId}
+                    onStartScoring={setScoringMatchId}
+                    onCancelScoring={() => setScoringMatchId(null)}
+                    onRecordResult={handleRecordResult}
+                />
+            )}
+        </section>
+    );
+};
 
-                            return (
-                                <div key={roundName} className="flex flex-col min-w-[340px]">
-                                    <div className="text-center mb-4 sticky top-0 bg-white/5 backdrop-blur-sm py-2 rounded-xl z-10">
-                                        <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary">{roundName}</h3>
-                                        <p className="text-[10px] text-gray-500 mt-0.5">{visible.length} match{visible.length !== 1 ? 'es' : ''}</p>
-                                    </div>
-                                    <div className="flex flex-col justify-around flex-1 gap-4" style={{ paddingTop: ri > 0 ? `${Math.pow(2, ri) * 16}px` : '0' }}>
-                                        {visible.map(match => (
+// ═══════════════════════════════════════════════════════════════════════════════
+// BRACKET KNOCKOUT VIEW — SVG connector tree (organizer)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const BracketKnockoutView: React.FC<{
+    sortedRoundNames: string[];
+    rounds: Record<string, Match[]>;
+    competitorType: 'player' | 'team';
+    swapMode: boolean;
+    swapSelection: SwapSelection | null;
+    onSwapClick: (matchId: string, slot: 'player1' | 'player2', name: string) => void;
+    scoringMatchId: string | null;
+    onStartScoring: (id: string) => void;
+    onCancelScoring: () => void;
+    onRecordResult: (matchId: string, winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => void;
+}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, scoringMatchId, onStartScoring, onCancelScoring, onRecordResult }) => {
+
+    const visible = sortedRoundNames
+        .map(name => ({
+            name,
+            matches: (rounds[name] || [])
+                .filter(m => swapMode ? true : !(m.status === 'walkover' && m.winReason === 'bye'))
+                .sort((a, b) => (a.positionInRound ?? a.matchNumber) - (b.positionInRound ?? b.matchNumber)),
+        }))
+        .filter(r => r.matches.length > 0);
+
+    if (visible.length === 0) return null;
+
+    const cardPos = computeCardPositions(visible);
+    const bHeight = cardPos.reduce((maxH, rPos) => {
+        if (rPos.length === 0) return maxH;
+        return Math.max(maxH, Math.max(...rPos) + CARD_H);
+    }, 0);
+
+    return (
+        <div className="overflow-x-auto no-scrollbar pb-4">
+            <div className="pb-4">
+                {/* Stage headers */}
+                <div className="flex mb-6">
+                    {visible.map((round, ri) => (
+                        <React.Fragment key={round.name}>
+                            <div className="text-center shrink-0" style={{ width: CARD_W }}>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{round.name}</p>
+                                <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
+                                    {round.matches.length} match{round.matches.length !== 1 ? 'es' : ''}
+                                </p>
+                            </div>
+                            {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
+                        </React.Fragment>
+                    ))}
+                </div>
+
+                {/* Bracket body */}
+                <div className="flex items-start">
+                    {visible.map((round, ri) => {
+                        const isLast = ri === visible.length - 1;
+                        return (
+                            <React.Fragment key={round.name}>
+                                {/* Cards column */}
+                                <div className="relative shrink-0" style={{ width: CARD_W, height: bHeight }}>
+                                    {round.matches.map((match, ci) => (
+                                        <div
+                                            key={match._id}
+                                            className="absolute"
+                                            style={{ top: cardPos[ri][ci], left: 0, width: CARD_W, height: CARD_H }}
+                                        >
                                             <BracketMatchCard
-                                                key={match._id}
                                                 match={match}
                                                 competitorType={competitorType}
                                                 swapMode={swapMode}
                                                 swapSelection={swapSelection}
-                                                onSwapClick={handleSwapClick}
+                                                onSwapClick={onSwapClick}
                                                 isScoring={scoringMatchId === match._id}
-                                                onStartScoring={() => setScoringMatchId(match._id)}
-                                                onCancelScoring={() => setScoringMatchId(null)}
-                                                onRecordResult={handleRecordResult}
+                                                onStartScoring={() => onStartScoring(match._id)}
+                                                onCancelScoring={onCancelScoring}
+                                                onRecordResult={onRecordResult}
                                             />
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            );
-                        })}
-                    </div>
+
+                                {/* SVG connectors to next round */}
+                                {!isLast && (
+                                    <ConnectorSvg
+                                        currentMatches={round.matches}
+                                        nextMatches={visible[ri + 1].matches}
+                                        currentPositions={cardPos[ri]}
+                                        nextPositions={cardPos[ri + 1]}
+                                        height={bHeight}
+                                    />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
-            )}
-        </section>
+            </div>
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONNECTOR SVG
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ConnectorSvg: React.FC<{
+    currentMatches: Match[];
+    nextMatches: Match[];
+    currentPositions: number[];
+    nextPositions: number[];
+    height: number;
+}> = ({ currentMatches, nextMatches, currentPositions, nextPositions, height }) => {
+    const midX = CONN_W / 2;
+    const stroke = 'rgba(255,255,255,0.12)';
+    const sw = 1.5;
+
+    const groups = new Map<string, number[]>();
+    currentMatches.forEach((match, ci) => {
+        if (!match.nextMatchId) return;
+        if (!groups.has(match.nextMatchId)) groups.set(match.nextMatchId, []);
+        groups.get(match.nextMatchId)!.push(ci);
+    });
+
+    const paths: React.ReactNode[] = [];
+    groups.forEach((cis, nextMatchId) => {
+        const nextCi = nextMatches.findIndex(m => m._id === nextMatchId);
+        if (nextCi < 0) return;
+        const midY = nextPositions[nextCi] + CARD_H / 2;
+
+        if (cis.length === 1) {
+            const topY = currentPositions[cis[0]] + CARD_H / 2;
+            paths.push(
+                <path key={nextMatchId} d={`M 0 ${topY} H ${midX} V ${midY} H ${CONN_W}`}
+                    fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+            );
+        } else if (cis.length >= 2) {
+            const sorted = [...cis].sort((a, b) => a - b);
+            const topY = currentPositions[sorted[0]] + CARD_H / 2;
+            const botY = currentPositions[sorted[sorted.length - 1]] + CARD_H / 2;
+            paths.push(
+                <g key={nextMatchId}>
+                    <path d={`M 0 ${topY} H ${midX} V ${botY} H 0`}
+                        fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={`M ${midX} ${midY} H ${CONN_W}`}
+                        fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+                </g>
+            );
+        }
+    });
+
+    return (
+        <svg width={CONN_W} height={height} className="shrink-0" style={{ display: 'block', overflow: 'visible' }}>
+            {paths}
+        </svg>
     );
 };
 
