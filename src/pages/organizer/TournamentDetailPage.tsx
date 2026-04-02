@@ -235,9 +235,9 @@ const TournamentDetailPage = () => {
 
     const handleGroupClick = (group: NavGroup) => {
         setActiveGroup(group.key);
-        // Auto-navigate for single-item groups
+        // Always auto-navigate to the first visible item in the group
         const visible = group.items.filter(i => !i.condition || i.condition(tournamentStatus));
-        if (visible.length === 1) setActiveSection(visible[0].key);
+        if (visible.length > 0) setActiveSection(visible[0].key);
         setSidebarOpen(false);
         setIsEditing(false);
     };

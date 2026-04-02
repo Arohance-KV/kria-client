@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Users, Plus, Trash2, Edit2, Loader2, Save, X, DollarSign, RefreshCw, Smartphone, Mail, Phone, ExternalLink, Search, Shield, XCircle } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { fetchTournamentTeams, createTeam, updateTeam, deleteTeam, updateTeamBudget, resetTeamBudget, clearTeams, searchPlayerByEmail } from '../../../store/slices/teamSlice';
@@ -25,14 +25,18 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
     // Captain search state
     const [captainEmail, setCaptainEmail] = useState('');
     const [captainSearchLoading, setCaptainSearchLoading] = useState(false);
+    const [captainSearchPending, setCaptainSearchPending] = useState(false);
     const [captainSearchError, setCaptainSearchError] = useState('');
     const [selectedCaptain, setSelectedCaptain] = useState<{ _id: string; firstName: string; lastName: string; email: string; phone: string; profileImage?: string } | null>(null);
+    const captainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Edit captain state
     const [editCaptainEmail, setEditCaptainEmail] = useState('');
     const [editCaptainSearchLoading, setEditCaptainSearchLoading] = useState(false);
+    const [editCaptainSearchPending, setEditCaptainSearchPending] = useState(false);
     const [editCaptainSearchError, setEditCaptainSearchError] = useState('');
     const [editSelectedCaptain, setEditSelectedCaptain] = useState<{ _id: string; firstName: string; lastName: string; email: string } | null>(null);
+    const editCaptainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
     const [editTeamData, setEditTeamData] = useState({
@@ -45,6 +49,40 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
         dispatch(fetchTournamentTeams(tournamentId));
         return () => { dispatch(clearTeams()); };
     }, [dispatch, tournamentId]);
+
+    // Debounced captain search for create form
+    useEffect(() => {
+        if (selectedCaptain) return;
+        if (captainDebounceRef.current) clearTimeout(captainDebounceRef.current);
+        if (!captainEmail.trim() || captainEmail.length < 3) {
+            setCaptainSearchPending(false);
+            setCaptainSearchError('');
+            return;
+        }
+        setCaptainSearchPending(true);
+        captainDebounceRef.current = setTimeout(() => {
+            setCaptainSearchPending(false);
+            handleSearchCaptain(captainEmail);
+        }, 400);
+        return () => { if (captainDebounceRef.current) clearTimeout(captainDebounceRef.current); };
+    }, [captainEmail, selectedCaptain]);
+
+    // Debounced captain search for edit form
+    useEffect(() => {
+        if (editSelectedCaptain) return;
+        if (editCaptainDebounceRef.current) clearTimeout(editCaptainDebounceRef.current);
+        if (!editCaptainEmail.trim() || editCaptainEmail.length < 3) {
+            setEditCaptainSearchPending(false);
+            setEditCaptainSearchError('');
+            return;
+        }
+        setEditCaptainSearchPending(true);
+        editCaptainDebounceRef.current = setTimeout(() => {
+            setEditCaptainSearchPending(false);
+            handleSearchCaptain(editCaptainEmail, true);
+        }, 400);
+        return () => { if (editCaptainDebounceRef.current) clearTimeout(editCaptainDebounceRef.current); };
+    }, [editCaptainEmail, editSelectedCaptain]);
 
     const handleSearchCaptain = async (email: string, isEdit = false) => {
         if (!email.trim()) return;
@@ -266,27 +304,27 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
                                 </button>
                             </div>
                         ) : (
-                            <div className="flex gap-2">
+                            <div className="relative">
                                 <Input
                                     type="email"
                                     value={captainEmail}
-                                    onChange={e => { setCaptainEmail(e.target.value); setCaptainSearchError(''); }}
-                                    onKeyDown={e => e.key === 'Enter' && handleSearchCaptain(captainEmail)}
-                                    placeholder="Search player by email..."
-                                    className="bg-black/50 border-white/10 text-white flex-1"
+                                    onChange={e => { setCaptainEmail(e.target.value); setCaptainSearchError(''); setSelectedCaptain(null); }}
+                                    placeholder="Type player email to search..."
+                                    className="bg-black/50 border-white/10 text-white pr-9"
                                 />
-                                <button
-                                    onClick={() => handleSearchCaptain(captainEmail)}
-                                    disabled={captainSearchLoading || !captainEmail.trim()}
-                                    className="px-4 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium transition-colors text-sm disabled:opacity-50 flex items-center gap-2"
-                                >
-                                    {captainSearchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                                    Search
-                                </button>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400 pointer-events-none">
+                                    {captainSearchLoading || captainSearchPending
+                                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                                        : captainEmail.length >= 3 ? null : <Search className="h-4 w-4 opacity-40" />
+                                    }
+                                </div>
                             </div>
                         )}
                         {captainSearchError && (
                             <p className="text-xs text-red-400 mt-2">{captainSearchError}</p>
+                        )}
+                        {!selectedCaptain && !captainSearchError && captainEmail.length > 0 && captainEmail.length < 3 && (
+                            <p className="text-xs text-gray-500 mt-1.5">Type at least 3 characters to search</p>
                         )}
                     </div>
 
@@ -339,21 +377,26 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
                                                 <button onClick={() => { setEditSelectedCaptain(null); setEditCaptainEmail(''); }} className="text-gray-400 hover:text-red-400"><XCircle className="h-3.5 w-3.5" /></button>
                                             </div>
                                         ) : (
-                                            <div className="flex gap-1.5">
+                                            <div className="relative">
                                                 <Input
                                                     type="email"
                                                     value={editCaptainEmail}
-                                                    onChange={e => { setEditCaptainEmail(e.target.value); setEditCaptainSearchError(''); }}
-                                                    onKeyDown={e => e.key === 'Enter' && handleSearchCaptain(editCaptainEmail, true)}
-                                                    placeholder="Search by email..."
-                                                    className="bg-black/50 border-white/10 text-white h-7 text-xs flex-1"
+                                                    onChange={e => { setEditCaptainEmail(e.target.value); setEditCaptainSearchError(''); setEditSelectedCaptain(null); }}
+                                                    placeholder="Type email to search..."
+                                                    className="bg-black/50 border-white/10 text-white h-7 text-xs pr-7"
                                                 />
-                                                <button onClick={() => handleSearchCaptain(editCaptainEmail, true)} disabled={editCaptainSearchLoading || !editCaptainEmail.trim()} className="px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs disabled:opacity-50">
-                                                    {editCaptainSearchLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                                                </button>
+                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-400 pointer-events-none">
+                                                    {editCaptainSearchLoading || editCaptainSearchPending
+                                                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                        : <Search className="h-3 w-3 opacity-40" />
+                                                    }
+                                                </div>
                                             </div>
                                         )}
                                         {editCaptainSearchError && <p className="text-[10px] text-red-400 mt-1">{editCaptainSearchError}</p>}
+                                        {!editSelectedCaptain && !editCaptainSearchError && editCaptainEmail.length > 0 && editCaptainEmail.length < 3 && (
+                                            <p className="text-[10px] text-gray-500 mt-1">Type at least 3 characters</p>
+                                        )}
                                         {team.captainId && !editSelectedCaptain && <p className="text-[10px] text-gray-500 mt-1">Current captain will be removed if saved without selecting a new one</p>}
                                     </div>
 
