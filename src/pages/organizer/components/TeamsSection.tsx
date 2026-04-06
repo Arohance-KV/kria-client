@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Users, Plus, Trash2, Edit2, Loader2, Save, X, DollarSign, RefreshCw, Smartphone, Mail, Phone, ExternalLink, Search, Shield, XCircle } from 'lucide-react';
+import { Users, Plus, Trash2, Edit2, Loader2, Save, X, DollarSign, RefreshCw, Smartphone, Mail, Phone, ExternalLink, Search, Shield, XCircle, Upload } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { fetchTournamentTeams, createTeam, updateTeam, deleteTeam, updateTeamBudget, resetTeamBudget, clearTeams, searchPlayerByEmail } from '../../../store/slices/teamSlice';
 import { Input } from '@/components/ui/input';
+import { uploadImage } from '../../../api/upload';
 
 interface TeamsSectionProps {
     tournamentId: string;
@@ -37,6 +38,42 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
     const [editCaptainSearchError, setEditCaptainSearchError] = useState('');
     const [editSelectedCaptain, setEditSelectedCaptain] = useState<{ _id: string; firstName: string; lastName: string; email: string } | null>(null);
     const editCaptainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const [logoUploading, setLogoUploading] = useState(false);
+    const logoInputRef = useRef<HTMLInputElement>(null);
+
+    const [editLogoUploading, setEditLogoUploading] = useState(false);
+    const editLogoInputRef = useRef<HTMLInputElement>(null);
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setLogoUploading(true);
+        try {
+            const url = await uploadImage(file, 'team-logos');
+            setFormData(prev => ({ ...prev, logo: url }));
+        } catch {
+            alert('Failed to upload logo. Please try again.');
+        } finally {
+            setLogoUploading(false);
+            if (logoInputRef.current) logoInputRef.current.value = '';
+        }
+    };
+
+    const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setEditLogoUploading(true);
+        try {
+            const url = await uploadImage(file, 'team-logos');
+            setEditTeamData(prev => ({ ...prev, logo: url }));
+        } catch {
+            alert('Failed to upload logo. Please try again.');
+        } finally {
+            setEditLogoUploading(false);
+            if (editLogoInputRef.current) editLogoInputRef.current.value = '';
+        }
+    };
 
     const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
     const [editTeamData, setEditTeamData] = useState({
@@ -235,8 +272,19 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
                             <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Royal Challengers" className="bg-black/50 border-white/10 text-white" />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs text-gray-400 ml-1">Logo URL</label>
-                            <Input value={formData.logo} onChange={e => setFormData({ ...formData, logo: e.target.value })} placeholder="https://..." className="bg-black/50 border-white/10 text-white" />
+                            <label className="text-xs text-gray-400 ml-1">Team Logo</label>
+                            <input ref={logoInputRef} type="file" accept="image/png,image/jpg,image/jpeg,image/gif" className="hidden" onChange={handleLogoUpload} />
+                            {formData.logo ? (
+                                <div className="flex items-center gap-2">
+                                    <img src={formData.logo} alt="Logo" className="w-10 h-10 rounded-full object-cover border border-white/20" />
+                                    <button type="button" onClick={() => setFormData({ ...formData, logo: '' })} className="text-xs text-gray-400 hover:text-red-400 flex items-center gap-1"><X className="h-3 w-3" /> Remove</button>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={() => logoInputRef.current?.click()} disabled={logoUploading} className="flex items-center gap-2 w-full h-10 px-3 rounded-md border border-dashed border-white/20 bg-black/30 text-gray-400 hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50 text-xs">
+                                    {logoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                                    {logoUploading ? 'Uploading...' : 'Upload Logo'}
+                                </button>
+                            )}
                         </div>
                         <div className="space-y-1">
                             <label className="text-xs text-gray-400 ml-1">Budget *</label>
@@ -355,7 +403,20 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ tournamentId, defaultBudget
                                     <div className="grid grid-cols-2 gap-2">
                                         <Input value={editTeamData.name} onChange={e => setEditTeamData(p => ({ ...p, name: e.target.value }))} placeholder="Team Name" className="bg-black/50 border-white/10 text-white h-8 text-xs" />
                                         <Input type="number" value={editTeamData.budget} onChange={e => setEditTeamData(p => ({ ...p, budget: Number(e.target.value) }))} placeholder="Budget" className="bg-black/50 border-white/10 text-white h-8 text-xs" />
-                                        <Input value={editTeamData.logo} onChange={e => setEditTeamData(p => ({ ...p, logo: e.target.value }))} placeholder="Logo URL" className="bg-black/50 border-white/10 text-white h-8 text-xs col-span-2" />
+                                        <div className="col-span-2">
+                                            <input ref={editLogoInputRef} type="file" accept="image/png,image/jpg,image/jpeg,image/gif" className="hidden" onChange={handleEditLogoUpload} />
+                                            {editTeamData.logo ? (
+                                                <div className="flex items-center gap-2">
+                                                    <img src={editTeamData.logo} alt="Logo" className="w-8 h-8 rounded-full object-cover border border-white/20" />
+                                                    <button type="button" onClick={() => setEditTeamData(p => ({ ...p, logo: '' }))} className="text-[10px] text-gray-400 hover:text-red-400 flex items-center gap-1"><X className="h-3 w-3" /> Remove</button>
+                                                </div>
+                                            ) : (
+                                                <button type="button" onClick={() => editLogoInputRef.current?.click()} disabled={editLogoUploading} className="flex items-center gap-2 w-full h-8 px-2 rounded border border-dashed border-white/20 bg-black/30 text-gray-400 hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50 text-xs">
+                                                    {editLogoUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                                                    {editLogoUploading ? 'Uploading...' : 'Upload Logo'}
+                                                </button>
+                                            )}
+                                        </div>
                                         <Input value={editTeamData.ownerName} onChange={e => setEditTeamData(p => ({ ...p, ownerName: e.target.value }))} placeholder="Owner Name" className="bg-black/50 border-white/10 text-white h-8 text-xs" />
                                         <Input value={editTeamData.ownerPhone} onChange={e => setEditTeamData(p => ({ ...p, ownerPhone: e.target.value }))} placeholder="Owner Phone" className="bg-black/50 border-white/10 text-white h-8 text-xs" />
                                         <Input value={editTeamData.ownerEmail} onChange={e => setEditTeamData(p => ({ ...p, ownerEmail: e.target.value }))} placeholder="Owner Email" className="bg-black/50 border-white/10 text-white h-8 text-xs" />

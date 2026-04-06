@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { ArrowLeft, Save, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon, Loader2, Navigation, Search } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon, Loader2, Navigation, Search, Upload, X } from 'lucide-react';
 
 import HoverFooter from '@/components/HoverFooter';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { createTournament } from '../../store/slices/tournamentSlice';
+import { uploadImage } from '../../api/upload';
 
 // Fix Leaflet's default icon issue with bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -133,6 +134,24 @@ const CreateTournamentPage = () => {
         }
     };
 
+    const [bannerUploading, setBannerUploading] = useState(false);
+    const bannerInputRef = useRef<HTMLInputElement>(null);
+
+    const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setBannerUploading(true);
+        try {
+            const url = await uploadImage(file, 'tournament-banners');
+            setFormData(prev => ({ ...prev, bannerImage: url }));
+        } catch {
+            alert('Failed to upload image. Please try again.');
+        } finally {
+            setBannerUploading(false);
+            if (bannerInputRef.current) bannerInputRef.current.value = '';
+        }
+    };
+
     const [geoLoading, setGeoLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
@@ -252,13 +271,36 @@ const CreateTournamentPage = () => {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="bannerImage" className="text-gray-400">Banner Image URL</Label>
-                                <Input
-                                    id="bannerImage" name="bannerImage"
-                                    placeholder="https://example.com/image.jpg"
-                                    className="bg-black/50 border-white/10 text-white py-6"
-                                    value={formData.bannerImage} onChange={handleInputChange}
+                                <Label className="text-gray-400">Banner Image</Label>
+                                <input
+                                    ref={bannerInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpg,image/jpeg,image/gif"
+                                    className="hidden"
+                                    onChange={handleBannerUpload}
                                 />
+                                {formData.bannerImage ? (
+                                    <div className="relative rounded-xl overflow-hidden border border-white/10">
+                                        <img src={formData.bannerImage} alt="Banner preview" className="w-full h-32 object-cover" />
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, bannerImage: '' }))}
+                                            className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-red-500/80 transition-colors"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => bannerInputRef.current?.click()}
+                                        disabled={bannerUploading}
+                                        className="flex items-center justify-center gap-2 w-full h-24 rounded-xl border border-dashed border-white/20 bg-black/30 text-gray-400 hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                                    >
+                                        {bannerUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                                        <span className="text-sm">{bannerUploading ? 'Uploading...' : 'Upload Banner Image'}</span>
+                                    </button>
+                                )}
                             </div>
 
                             <div className="space-y-2 md:col-span-2">
