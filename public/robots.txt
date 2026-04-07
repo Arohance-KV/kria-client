@@ -1,0 +1,22 @@
+User-agent: *
+
+# Allow public pages
+Allow: /$
+Allow: /login
+Allow: /register
+Allow: /forgot-password
+
+# Block authenticated player routes
+Disallow: /player/
+
+# Block authenticated organizer routes
+Disallow: /organizer/
+
+# Block live session routes (dynamic, not permanent content)
+Disallow: /auction/
+Disallow: /bracket/
+
+# Block Vite build assets (no SEO value)
+Disallow: /assets/
+
+Sitemap: https://kria.club/sitemap.xml
