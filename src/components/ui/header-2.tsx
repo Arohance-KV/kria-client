@@ -45,29 +45,28 @@ export function Header() {
     return (
         <header
             className={cn(
-                'fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out font-montserrat flex justify-center',
+                'fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out font-montserrat',
                 {
-                    'h-24 bg-transparent': !scrolled && !open,
-                    'h-auto top-4': scrolled && !open,
-                    'h-screen bg-black/95': open,
+                    'h-24 bg-transparent flex justify-center': !scrolled && !open,
+                    'h-auto top-4 flex justify-center': scrolled && !open,
+                    'h-screen bg-black flex flex-col': open,
                 }
             )}
         >
+            {/* Top bar — always visible */}
             <nav
                 className={cn(
-                    'flex items-center justify-between px-6 transition-all duration-300 w-full',
+                    'flex items-center justify-between px-6 transition-all duration-300 w-full shrink-0',
                     {
-                        'max-w-7xl': !scrolled && !open,
+                        'max-w-7xl h-24': !scrolled && !open,
                         'max-w-4xl bg-black/50 backdrop-blur-md rounded-full h-16 shadow-lg shadow-black/20 mt-2': scrolled && !open,
-                        'h-full flex-col justify-start pt-24': open,
+                        'h-16': open,
                     },
                 )}
             >
-                <div className={cn("flex items-center gap-2", open ? "absolute top-6 left-6" : "")}>
-                    <a href="/" className="flex items-center gap-2">
-                        <img src={logo} alt="Kria Sports Logo" className="h-8 w-auto" />
-                    </a>
-                </div>
+                <a href="/" className="flex items-center gap-2">
+                    <img src={logo} alt="Kria Sports Logo" className="h-8 w-auto" />
+                </a>
 
                 <div className={cn("hidden md:flex items-center gap-6", { "gap-2": scrolled })}>
                     {links.map((link, i) => (
@@ -91,27 +90,27 @@ export function Header() {
                     </Button>
                 </div>
 
-                <div className={cn("md:hidden", open ? "absolute top-6 right-6" : "")}>
+                <div className="md:hidden">
                     <Button size="icon" variant="ghost" onClick={() => setOpen(!open)} className="text-white hover:bg-white/10">
                         <MenuToggleIcon open={open} className="size-6" duration={300} />
                     </Button>
                 </div>
             </nav>
 
-            {/* Mobile Menu Overlay Content */}
+            {/* Mobile Menu — fills remaining screen height */}
             {open && (
-                <div className="flex flex-col items-center justify-center space-y-8 w-full md:hidden">
+                <div className="flex flex-col items-center justify-center flex-1 space-y-8 w-full md:hidden">
                     {links.map((link) => (
                         <a
                             key={link.label}
-                            className="text-2xl font-oswald text-white hover:text-primary transition-colors"
+                            className="text-2xl font-oswald text-white hover:text-primary transition-colors min-h-[44px] flex items-center"
                             href={link.href}
                             onClick={() => setOpen(false)}
                         >
                             {link.label}
                         </a>
                     ))}
-                    <div className="flex flex-col gap-4 w-full max-w-xs pt-8">
+                    <div className="flex flex-col gap-4 w-full max-w-xs pt-4">
                         <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary hover:text-white bg-transparent h-12 text-lg" onClick={() => { setOpen(false); navigate('/login'); }}>
                             Sign In
                         </Button>

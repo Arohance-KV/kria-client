@@ -42,17 +42,17 @@ function HoverFooter() {
     // Contact info data
     const contactInfo = [
         {
-            icon: <Mail size={18} className="text-[#F97316]" />,
+            icon: <Mail size={18} className="text-primary" />,
             text: "support@kriasports.com",
             href: "mailto:support@kriasports.com",
         },
         {
-            icon: <Phone size={18} className="text-[#F97316]" />,
+            icon: <Phone size={18} className="text-primary" />,
             text: "+91 86373 73116",
             href: "tel:+918637373116",
         },
         {
-            icon: <MapPin size={18} className="text-[#F97316]" />,
+            icon: <MapPin size={18} className="text-primary" />,
             text: "Mumbai, India",
         },
     ];
@@ -67,13 +67,13 @@ function HoverFooter() {
     ];
 
     return (
-        <footer className="bg-[#0F0F11]/10 relative h-fit rounded-3xl overflow-hidden m-8 border border-white/5 font-montserrat">
-            <div className="max-w-7xl mx-auto p-14 z-40 relative">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-8 lg:gap-16 pb-12">
+        <footer className="bg-[#0F0F11]/10 relative h-fit rounded-2xl md:rounded-3xl overflow-hidden m-4 md:m-8 border border-white/5 font-montserrat">
+            <div className="max-w-7xl mx-auto px-5 py-10 md:p-14 z-40 relative">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-8 lg:gap-16 pb-10 md:pb-12">
                     {/* Brand section */}
                     <div className="flex flex-col space-y-4">
                         <div className="flex items-center space-x-2">
-                            <span className="text-[#F97316] text-3xl font-oswald font-extrabold uppercase tracking-tighter">
+                            <span className="text-primary text-3xl font-oswald font-extrabold uppercase tracking-tighter">
                                 KRIA
                             </span>
                             <span className="text-white text-3xl font-oswald font-bold uppercase tracking-tighter">Sports</span>
@@ -94,12 +94,12 @@ function HoverFooter() {
                                     <li key={link.label} className="relative">
                                         <a
                                             href={link.href}
-                                            className="hover:text-[#F97316] transition-colors text-gray-400 text-sm"
+                                            className="hover:text-primary transition-colors text-gray-400 text-sm"
                                         >
                                             {link.label}
                                         </a>
                                         {link.pulse && (
-                                            <span className="absolute top-0 right-[-10px] w-2 h-2 rounded-full bg-[#F97316] animate-pulse"></span>
+                                            <span className="absolute top-0 right-[-10px] w-2 h-2 rounded-full bg-primary animate-pulse"></span>
                                         )}
                                     </li>
                                 ))}
@@ -119,12 +119,12 @@ function HoverFooter() {
                                     {item.href ? (
                                         <a
                                             href={item.href}
-                                            className="hover:text-[#F97316] transition-colors text-gray-400 text-sm"
+                                            className="hover:text-primary transition-colors text-gray-400 text-sm"
                                         >
                                             {item.text}
                                         </a>
                                     ) : (
-                                        <span className="hover:text-[#F97316] transition-colors text-gray-400 text-sm">
+                                        <span className="hover:text-primary transition-colors text-gray-400 text-sm">
                                             {item.text}
                                         </span>
                                     )}
@@ -139,13 +139,13 @@ function HoverFooter() {
                 {/* Footer bottom */}
                 <div className="flex flex-col md:flex-row justify-between items-center text-sm space-y-4 md:space-y-0">
                     {/* Social icons */}
-                    <div className="flex space-x-6 text-gray-500">
+                    <div className="flex space-x-2 text-gray-500">
                         {socialLinks.map(({ icon, label, href }) => (
                             <a
                                 key={label}
                                 href={href}
                                 aria-label={label}
-                                className="hover:text-[#F97316] transition-colors"
+                                className="hover:text-primary active:text-primary transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                             >
                                 {icon}
                             </a>

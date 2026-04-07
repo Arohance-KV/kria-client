@@ -27,7 +27,7 @@ const FeaturesSection: React.FC = () => {
         <section id="features" ref={containerRef} className="relative w-full min-h-screen bg-black text-white py-24 px-4 overflow-hidden">
             {/* Ambient Background Glow */}
             <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
 
             <div className="container mx-auto max-w-7xl relative z-10">
                 {/* Header Section */}
@@ -50,19 +50,19 @@ const FeaturesSection: React.FC = () => {
                 </div>
 
                 {/* Bento Grid Features */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[minmax(300px,auto)]">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 auto-rows-[minmax(220px,auto)] md:auto-rows-[minmax(300px,auto)]">
 
                     {/* Feature 1: Smart Tournament Management (Large Card) */}
                     <FeatureCard
                         className="md:col-span-2 md:row-span-1"
-                        icon={<Trophy className="w-10 h-10 text-yellow-400" />}
+                        icon={<Trophy className="w-10 h-10 text-primary" />}
                         title="Smart Tournament Management"
                         description="Create tournaments with multiple categories like Under-18 Singles or Men’s Doubles. Each category runs independently with its own format."
                         delay={0.1}
                     >
                         <div className="mt-6 flex flex-wrap gap-2">
-                            {['League', 'Knockout', 'Hybrid', 'Custom Points'].map((tag, i) => (
-                                <span key={i} className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-gray-300 font-mono">
+                            {["League", "Knockout", "Hybrid", "Custom Points"].map((tag, i) => (
+                                <span key={i} className="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs text-primary/80 font-oswald tracking-wide">
                                     {tag}
                                 </span>
                             ))}
@@ -72,18 +72,18 @@ const FeaturesSection: React.FC = () => {
                     {/* Feature 2: Team-Based Structure */}
                     <FeatureCard
                         className="md:col-span-1 md:row-span-2 bg-gradient-to-b from-gray-900 to-black"
-                        icon={<Users className="w-10 h-10 text-blue-400" />}
+                        icon={<Users className="w-10 h-10 text-primary" />}
                         title="Team-Based Structure"
                         description="Teams are defined before registrations open. Add owners, assign players, and track performance in real-time."
                         delay={0.2}
                     >
-                        <div className="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-[40px]" />
+                        <div className="absolute bottom-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-[40px]" />
                         <div className="mt-8 space-y-3">
                             <div className="flex items-center gap-3 text-sm text-gray-400">
                                 <Crown className="w-4 h-4 text-primary" /> <span>Owner Management</span>
                             </div>
                             <div className="flex items-center gap-3 text-sm text-gray-400">
-                                <ShieldCheck className="w-4 h-4 text-green-400" /> <span>Roster Validation</span>
+                                <ShieldCheck className="w-4 h-4 text-primary/70" /> <span>Roster Validation</span>
                             </div>
                         </div>
                     </FeatureCard>
@@ -100,7 +100,7 @@ const FeaturesSection: React.FC = () => {
                     {/* Feature 4: Staff-Driven Scoring */}
                     <FeatureCard
                         className="md:col-span-1 md:row-span-1"
-                        icon={<ClipboardCheck className="w-10 h-10 text-green-400" />}
+                        icon={<ClipboardCheck className="w-10 h-10 text-primary" />}
                         title="Staff-Driven Scoring"
                         description="Keep scoring accurate with controlled input. Record match scores quickly and lock results to prevent disputes."
                         delay={0.4}
@@ -109,20 +109,20 @@ const FeaturesSection: React.FC = () => {
                     {/* Feature 5: Leaderboards (Wide) */}
                     <FeatureCard
                         className="md:col-span-2 md:row-span-1"
-                        icon={<BarChart3 className="w-10 h-10 text-purple-400" />}
+                        icon={<BarChart3 className="w-10 h-10 text-primary" />}
                         title="Leaderboards That Mean Something"
                         description="Separate team and player performance clearly. No confusing stats. Transparent performance tracking for everyone."
                         delay={0.5}
                     >
-                        <div className="absolute right-4 top-4 opacity-20">
-                            <BarChart3 className="w-32 h-32" />
+                        <div className="absolute right-4 top-4 opacity-10">
+                            <BarChart3 className="w-32 h-32 text-primary" />
                         </div>
                     </FeatureCard>
 
                     {/* Feature 6: One App */}
                     <FeatureCard
                         className="md:col-span-1 md:row-span-1"
-                        icon={<Smartphone className="w-10 h-10 text-indigo-400" />}
+                        icon={<Smartphone className="w-10 h-10 text-primary" />}
                         title="One App. Complete Visibility."
                         description="Players, organizers, and staff all rely on a single source of truth. WhatsApp integration included."
                         delay={0.6}
@@ -156,7 +156,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ title, description, icon, cla
             transition={{ duration: 0.5, delay: delay, ease: "easeOut" }}
             whileHover={{ y: -5, boxShadow: "0 20px 40px -15px rgba(0,0,0,0.5)" }}
             className={`
-                group relative p-8 rounded-3xl border border-white/10 bg-gray-900/40 backdrop-blur-sm
+                group relative p-5 md:p-8 rounded-2xl md:rounded-3xl border border-white/10 bg-gray-900/40 backdrop-blur-sm
                 hover:border-primary/30 hover:bg-gray-800/60 transition-colors duration-500 overflow-hidden
                 flex flex-col justify-between
                 ${className}
@@ -166,11 +166,11 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ title, description, icon, cla
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
             <div className="relative z-10">
-                <div className="mb-6 p-3 bg-white/5 w-fit rounded-2xl border border-white/5 group-hover:scale-110 transition-transform duration-500">
+                <div className="mb-4 md:mb-6 p-2 md:p-3 bg-white/5 w-fit rounded-xl md:rounded-2xl border border-white/5 group-hover:scale-110 transition-transform duration-500">
                     {icon}
                 </div>
 
-                <h3 className="text-2xl font-oswald font-semibold text-white mb-3 group-hover:text-primary transition-colors duration-300">
+                <h3 className="text-xl md:text-2xl font-oswald font-semibold text-white mb-2 md:mb-3 group-hover:text-primary transition-colors duration-300">
                     {title}
                 </h3>
 
