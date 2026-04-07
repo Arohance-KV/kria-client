@@ -4,29 +4,15 @@
   publish = "dist"
 
 # ── Redirects ─────────────────────────────────────────────────────────────────
-# Static SEO files must be declared BEFORE the SPA catch-all so Googlebot
-# and other crawlers always receive the real file, not index.html.
+# Netlify serves static files before redirect rules automatically.
+# Only the SPA catch-all is needed here.
 
-[[redirects]]
-  from   = "/sitemap.xml"
-  to     = "/sitemap.xml"
-  status = 200
-  force  = true
-
-[[redirects]]
-  from   = "/robots.txt"
-  to     = "/robots.txt"
-  status = 200
-  force  = true
-
-# SPA catch-all — all other routes serve index.html
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
 # ── Headers ───────────────────────────────────────────────────────────────────
-# Ensure correct Content-Type so parsers (Google, Bing) accept the files.
 
 [[headers]]
   for = "/sitemap.xml"
