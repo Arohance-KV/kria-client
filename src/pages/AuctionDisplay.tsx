@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { auctionApi } from '../api/auction';
 import { AuctionStatus, Player, Team } from '../types';
 import SpinTheWheel from '../components/SpinTheWheel';
+import { socket } from '../lib/socket';
 
 // ============================================================================
 // CONSTANTS
@@ -67,33 +68,42 @@ const AuctionDisplay: React.FC = () => {
     const prevStatusRef   = useRef<string | null>(null);
     const prevBidPriceRef = useRef<number>(0);
 
-    // ── Poll every 2 seconds ──────────────────────────────────────────────────
+    // ── Apply auction data update (shared between initial load and socket) ─────
+    const applyUpdate = (data: any) => {
+        setStatus(data.auction);
+        setPlayer(data.currentPlayer);
+        setTeams(data.teams);
+        setTournamentName(data.tournament?.name || '');
+        setCategoryName(data.category?.name || '');
+        setLoading(false);
+
+        if (data.auction.status === 'sold' && prevStatusRef.current !== 'sold') {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 4500);
+        }
+        prevStatusRef.current = data.auction.status;
+    };
+
+    // ── Initial load + socket connection ─────────────────────────────────────
     useEffect(() => {
         if (!tournamentId || !categoryId) return;
 
-        const fetchData = async () => {
-            try {
-                const data = await auctionApi.getStatus(tournamentId, categoryId);
-                setStatus(data.auction);
-                setPlayer(data.currentPlayer);
-                setTeams(data.teams);
-                setTournamentName((data as any).tournament?.name || '');
-                setCategoryName((data as any).category?.name || '');
-                setLoading(false);
+        // Load initial state immediately
+        auctionApi.getStatus(tournamentId, categoryId)
+            .then(applyUpdate)
+            .catch((err) => console.error('Initial auction load error', err));
 
-                if (data.auction.status === 'sold' && prevStatusRef.current !== 'sold') {
-                    setShowConfetti(true);
-                    setTimeout(() => setShowConfetti(false), 4500);
-                }
-                prevStatusRef.current = data.auction.status;
-            } catch (err) {
-                console.error('Polling error', err);
-            }
+        // Connect and join socket room
+        socket.connect();
+        socket.emit('join:auction', { tournamentId, categoryId });
+        socket.on('auction:update', applyUpdate);
+
+        return () => {
+            socket.off('auction:update', applyUpdate);
+            socket.emit('leave:auction', { tournamentId, categoryId });
+            socket.disconnect();
         };
-
-        fetchData();
-        const interval = setInterval(fetchData, 2000);
-        return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tournamentId, categoryId]);
 
     // ── Fetch sold log ────────────────────────────────────────────────────────

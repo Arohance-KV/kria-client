@@ -8,6 +8,7 @@ import {
     TrendingUp, Zap, RotateCcw, StopCircle, Target
 } from 'lucide-react';
 import SpinTheWheel from '../../../components/SpinTheWheel';
+import { socket } from '../../../lib/socket';
 
 // ============================================================================
 // CONFETTI
@@ -74,7 +75,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
 
 
     // ========================================================================
-    // POLLING
+    // STATUS FETCH (used for initial load and as fallback after actions)
     // ========================================================================
     const fetchStatus = useCallback(async () => {
         if (!selectedCategoryId) return;
@@ -98,13 +99,35 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
         }
     }, [tournamentId, selectedCategoryId]);
 
+    // Initial load + socket subscription
     useEffect(() => {
         if (!selectedCategoryId) { setAuctionState(null); return; }
+
         setLoading(true);
         fetchStatus().finally(() => setLoading(false));
-        const interval = setInterval(fetchStatus, 2000);
-        return () => clearInterval(interval);
-    }, [selectedCategoryId, fetchStatus]);
+
+        socket.connect();
+        socket.emit('join:auction', { tournamentId, categoryId: selectedCategoryId });
+
+        const handleUpdate = (data: any) => {
+            setAuctionState(data);
+            setError(null);
+            if (data.auction?.status === 'sold' && prevStatusRef.current !== 'sold') {
+                setShowConfetti(true);
+                setTimeout(() => setShowConfetti(false), 3500);
+            }
+            prevStatusRef.current = data.auction?.status ?? null;
+        };
+
+        socket.on('auction:update', handleUpdate);
+
+        return () => {
+            socket.off('auction:update', handleUpdate);
+            socket.emit('leave:auction', { tournamentId, categoryId: selectedCategoryId });
+            socket.disconnect();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedCategoryId]);
 
     useEffect(() => {
         if (!selectedCategoryId) return;

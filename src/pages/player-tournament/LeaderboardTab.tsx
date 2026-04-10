@@ -44,10 +44,11 @@ function getColumns(sportType: string): Column[] {
     switch (sportType) {
         case 'badminton':
         case 'table_tennis':
+        case 'bowling':
             return [
                 ...base,
-                { key: 'totalPointsScored', label: 'Pts For', align: 'center' },
-                { key: 'totalPointsConceded', label: 'Pts Agn', align: 'center' },
+                { key: 'totalPointsScored', label: sportType === 'bowling' ? 'Pins For' : 'Pts For', align: 'center' },
+                { key: 'totalPointsConceded', label: sportType === 'bowling' ? 'Pins Agn' : 'Pts Agn', align: 'center' },
                 {
                     key: 'pointDiff', label: '+/-', align: 'center',
                     render: (e) => {

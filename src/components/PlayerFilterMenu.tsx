@@ -13,7 +13,7 @@ interface PlayerFilterMenuProps {
 }
 
 const CITIES = ['All', 'Bangalore', 'Mumbai', 'Delhi', 'Chennai', 'Pune', 'Hyderabad', 'Kolkata'];
-const SPORTS = ['All', 'cricket', 'football', 'basketball', 'tennis', 'badminton', 'volleyball'];
+const SPORTS = ['All', 'badminton', 'bowling', 'cricket', 'football', 'basketball', 'tennis', 'volleyball'];
 
 export const PlayerFilterMenu = ({ filters, onFilterChange }: PlayerFilterMenuProps) => {
     // Local state for the dropdowns

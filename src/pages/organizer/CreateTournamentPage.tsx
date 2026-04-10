@@ -262,6 +262,7 @@ const CreateTournamentPage = () => {
                                     value={formData.sport} onChange={handleInputChange}
                                 >
                                     <option value="badminton">Badminton</option>
+                                    <option value="bowling">Bowling</option>
                                     <option value="cricket">Cricket</option>
                                     <option value="football">Football</option>
                                     <option value="kabaddi">Kabaddi</option>

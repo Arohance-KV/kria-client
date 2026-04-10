@@ -66,6 +66,7 @@ export interface Match {
         maxOvers?: number;
         periodMinutes?: number;
         numberOfPeriods?: number;
+        gamesPerSeries?: number;
     };
     result?: MatchResult;
     winnerId?: string;
