@@ -43,17 +43,17 @@ function HoverFooter() {
     const contactInfo = [
         {
             icon: <Mail size={18} className="text-primary" />,
-            text: "support@kriasports.com",
-            href: "mailto:support@kriasports.com",
+            text: "info@arohance.com",
+            href: "mailto:info@arohance.com",
         },
         {
             icon: <Phone size={18} className="text-primary" />,
-            text: "+91 86373 73116",
-            href: "tel:+918637373116",
+            text: "+91 +91 93273 67979",
+            href: "tel:+91 93273 67979",
         },
         {
             icon: <MapPin size={18} className="text-primary" />,
-            text: "Mumbai, India",
+            text: "Bangalore, India",
         },
     ];
 
