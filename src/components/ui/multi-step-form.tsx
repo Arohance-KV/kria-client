@@ -68,7 +68,7 @@ const MultiStepForm = React.forwardRef<HTMLDivElement, MultiStepFormProps>(
             <Card ref={ref} className={cn(multiStepFormVariants({ size }), className)} {...props}>
                 <CardHeader>
                     <div className="flex items-start justify-between">
-                        <CardTitle>{title}</CardTitle>
+                        <CardTitle className="text-white">{title}</CardTitle>
                         {onClose && (
                             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
                                 <X className="h-4 w-4" />
