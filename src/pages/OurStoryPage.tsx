@@ -501,34 +501,27 @@ const OurStoryPage: React.FC = () => {
                             </Reveal>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-10 justify-items-center max-w-3xl mx-auto">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-10 justify-items-center max-w-2xl mx-auto">
                             <TeamMemberCard
-                                initials="AK"
-                                name="Arjun K."
-                                role="Co-Founder & CEO"
+                                initials="KB"
+                                name="Kaivanya Bhandari"
+                                role="Co-Founder"
                                 color="linear-gradient(135deg, #F97316 0%, #ea580c 100%)"
                                 delay={0.1}
                             />
                             <TeamMemberCard
-                                initials="PR"
-                                name="Priya R."
-                                role="Head of Product"
+                                initials="NA"
+                                name="Neer Ajbani"
+                                role="CEO"
                                 color="linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)"
                                 delay={0.2}
                             />
                             <TeamMemberCard
-                                initials="SM"
-                                name="Sanjay M."
-                                role="Lead Engineer"
+                                initials="RS"
+                                name="Rohan Sunwar"
+                                role="Product Manager & Lead Engineer"
                                 color="linear-gradient(135deg, #0891b2 0%, #0e7490 100%)"
                                 delay={0.3}
-                            />
-                            <TeamMemberCard
-                                initials="DV"
-                                name="Divya V."
-                                role="Design Lead"
-                                color="linear-gradient(135deg, #16a34a 0%, #15803d 100%)"
-                                delay={0.4}
                             />
                         </div>
                     </div>
