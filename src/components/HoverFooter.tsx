@@ -50,7 +50,7 @@ function HoverFooter() {
         },
         {
             icon: <Phone size={18} className="text-primary" />,
-            text: "+91 +91 93273 67979",
+            text: "+91 93273 67979",
             href: "tel:+91 93273 67979",
         },
         {

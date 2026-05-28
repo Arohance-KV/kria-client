@@ -260,7 +260,7 @@ const OurStoryPage: React.FC = () => {
                             transition={{ duration: 0.8, delay: 0.25 }}
                             className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed mb-10"
                         >
-                            We started with a simple frustration — local sports tournaments were chaotic,
+                            We started with a simple frustration, local sports tournaments were chaotic,
                             paper-driven and unfair. So we built the platform we always wished existed.
                         </motion.p>
 
@@ -292,9 +292,9 @@ const OurStoryPage: React.FC = () => {
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
                             <StatCard value="500+" label="Players Managed" delay={0.0} />
-                            <StatCard value="20+"  label="Tournaments Run"  delay={0.1} />
-                            <StatCard value="3"    label="Sports Supported" delay={0.2} />
-                            <StatCard value="100%" label="Transparency"     delay={0.3} />
+                            <StatCard value="20+" label="Tournaments Run" delay={0.1} />
+                            <StatCard value="3" label="Sports Supported" delay={0.2} />
+                            <StatCard value="100%" label="Transparency" delay={0.3} />
                         </div>
                     </div>
                 </section>
@@ -316,7 +316,7 @@ const OurStoryPage: React.FC = () => {
                             <div className="space-y-6 font-montserrat text-gray-400 leading-relaxed">
                                 <Reveal delay={0.1} width="100%">
                                     <p>
-                                        Local sports in India are fiercely competitive — and completely
+                                        Local sports in India are fiercely competitive and completely
                                         disorganised. Spreadsheets break. WhatsApp groups overflow.
                                         Auction records get lost. Players never know where they stand.
                                     </p>
@@ -330,7 +330,7 @@ const OurStoryPage: React.FC = () => {
                                 </Reveal>
                                 <Reveal delay={0.3} width="100%">
                                     <p className="text-white font-semibold">
-                                        Kria Sports is the single source of truth for every tournament —
+                                        Kria Sports is the single source of truth for every tournament
                                         from first registration to final trophy.
                                     </p>
                                 </Reveal>
@@ -403,7 +403,7 @@ const OurStoryPage: React.FC = () => {
                             <TimelineItem
                                 year="Early 2024 — First Build"
                                 title="MVP for Badminton"
-                                description="We started small — one sport, one city. Our first tournament ran on an early prototype. Players loved the transparency. Organizers loved the control. We knew we were onto something."
+                                description="We started small, one sport, one city. Our first tournament ran on an early prototype. Players loved the transparency. Organizers loved the control. We knew we were onto something."
                                 icon={<Trophy size={20} />}
                                 delay={0.2}
                             />
@@ -424,7 +424,7 @@ const OurStoryPage: React.FC = () => {
                             <TimelineItem
                                 year="2025 — Today"
                                 title="The Vision Sharpens"
-                                description="We're building towards a future where every local athlete has access to professional-grade tournament infrastructure — no matter the city, no matter the sport."
+                                description="We're building towards a future where every local athlete has access to professional-grade tournament infrastructure, no matter the city, no matter the sport."
                                 icon={<Star size={20} />}
                                 isLast
                                 delay={0.5}
@@ -460,7 +460,7 @@ const OurStoryPage: React.FC = () => {
                             <ValueCard
                                 icon={<Zap className="w-9 h-9 text-primary" />}
                                 title="Empowerment"
-                                description="We give organisers real tools and players real visibility — not workarounds."
+                                description="We give organisers real tools and players real visibility, not workarounds."
                                 delay={0.2}
                             />
                             <ValueCard
@@ -496,7 +496,7 @@ const OurStoryPage: React.FC = () => {
                             <Reveal delay={0.2} width="100%">
                                 <p className="text-gray-400 text-base md:text-lg max-w-xl mx-auto -mt-8 leading-relaxed">
                                     A small, passionate team of sports enthusiasts, engineers, and designers
-                                    who believe technology should serve sport — not the other way around.
+                                    who believe technology should serve sport, not the other way around.
                                 </p>
                             </Reveal>
                         </div>

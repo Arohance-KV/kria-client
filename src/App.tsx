@@ -1,5 +1,6 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { LenisProvider, getAppLenis } from '@/context/LenisContext';
 import HomePage from './pages/HomePage';
 import SignInPage from './pages/auth/SignInPage';
 import SignUpPage from './pages/auth/SignUpPage';
@@ -16,51 +17,66 @@ import ContactPage from './pages/ContactPage';
 import SupportPage from './pages/SupportPage';
 import OurStoryPage from './pages/OurStoryPage';
 import LiveScoreboardPage from './pages/LiveScoreboardPage';
-
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import OrganizerProfilePage from './pages/organizer/OrganizerProfilePage';
 import { sportRegistry } from '@/sports/registry';
 
+function ScrollToTop() {
+    const { pathname } = useLocation();
+    useEffect(() => {
+        const lenis = getAppLenis();
+        if (lenis) {
+            lenis.scrollTo(0, { immediate: true });
+        } else {
+            window.scrollTo(0, 0);
+        }
+    }, [pathname]);
+    return null;
+}
+
 function App() {
     return (
-        <Router>
-            <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/contact" element={<ContactPage />} />
-                <Route path="/support" element={<SupportPage />} />
-                <Route path="/story" element={<OurStoryPage />} />
-                <Route path="/login" element={<SignInPage />} />
-                <Route path="/register" element={<SignUpPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <LenisProvider>
+            <Router>
+                <ScrollToTop />
+                <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/contact" element={<ContactPage />} />
+                    <Route path="/support" element={<SupportPage />} />
+                    <Route path="/story" element={<OurStoryPage />} />
+                    <Route path="/login" element={<SignInPage />} />
+                    <Route path="/register" element={<SignUpPage />} />
+                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-                {/* Public Auction Display (Broadcast Screen) */}
-                <Route path="/auction/:tournamentId/:categoryId" element={<AuctionDisplay />} />
+                    {/* Public Auction Display (Broadcast Screen) */}
+                    <Route path="/auction/:tournamentId/:categoryId" element={<AuctionDisplay />} />
 
-                {/* Public Bracket View */}
-                <Route path="/bracket/:tournamentId/:categoryId" element={<BracketPage />} />
+                    {/* Public Bracket View */}
+                    <Route path="/bracket/:tournamentId/:categoryId" element={<BracketPage />} />
 
-                {/* Public Live Scoreboard (Broadcast Screen) */}
-                <Route path="/live/:matchId" element={<LiveScoreboardPage />} />
+                    {/* Public Live Scoreboard (Broadcast Screen) */}
+                    <Route path="/live/:matchId" element={<LiveScoreboardPage />} />
 
-                {/* Protected Player Routes */}
-                <Route element={<ProtectedRoute allowedRoles={['player']} />}>
-                    <Route path="/player/home" element={<PlayerHomePage />} />
-                    <Route path="/player/profile" element={<PlayerProfilePage />} />
-                    <Route path="/player/tournament/:id" element={<PlayerTournamentDetailPage />} />
-                </Route>
+                    {/* Protected Player Routes */}
+                    <Route element={<ProtectedRoute allowedRoles={['player']} />}>
+                        <Route path="/player/home" element={<PlayerHomePage />} />
+                        <Route path="/player/profile" element={<PlayerProfilePage />} />
+                        <Route path="/player/tournament/:id" element={<PlayerTournamentDetailPage />} />
+                    </Route>
 
-                {/* Protected Organizer Routes */}
-                <Route element={<ProtectedRoute allowedRoles={['organizer']} />}>
-                    <Route path="/organizer/home" element={<OrganizerHomePage />} />
-                    <Route path="/organizer/profile" element={<OrganizerProfilePage />} />
-                    <Route path="/organizer/tournament/create" element={<CreateTournamentPage />} />
-                    <Route path="/organizer/tournament/:id" element={<TournamentDetailPage />} />
+                    {/* Protected Organizer Routes */}
+                    <Route element={<ProtectedRoute allowedRoles={['organizer']} />}>
+                        <Route path="/organizer/home" element={<OrganizerHomePage />} />
+                        <Route path="/organizer/profile" element={<OrganizerProfilePage />} />
+                        <Route path="/organizer/tournament/create" element={<CreateTournamentPage />} />
+                        <Route path="/organizer/tournament/:id" element={<TournamentDetailPage />} />
 
-                    {/* Sport-plugin-contributed organizer routes. Empty in Phase 0. */}
-                    {sportRegistry.list().flatMap(plugin => plugin.organizerRoutes ?? [])}
-                </Route>
-            </Routes>
-        </Router>
+                        {/* Sport-plugin-contributed organizer routes. Empty in Phase 0. */}
+                        {sportRegistry.list().flatMap(plugin => plugin.organizerRoutes ?? [])}
+                    </Route>
+                </Routes>
+            </Router>
+        </LenisProvider>
     );
 }
 
