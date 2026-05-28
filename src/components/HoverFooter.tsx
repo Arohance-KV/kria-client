@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { Link } from "react-router-dom";
 import {
     Mail,
     Phone,
@@ -19,20 +20,21 @@ function HoverFooter() {
         {
             title: "About Us",
             links: [
-                { label: "Our Story", href: "#" },
-                { label: "Tournaments", href: "#" },
-                { label: "Auction Platform", href: "#" },
-                { label: "Contact", href: "#" },
+                { label: "Our Story", href: "/story", internal: true },
+                { label: "Tournaments", href: "#", internal: false },
+                { label: "Auction Platform", href: "#", internal: false },
+                { label: "Contact", href: "/contact", internal: true },
             ],
         },
         {
             title: "Resources",
             links: [
-                { label: "FAQs", href: "#" },
-                { label: "Support", href: "#" },
+                { label: "FAQs", href: "/support", internal: true },
+                { label: "Support", href: "/support", internal: true },
                 {
                     label: "Live Demo",
                     href: "#",
+                    internal: false,
                     pulse: true,
                 },
             ],
@@ -92,12 +94,21 @@ function HoverFooter() {
                             <ul className="space-y-3">
                                 {section.links.map((link) => (
                                     <li key={link.label} className="relative">
-                                        <a
-                                            href={link.href}
-                                            className="hover:text-primary transition-colors text-gray-400 text-sm"
-                                        >
-                                            {link.label}
-                                        </a>
+                                        {link.internal ? (
+                                            <Link
+                                                to={link.href}
+                                                className="hover:text-primary transition-colors text-gray-400 text-sm"
+                                            >
+                                                {link.label}
+                                            </Link>
+                                        ) : (
+                                            <a
+                                                href={link.href}
+                                                className="hover:text-primary transition-colors text-gray-400 text-sm"
+                                            >
+                                                {link.label}
+                                            </a>
+                                        )}
                                         {link.pulse && (
                                             <span className="absolute top-0 right-[-10px] w-2 h-2 rounded-full bg-primary animate-pulse"></span>
                                         )}

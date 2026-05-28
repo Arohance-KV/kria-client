@@ -54,7 +54,6 @@ const TeamsTab: React.FC<Props> = ({ teams, isTeamsLoading, myTeam }) => {
         if (myTeam?._id) {
             setExpandedTeamId(myTeam._id);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [teams.map(t => t._id).join(','), myTeam?._id]);
 
     const toggleTeam = (teamId: string) => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { ExternalLink, Lock, MessageCircle } from 'lucide-react';
 import { Registration } from '../../store/slices/registrationSlice';
 import { Team } from '../../store/slices/teamSlice';
+import LiveNowBanner from './LiveNowBanner';
 
 interface Props {
     description?: string;
@@ -9,11 +10,16 @@ interface Props {
     myTeam: Team | null | undefined;
     myTeamAssignment: Registration | undefined;
     isTeamDataReady: boolean;
+    tournamentId?: string;
+    sport?: string;
 }
 
-const OverviewTab: React.FC<Props> = ({ description, user, myTeam, myTeamAssignment, isTeamDataReady }) => {
+const OverviewTab: React.FC<Props> = ({ description, user, myTeam, myTeamAssignment, isTeamDataReady, tournamentId, sport }) => {
     return (
         <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+            {tournamentId && <LiveNowBanner tournamentId={tournamentId} sport={sport} />}
+
 
             {/* My Team Banner — shows skeleton while loading, full banner once data is ready */}
             {user && !isTeamDataReady && (

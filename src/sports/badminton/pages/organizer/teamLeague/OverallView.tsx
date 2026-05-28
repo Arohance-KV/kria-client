@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Trophy, BarChart3, Swords, Users } from 'lucide-react';
-import { teamLeagueApi } from '../../../../api/teamLeague';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 
 interface Team { _id: string; name: string }
 

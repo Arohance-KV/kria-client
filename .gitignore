@@ -126,3 +126,6 @@ yarn-debug.log*
 yarn-error.log*
 
 data.json
+
+# Markdown files
+*.md

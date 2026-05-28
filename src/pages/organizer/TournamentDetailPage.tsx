@@ -24,8 +24,8 @@ import RegistrationsSection from './components/RegistrationsSection';
 import AuctionSection from './components/AuctionSection';
 import MatchManagementSection from './components/MatchManagementSection';
 import BracketManagementSection from './components/BracketManagementSection';
-import TeamLeagueSection from './components/TeamLeagueSection';
 import PaymentsSection from './components/PaymentsSection';
+import { sportRegistry } from '@/sports/registry';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -275,7 +275,18 @@ const TournamentDetailPage = () => {
 
     const visibleGroups = NAV_GROUPS.filter(g => !g.condition || g.condition(tournamentStatus));
     const activeGroupData = visibleGroups.find(g => g.key === activeGroup) || visibleGroups[0];
-    const visibleItems = activeGroupData?.items.filter(i => !i.condition || i.condition(tournamentStatus)) || [];
+    const visibleItems = (activeGroupData?.items
+        .filter(i => !i.condition || i.condition(tournamentStatus))
+        .filter(item => {
+            if (item.key !== 'team_league') return true;
+            const plugin = currentTournament?.sport ? sportRegistry.get(currentTournament.sport) : undefined;
+            const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
+            if (!section) return false;
+            return section.visible(categories.map(c => ({
+                _id: c._id, name: c.name, status: c.status,
+                bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig,
+            })));
+        })) || [];
 
     const isEditableSection = ['basic', 'schedule', 'location', 'settings'].includes(activeSection);
 
@@ -465,14 +476,22 @@ const TournamentDetailPage = () => {
             case 'schedule': return <ScheduleSection />;
             case 'location': return <LocationSection />;
             case 'settings': return <SettingsSection />;
-            case 'categories': return currentTournament && id ? <CategoriesSection tournamentId={id} /> : null;
+            case 'categories': return currentTournament && id ? <CategoriesSection tournamentId={id} sport={currentTournament.sport} /> : null;
             case 'teams': return currentTournament && id ? <TeamsSection tournamentId={id} defaultBudget={currentTournament.settings?.defaultBudget || 100000} /> : null;
             case 'registrations': return currentTournament && id ? <RegistrationsSection tournamentId={id} /> : null;
             case 'payments': return currentTournament && id ? <PaymentsSection tournamentId={id} /> : null;
             case 'auction': return currentTournament && id ? <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'team_league': return currentTournament && id ? <TeamLeagueSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig }))} /> : null;
+            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sport={currentTournament.sport} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType }))} /> : null;
+            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sport={currentTournament.sport} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
+            case 'team_league': {
+                if (!currentTournament || !id) return null;
+                const plugin = sportRegistry.get(currentTournament.sport);
+                const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
+                const projectedCategories = categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig }));
+                if (!section || !section.visible(projectedCategories)) return null;
+                const SectionComponent = section.component;
+                return <SectionComponent tournamentId={id} categories={projectedCategories} />;
+            }
             case 'staff': return currentTournament && id ? <StaffSection tournamentId={id} staffIds={currentTournament.staffIds || []} /> : null;
             case 'danger': return <DangerSection />;
             default: return null;

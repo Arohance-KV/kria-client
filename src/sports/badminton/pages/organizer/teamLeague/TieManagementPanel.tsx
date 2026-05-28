@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Trash2, ChevronDown, ChevronRight, Swords, Users, Eye, ArrowLeft } from 'lucide-react';
-import { teamLeagueApi } from '../../../../api/teamLeague';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 import LineupAssignmentModal from './LineupAssignmentModal';
 import SubMatchResultModal from './SubMatchResultModal';
 

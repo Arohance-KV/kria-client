@@ -13,6 +13,12 @@ export interface Player {
     auctionData: {
         basePrice: number;
     };
+    careerStats?: {
+        matchesPlayed: number;
+        matchesWon: number;
+        pointsContributed: number;
+        tournamentsPlayed: number;
+    };
 }
 
 export interface Team {

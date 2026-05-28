@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Loader2, Save, X, Users, Search, ChevronDown } from 'lucide-react';
 import { Label } from '@/components/ui/label';
-import { teamLeagueApi } from '../../../../api/teamLeague';
-import API from '../../../../api/axios';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
+import API from '@/api/axios';
 
 interface Props {
     tieId: string;

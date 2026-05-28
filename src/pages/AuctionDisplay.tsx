@@ -103,7 +103,6 @@ const AuctionDisplay: React.FC = () => {
             socket.emit('leave:auction', { tournamentId, categoryId });
             socket.disconnect();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tournamentId, categoryId]);
 
     // ── Fetch sold log ────────────────────────────────────────────────────────
@@ -533,6 +532,32 @@ const AuctionDisplay: React.FC = () => {
                                     <div style={{ color: '#ffffff', fontWeight: 700, fontSize: '18px', textTransform: 'capitalize' }}>{player.profile.gender}</div>
                                 </div>
                             </div>
+
+                            {/* ── CAREER STATS (only if the player has prior history) ── */}
+                            {player.careerStats && player.careerStats.matchesPlayed > 0 && (
+                                <div style={{ width: '100%' }}>
+                                    <div style={{ color: '#4b5563', fontSize: '10px', fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px', textAlign: 'center' }}>
+                                        Career Stats
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', width: '100%' }}>
+                                        {[
+                                            { label: 'Played', value: player.careerStats.matchesPlayed },
+                                            { label: 'Won',    value: player.careerStats.matchesWon },
+                                            { label: 'Points', value: player.careerStats.pointsContributed },
+                                        ].map(stat => (
+                                            <div key={stat.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '8px 6px', textAlign: 'center' }}>
+                                                <div style={{ color: ACCENT, fontWeight: 800, fontFamily: 'Oswald, sans-serif', fontSize: '22px', lineHeight: 1 }}>{stat.value}</div>
+                                                <div style={{ color: '#6b7280', fontSize: '9px', fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '4px' }}>{stat.label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {player.careerStats.tournamentsPlayed > 0 && (
+                                        <div style={{ color: '#4b5563', fontSize: '10px', textAlign: 'center', marginTop: '8px', fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                                            {player.careerStats.tournamentsPlayed} tournament{player.careerStats.tournamentsPlayed > 1 ? 's' : ''} played
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* ── PRICE BOX ── */}
                             <div style={{

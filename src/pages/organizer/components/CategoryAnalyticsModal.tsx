@@ -31,8 +31,12 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
         try {
             setIsLoading(true);
             const res = await API.get(`/categories/${category._id}/analytics`);
-            const actualData = res.data?.data?.data || res.data?.data || [];
-            setAnalytics(Array.isArray(actualData) ? actualData : []);
+            // The analytics endpoint now wraps the list as { category, analytics, teamMap }
+            // (post sport-modularization). Older shape returned the array directly, so
+            // fall back to that for safety.
+            const payload = res.data?.data?.data ?? res.data?.data ?? [];
+            const list = Array.isArray(payload) ? payload : (payload?.analytics ?? []);
+            setAnalytics(Array.isArray(list) ? list : []);
         } catch (error) {
             console.error('Failed to fetch analytics', error);
         } finally {

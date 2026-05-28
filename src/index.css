@@ -64,14 +64,15 @@ h1 {
 /* ============================================================ */
 /* Confetti Animation                                           */
 /* ============================================================ */
+/* Fall + sway + rotation must live in ONE keyframe: two animations both
+   driving `transform` means the later one (sway) overrides the other (fall),
+   leaving the pieces stuck swaying at the top instead of dropping. */
 @keyframes confetti-fall {
-  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-}
-@keyframes confetti-sway {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(30px); }
-  75% { transform: translateX(-30px); }
+  0%   { transform: translateY(-10vh) translateX(0)     rotate(0deg);   opacity: 1; }
+  25%  { transform: translateY(20vh)  translateX(28px)  rotate(180deg); }
+  50%  { transform: translateY(50vh)  translateX(-28px) rotate(360deg); }
+  75%  { transform: translateY(80vh)  translateX(28px)  rotate(540deg); opacity: 1; }
+  100% { transform: translateY(110vh) translateX(0)     rotate(720deg); opacity: 0; }
 }
 .confetti-container {
   position: fixed;
@@ -86,7 +87,7 @@ h1 {
   width: 12px;
   height: 20px;
   border-radius: 2px;
-  animation: confetti-fall 3s ease-in forwards, confetti-sway 1.5s ease-in-out infinite;
+  animation: confetti-fall 3s ease-in forwards;
 }
 
 

@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     Loader2, Trophy, Swords, CheckCircle2, Shuffle, MousePointer2,
-    RefreshCw, ChevronRight, X
+    RefreshCw, ChevronRight
 } from 'lucide-react';
 import API from '../../../api/axios';
+import { sportRegistry } from '@/sports/registry';
+import TeamLeagueBracketView from '@/sports/badminton/pages/organizer/teamLeague/TeamLeagueBracketView';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface CategoryInfo { _id: string; name: string; status: string }
+interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string }
 
 interface Match {
     _id: string;
@@ -25,14 +27,13 @@ interface Match {
     winnerId?: string;
     winReason?: string;
     result?: { team1Total?: number; team2Total?: number; marginOfVictory?: string };
-    gameScores?: { gameNumber: number; team1Score: number; team2Score: number; winnerId?: string }[];
-    matchConfig?: { bestOf?: number; pointsToWin?: number };
     nextMatchId?: string;
     nextMatchSlot?: string;
 }
 
 interface Props {
     tournamentId: string;
+    sport: string;
     categories: CategoryInfo[];
 }
 
@@ -92,7 +93,8 @@ function computeCardPositions(visible: { name: string; matches: Match[] }[]): nu
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories }) => {
+const BracketManagementSection: React.FC<Props> = ({ tournamentId, sport, categories }) => {
+    const ResultSection = sportRegistry.get(sport)?.matchResultSection;
     const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
     const [matches, setMatches] = useState<Match[]>([]);
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
@@ -107,13 +109,12 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
     const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(null);
     const [isSwapping, setIsSwapping] = useState(false);
 
-    // Inline scoring state
-    const [scoringMatchId, setScoringMatchId] = useState<string | null>(null);
-
     const hasBracket = matches.length > 0;
     const hasResults = matches.some(m => m.status === 'completed');
     const eligibleCategories = categories.filter(c => !['draft'].includes(c.status));
-    const canGenerate = !hasBracket && eligibleCategories.some(c => c._id === selectedCat);
+    const selectedCategory = categories.find(c => c._id === selectedCat);
+    const isTeamLeague = selectedCategory?.bracketType === 'team_league';
+    const canGenerate = !isTeamLeague && !hasBracket && eligibleCategories.some(c => c._id === selectedCat);
 
     const fetchMatches = useCallback(async () => {
         if (!selectedCat) return;
@@ -177,24 +178,6 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
         } finally { setIsSwapping(false); }
     };
 
-    const handleRecordResult = async (matchId: string, winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => {
-        setError(null);
-        try {
-            const gamesWon1 = gameScores.filter(g => g.team1Score > g.team2Score).length;
-            const gamesWon2 = gameScores.filter(g => g.team2Score > g.team1Score).length;
-            await API.post(`/matches/${matchId}/result`, {
-                winnerId,
-                gameScores,
-                result: { team1Total: gamesWon1, team2Total: gamesWon2, marginOfVictory: `${Math.max(gamesWon1, gamesWon2)}-${Math.min(gamesWon1, gamesWon2)}` },
-                winReason: 'by_score'
-            });
-            setScoringMatchId(null);
-            await fetchMatches();
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Failed to record result.');
-        }
-    };
-
     // Sort round names by roundNumber
     const sortedRoundNames = Object.keys(rounds).sort((a, b) => {
         const aM = rounds[a]?.[0]; const bM = rounds[b]?.[0];
@@ -213,7 +196,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
             <div className="flex items-center flex-wrap gap-3">
                 <select
                     value={selectedCat}
-                    onChange={e => { setSelectedCat(e.target.value); setSwapMode(false); setSwapSelection(null); setScoringMatchId(null); }}
+                    onChange={e => { setSelectedCat(e.target.value); setSwapMode(false); setSwapSelection(null); }}
                     className="px-4 py-2.5 rounded-xl bg-white/5 border border-primary/30 text-white text-sm focus:outline-none focus:border-primary"
                 >
                     {eligibleCategories.map(c => <option key={c._id} value={c._id} className="bg-[#111]">{c.name} ({c.status})</option>)}
@@ -226,7 +209,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
                     </button>
                 )}
 
-                {hasBracket && !hasResults && (
+                {!isTeamLeague && hasBracket && !hasResults && (
                     <>
                         <button onClick={handleReshuffle} disabled={isReshuffling} className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold rounded-xl hover:bg-amber-500/20 transition-all disabled:opacity-50 text-sm">
                             {isReshuffling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
@@ -262,8 +245,16 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
 
             {error && <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl">{error}</div>}
 
-            {/* Bracket tree */}
-            {isLoading ? (
+            {/* Team League: render the dedicated read-only view instead of a knockout tree */}
+            {isTeamLeague ? (
+                <>
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary/5 border border-primary/15 text-sm text-gray-400">
+                        <Trophy className="h-4 w-4 text-primary shrink-0" />
+                        <span>This is a Team League category. Groups, ties and lineups are managed in the <strong className="text-gray-200">Team League</strong> tab — below is a read-only overview.</span>
+                    </div>
+                    <TeamLeagueBracketView categoryId={selectedCat} />
+                </>
+            ) : /* Bracket tree */ isLoading ? (
                 <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
             ) : !hasBracket ? (
                 <div className="bg-black/20 border border-white/5 rounded-2xl p-8 text-center text-gray-500 flex flex-col items-center gap-3">
@@ -279,10 +270,8 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, categories })
                     swapMode={swapMode}
                     swapSelection={swapSelection}
                     onSwapClick={handleSwapClick}
-                    scoringMatchId={scoringMatchId}
-                    onStartScoring={setScoringMatchId}
-                    onCancelScoring={() => setScoringMatchId(null)}
-                    onRecordResult={handleRecordResult}
+                    ResultSection={ResultSection}
+                    onRecorded={fetchMatches}
                 />
             )}
         </section>
@@ -300,11 +289,9 @@ const BracketKnockoutView: React.FC<{
     swapMode: boolean;
     swapSelection: SwapSelection | null;
     onSwapClick: (matchId: string, slot: 'player1' | 'player2', name: string) => void;
-    scoringMatchId: string | null;
-    onStartScoring: (id: string) => void;
-    onCancelScoring: () => void;
-    onRecordResult: (matchId: string, winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => void;
-}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, scoringMatchId, onStartScoring, onCancelScoring, onRecordResult }) => {
+    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
+    onRecorded: () => void;
+}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, ResultSection, onRecorded }) => {
 
     const visible = sortedRoundNames
         .map(name => ({
@@ -361,10 +348,8 @@ const BracketKnockoutView: React.FC<{
                                                 swapMode={swapMode}
                                                 swapSelection={swapSelection}
                                                 onSwapClick={onSwapClick}
-                                                isScoring={scoringMatchId === match._id}
-                                                onStartScoring={() => onStartScoring(match._id)}
-                                                onCancelScoring={onCancelScoring}
-                                                onRecordResult={onRecordResult}
+                                                ResultSection={ResultSection}
+                                                onRecorded={onRecorded}
                                             />
                                         </div>
                                     ))}
@@ -455,23 +440,20 @@ const BracketMatchCard: React.FC<{
     swapMode: boolean;
     swapSelection: SwapSelection | null;
     onSwapClick: (matchId: string, slot: 'player1' | 'player2', name: string) => void;
-    isScoring: boolean;
-    onStartScoring: () => void;
-    onCancelScoring: () => void;
-    onRecordResult: (matchId: string, winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => void;
-}> = ({ match, competitorType, swapMode, swapSelection, onSwapClick, isScoring, onStartScoring, onCancelScoring, onRecordResult }) => {
+    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
+    onRecorded: () => void;
+}> = ({ match, competitorType, swapMode, swapSelection, onSwapClick, ResultSection, onRecorded }) => {
     const c1 = getC1(match, competitorType);
     const c2 = getC2(match, competitorType);
     const isBye = match.status === 'walkover' && match.winReason === 'bye';
     const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
     const canSwap = swapMode && match.status !== 'completed';
-    const canScore = !isCompleted && !isBye && !c1.isTBD && !c2.isTBD;
 
     const isSlotSelected = (slot: 'player1' | 'player2') =>
         swapSelection?.matchId === match._id && swapSelection?.slot === slot;
 
     return (
-        <div className={`rounded-2xl border overflow-hidden transition-all ${isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'} ${isScoring ? 'ring-2 ring-primary/40' : ''}`}>
+        <div className={`rounded-2xl border overflow-hidden transition-all ${isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
                 <div className="flex items-center gap-2">
@@ -486,14 +468,7 @@ const BracketMatchCard: React.FC<{
                     ) : c1.isTBD || c2.isTBD ? (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/10 text-gray-500 uppercase">Pending</span>
                     ) : (
-                        <>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-primary/15 text-primary uppercase">Upcoming</span>
-                            {canScore && !isScoring && (
-                                <button onClick={onStartScoring} className="px-2 py-0.5 rounded text-[9px] font-bold bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
-                                    Score
-                                </button>
-                            )}
-                        </>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-primary/15 text-primary uppercase">Upcoming</span>
                     )}
                 </div>
             </div>
@@ -528,16 +503,8 @@ const BracketMatchCard: React.FC<{
                 onClick={() => canSwap && !c2.isTBD && onSwapClick(match._id, 'player2', c2.name)}
             />
 
-            {/* Inline scoring form */}
-            {isScoring && (
-                <InlineScoringForm
-                    match={match}
-                    c1={c1} c2={c2}
-                    competitorType={competitorType}
-                    onSubmit={(winnerId, gameScores) => onRecordResult(match._id, winnerId, gameScores)}
-                    onCancel={onCancelScoring}
-                />
-            )}
+            {/* Sport-specific result section */}
+            {ResultSection && <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />}
         </div>
     );
 };
@@ -578,84 +545,5 @@ const CompetitorSlot: React.FC<{
         )}
     </div>
 );
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// INLINE SCORING FORM
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const InlineScoringForm: React.FC<{
-    match: Match;
-    c1: { id: string; name: string; teamName: string };
-    c2: { id: string; name: string; teamName: string };
-    competitorType: 'player' | 'team';
-    onSubmit: (winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => void;
-    onCancel: () => void;
-}> = ({ match, c1, c2, competitorType, onSubmit, onCancel }) => {
-    const bestOf = match.matchConfig?.bestOf || 1;
-    const [games, setGames] = useState(
-        Array.from({ length: bestOf }, (_, i) => ({ gameNumber: i + 1, team1Score: 0, team2Score: 0 }))
-    );
-
-    const updateScore = (idx: number, team: 'team1Score' | 'team2Score', val: number) => {
-        const copy = [...games];
-        copy[idx] = { ...copy[idx], [team]: val };
-        setGames(copy);
-    };
-
-    const gamesWon1 = games.filter(g => g.team1Score > g.team2Score).length;
-    const gamesWon2 = games.filter(g => g.team2Score > g.team1Score).length;
-    const winnerId = gamesWon1 > gamesWon2 ? c1.id : gamesWon2 > gamesWon1 ? c2.id : null;
-
-    return (
-        <div className="border-t border-white/10 bg-black/30 p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-primary uppercase tracking-wider">Score Entry</span>
-                <button onClick={onCancel} className="p-1 rounded hover:bg-white/10 text-gray-500"><X className="h-3.5 w-3.5" /></button>
-            </div>
-
-            {games.map((g, idx) => (
-                <div key={idx} className="flex items-center gap-3">
-                    <span className="text-[10px] text-gray-600 w-4 shrink-0">G{g.gameNumber}</span>
-                    <div className="flex items-center gap-2 flex-1">
-                        <span className="text-xs text-gray-400 truncate w-20">{c1.name}</span>
-                        <input
-                            type="number"
-                            min={0}
-                            value={g.team1Score}
-                            onChange={e => updateScore(idx, 'team1Score', parseInt(e.target.value) || 0)}
-                            className="w-14 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-center text-sm font-bold focus:outline-none focus:border-primary"
-                        />
-                        <span className="text-[10px] text-gray-600">:</span>
-                        <input
-                            type="number"
-                            min={0}
-                            value={g.team2Score}
-                            onChange={e => updateScore(idx, 'team2Score', parseInt(e.target.value) || 0)}
-                            className="w-14 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-center text-sm font-bold focus:outline-none focus:border-primary"
-                        />
-                        <span className="text-xs text-gray-400 truncate w-20 text-right">{c2.name}</span>
-                    </div>
-                </div>
-            ))}
-
-            <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                <div className="text-xs text-gray-500">
-                    {winnerId ? (
-                        <span>Winner: <strong className="text-emerald-400">{winnerId === c1.id ? c1.name : c2.name}</strong> ({gamesWon1}-{gamesWon2})</span>
-                    ) : (
-                        <span className="text-amber-400">No winner yet — scores are tied.</span>
-                    )}
-                </div>
-                <button
-                    onClick={() => winnerId && onSubmit(winnerId, games)}
-                    disabled={!winnerId}
-                    className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                    Confirm Result
-                </button>
-            </div>
-        </div>
-    );
-};
 
 export default BracketManagementSection;

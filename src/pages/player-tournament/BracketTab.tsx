@@ -67,7 +67,10 @@ function getC2(match: Match, cType: 'player' | 'team') {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const BracketTab: React.FC<Props> = ({ categories, tournamentId }) => {
-    const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
+    // Team league categories have their own dedicated tab — exclude them here
+    const bracketCategories = categories.filter(c => c.bracketType !== 'team_league');
+
+    const [selectedCat, setSelectedCat] = useState<string>(bracketCategories[0]?._id || '');
     const [matches, setMatches] = useState<Match[]>([]);
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
     const [competitorType, setCompetitorType] = useState<'player' | 'team'>('player');
@@ -84,7 +87,7 @@ const BracketTab: React.FC<Props> = ({ categories, tournamentId }) => {
                 setMatches(payload.matches || []);
                 setRounds(payload.rounds || {});
                 setCompetitorType(payload.competitorType || 'player');
-                const cat = categories.find(c => c._id === selectedCat);
+                const cat = bracketCategories.find(c => c._id === selectedCat);
                 setBracketType(cat?.bracketType || 'knockout');
             } catch {
                 setMatches([]);
@@ -102,19 +105,38 @@ const BracketTab: React.FC<Props> = ({ categories, tournamentId }) => {
         return ((aM as any)?.roundNumber || 0) - ((bM as any)?.roundNumber || 0);
     });
 
+    // All categories are team league — direct users to the dedicated tab
+    if (bracketCategories.length === 0) {
+        return (
+            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h3 className="text-2xl font-oswald font-bold tracking-wide">Bracket</h3>
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-10 text-center flex flex-col items-center gap-4">
+                    <Trophy className="h-12 w-12 text-primary opacity-60" />
+                    <div>
+                        <p className="text-white font-bold text-lg font-oswald">Team League Format</p>
+                        <p className="text-gray-400 text-sm mt-1 max-w-sm">
+                            This tournament uses Team League format. Match results, group standings,
+                            and qualified teams are shown in the <span className="text-primary font-semibold">Team League</span> tab above.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Tab header */}
             <div className="flex items-center justify-between flex-wrap gap-4">
                 <h3 className="text-2xl font-oswald font-bold tracking-wide">Bracket</h3>
                 <div className="flex items-center gap-3">
-                    {categories.length > 1 && (
+                    {bracketCategories.length > 1 && (
                         <select
                             value={selectedCat}
                             onChange={(e) => setSelectedCat(e.target.value)}
                             className="px-4 py-2 rounded-xl bg-white/5 border border-primary/30 text-white text-sm focus:outline-none focus:border-primary transition-colors"
                         >
-                            {categories.map(c => (
+                            {bracketCategories.map(c => (
                                 <option key={c._id} value={c._id} className="bg-[#111]">{c.name}</option>
                             ))}
                         </select>
@@ -338,9 +360,10 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
     const c1 = getC1(match, competitorType);
     const c2 = getC2(match, competitorType);
     const done = match.status === 'completed' || match.status === 'walkover';
+    const live = match.status === 'in_progress';
     const isC1W = done && match.winnerId === c1.id;
     const isC2W = done && match.winnerId === c2.id;
-    const pending = !done && (c1.isTBD || c2.isTBD);
+    const pending = !done && !live && (c1.isTBD || c2.isTBD);
 
     const gameChips = (match.gameScores || [])
         .filter(g => g.team1Score > 0 || g.team2Score > 0)
@@ -349,11 +372,13 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
 
     return (
         <div className={`h-full flex flex-col rounded-xl overflow-hidden border transition-colors ${
-            done
-                ? 'border-white/[0.07] bg-[#141414]'
-                : pending
-                    ? 'border-white/[0.04] bg-[#0d0d0d]'
-                    : 'border-primary/25 bg-[#111] hover:border-primary/40'
+            live
+                ? 'border-red-500/40 bg-[#111] hover:border-red-500/60'
+                : done
+                    ? 'border-white/[0.07] bg-[#141414]'
+                    : pending
+                        ? 'border-white/[0.04] bg-[#0d0d0d]'
+                        : 'border-primary/25 bg-[#111] hover:border-primary/40'
         }`}>
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.05] bg-black/20 shrink-0">
@@ -367,15 +392,30 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
                         </span>
                     )}
                 </div>
-                <span className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${
-                    done
-                        ? 'bg-emerald-500/15 text-emerald-500'
-                        : pending
+                {live ? (
+                    <Link
+                        to={`/live/${match._id}`}
+                        className="ml-2 shrink-0 px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 hover:bg-red-500/25 text-[8px] font-bold uppercase tracking-widest flex items-center gap-1"
+                    >
+                        <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" /> Live
+                    </Link>
+                ) : done ? (
+                    <Link
+                        to={`/live/${match._id}`}
+                        className="ml-2 shrink-0 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 text-[8px] font-bold uppercase tracking-widest"
+                        title="View scorecard, fall of wickets, partnerships, charts"
+                    >
+                        Scorecard
+                    </Link>
+                ) : (
+                    <span className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${
+                        pending
                             ? 'bg-white/5 text-gray-600'
                             : 'bg-primary/15 text-primary'
-                }`}>
-                    {done ? 'Done' : pending ? 'Pending' : 'Upcoming'}
-                </span>
+                    }`}>
+                        {pending ? 'Pending' : 'Upcoming'}
+                    </span>
+                )}
             </div>
 
             {/* Competitor 1 */}

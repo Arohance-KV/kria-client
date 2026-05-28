@@ -126,7 +126,6 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
             socket.emit('leave:auction', { tournamentId, categoryId: selectedCategoryId });
             socket.disconnect();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCategoryId]);
 
     useEffect(() => {

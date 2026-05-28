@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Loader2, Users, Swords, BarChart3, Trophy, ChevronRight, ArrowLeft, LayoutDashboard } from 'lucide-react';
-import { Category } from '../../store/slices/registrationSlice';
-import { teamLeagueApi } from '../../api/teamLeague';
+import { Category } from '@/store/slices/registrationSlice';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 
 interface Props {
     categories: Category[];
@@ -370,7 +370,6 @@ export default function TeamLeagueTab({ categories, tournamentId }: Props) {
                     {/* Ties & Results view */}
                     {activeView === 'ties' && (
                         <div className="space-y-4">
-                            {/* Tie detail */}
                             {selectedTie && tieDetail ? (
                                 <TieDetailPublic
                                     tie={tieDetail.tie || selectedTie}
@@ -380,68 +379,135 @@ export default function TeamLeagueTab({ categories, tournamentId }: Props) {
                                     onBack={() => { setSelectedTie(null); setTieDetail(null); }}
                                 />
                             ) : selectedGroup ? (
-                                /* Ties list for a group */
+                                /* ── Ties list for a group ───────────────── */
                                 <div className="space-y-3">
-                                    <button
-                                        onClick={() => setSelectedGroup(null)}
-                                        className="flex items-center gap-1 text-sm text-gray-400 hover:text-white"
-                                    >
-                                        <ArrowLeft className="h-3 w-3" /> Back to groups
-                                    </button>
-                                    <h4 className="text-white font-bold">{selectedGroup.groupName} — Ties</h4>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => setSelectedGroup(null)}
+                                            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+                                        >
+                                            <ArrowLeft className="h-3.5 w-3.5" /> Groups
+                                        </button>
+                                        <span className="text-gray-700">/</span>
+                                        <span className="text-white font-bold text-sm">{selectedGroup.groupName}</span>
+                                    </div>
+
                                     {tiesLoading ? (
-                                        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                                        <div className="flex justify-center py-10">
+                                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                                        </div>
                                     ) : ties.length === 0 ? (
-                                        <p className="text-gray-500 text-sm text-center py-6">No ties scheduled yet.</p>
+                                        <div className="text-center py-10 text-gray-500 text-sm">
+                                            No ties scheduled yet.
+                                        </div>
                                     ) : (
-                                        <div className="space-y-2">
-                                            {ties.map((tie: any) => (
-                                                <button
-                                                    key={tie._id}
-                                                    onClick={() => loadTieDetail(tie)}
-                                                    className="w-full flex items-center justify-between p-4 bg-black/40 border border-white/10 rounded-xl hover:border-primary/30 transition-colors text-left"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <Swords className="h-4 w-4 text-primary shrink-0" />
-                                                        <span className="text-white font-medium">{tie.teams?.team1Name}</span>
-                                                        <span className="text-gray-500 text-xs">vs</span>
-                                                        <span className="text-white font-medium">{tie.teams?.team2Name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded ${
-                                                            tie.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'
-                                                        }`}>
-                                                            {tie.status}
-                                                        </span>
-                                                        {tie.completedCount !== undefined && (
-                                                            <span className="text-xs text-gray-500">{tie.completedCount}/{tie.subMatchCount}</span>
-                                                        )}
-                                                        <ChevronRight className="h-4 w-4 text-gray-600" />
-                                                    </div>
-                                                </button>
-                                            ))}
+                                        <div className="flex flex-col gap-2">
+                                            {ties.map((tie: any) => {
+                                                const isCompleted = tie.status === 'completed';
+                                                const isWin1 = tie.winnerId === tie.teams?.team1Id;
+                                                const isWin2 = tie.winnerId === tie.teams?.team2Id;
+                                                return (
+                                                    <button
+                                                        key={tie._id}
+                                                        onClick={() => loadTieDetail(tie)}
+                                                        className="group w-full bg-black/40 border border-white/10 rounded-2xl hover:border-primary/30 transition-all overflow-hidden text-left"
+                                                    >
+                                                        <div className="flex items-stretch">
+                                                            {/* Team 1 */}
+                                                            <div className={`flex-1 flex items-center justify-end gap-2 px-5 py-4 ${isWin1 ? 'bg-emerald-500/5' : ''}`}>
+                                                                {isWin1 && <Trophy className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                                                                <span className={`font-semibold text-sm text-right leading-tight ${isWin1 ? 'text-emerald-300 font-bold' : isCompleted ? 'text-white/50' : 'text-white'}`}>
+                                                                    {tie.teams?.team1Name}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Centre */}
+                                                            <div className="shrink-0 flex flex-col items-center justify-center px-4 py-3 border-x border-white/5 min-w-[72px]">
+                                                                {isCompleted ? (
+                                                                    <span className={`text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded ${
+                                                                        isWin1 ? 'bg-emerald-500/15 text-emerald-400' : isWin2 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/8 text-gray-400'
+                                                                    }`}>
+                                                                        Done
+                                                                    </span>
+                                                                ) : tie.completedCount !== undefined && tie.subMatchCount > 0 ? (
+                                                                    <>
+                                                                        <span className="text-[9px] uppercase tracking-widest text-gray-600 font-bold">vs</span>
+                                                                        <span className="text-[9px] text-gray-600 mt-0.5">{tie.completedCount}/{tie.subMatchCount}</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-[9px] uppercase tracking-widest text-gray-600 font-bold">vs</span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Team 2 */}
+                                                            <div className={`flex-1 flex items-center gap-2 px-5 py-4 ${isWin2 ? 'bg-emerald-500/5' : ''}`}>
+                                                                <span className={`font-semibold text-sm leading-tight ${isWin2 ? 'text-emerald-300 font-bold' : isCompleted ? 'text-white/50' : 'text-white'}`}>
+                                                                    {tie.teams?.team2Name}
+                                                                </span>
+                                                                {isWin2 && <Trophy className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                                                            </div>
+
+                                                            {/* Arrow */}
+                                                            <div className="flex items-center px-3 border-l border-white/5">
+                                                                <ChevronRight className="h-4 w-4 text-gray-600 group-hover:text-primary transition-colors" />
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
                             ) : (
-                                /* Group list */
-                                <div className="space-y-2">
+                                /* ── Group list ──────────────────────────── */
+                                <div>
                                     {groups.length === 0 ? (
-                                        <p className="text-center text-gray-500 py-8">No groups configured yet.</p>
-                                    ) : groups.map((group: any) => (
-                                        <button
-                                            key={group._id}
-                                            onClick={() => loadTies(group)}
-                                            className="w-full flex items-center justify-between p-4 bg-black/40 border border-white/10 rounded-xl hover:border-primary/30 transition-colors text-left"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <Users className="h-4 w-4 text-primary" />
-                                                <span className="text-white font-bold">{group.groupName}</span>
-                                                <span className="text-xs text-gray-500">{group.teamIds?.length} teams</span>
-                                            </div>
-                                            <ChevronRight className="h-4 w-4 text-gray-600" />
-                                        </button>
-                                    ))}
+                                        <p className="text-center text-gray-500 py-10">No groups configured yet.</p>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {groups.map((group: any) => {
+                                                const gs = standings.find((s: any) => s.group._id === group._id);
+                                                const done = gs?.completedTies ?? 0;
+                                                const total = gs?.totalTies ?? 0;
+                                                const pct = total > 0 ? (done / total) * 100 : 0;
+                                                const allDone = total > 0 && done === total;
+
+                                                return (
+                                                    <button
+                                                        key={group._id}
+                                                        onClick={() => loadTies(group)}
+                                                        className="group flex flex-col gap-3 p-5 bg-black/40 border border-white/10 rounded-2xl hover:border-primary/30 transition-all text-left"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                                                                <span className="font-oswald font-bold text-white text-base tracking-wide uppercase">
+                                                                    {group.groupName}
+                                                                </span>
+                                                            </div>
+                                                            <ChevronRight className="h-4 w-4 text-gray-600 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between text-xs text-gray-500">
+                                                            <span>{group.teamIds?.length ?? 0} teams</span>
+                                                            <span className={allDone ? 'text-emerald-400 font-semibold' : ''}>
+                                                                {total > 0 ? `${done} / ${total} ties` : 'No ties yet'}
+                                                            </span>
+                                                        </div>
+
+                                                        {total > 0 && (
+                                                            <div className="h-1 rounded-full bg-white/8 overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500/70' : 'bg-primary/60'}`}
+                                                                    style={{ width: `${pct}%` }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -467,95 +533,194 @@ function TieDetailPublic({
     categoryConfig: any;
     onBack: () => void;
 }) {
+    const team1Id = tie.teams?.team1Id;
+    const team2Id = tie.teams?.team2Id;
     const team1Name = tie.teams?.team1Name || 'Team 1';
     const team2Name = tie.teams?.team2Name || 'Team 2';
+    const isCompleted = tie.status === 'completed';
+    const winner = tie.winnerId === team1Id ? team1Name : tie.winnerId === team2Id ? team2Name : null;
+
+    // Sub-match win tally (computed from sub-matches for the scoreboard)
+    const t1SubWins = subMatches.filter(sm => sm.status === 'completed' && sm.winnerId === team1Id).length;
+    const t2SubWins = subMatches.filter(sm => sm.status === 'completed' && sm.winnerId === team2Id).length;
+    const hasScore = isCompleted && (t1SubWins + t2SubWins) > 0;
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center gap-3">
-                <button onClick={onBack} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg">
-                    <ArrowLeft className="h-4 w-4" />
-                </button>
-                <h3 className="text-lg font-bold text-white">{team1Name} vs {team2Name}</h3>
-                <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded ${
-                    tie.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                    {tie.status}
-                </span>
-                {tie.winnerId && (
-                    <span className="text-xs text-emerald-400 ml-auto">
-                        Winner: {tie.winnerId === tie.teams?.team1Id ? team1Name : team2Name}
-                    </span>
-                )}
+        <div className="space-y-5">
+
+            {/* ── Back nav ── */}
+            <button
+                onClick={onBack}
+                className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to ties
+            </button>
+
+            {/* ── Scoreboard header ── */}
+            <div className="rounded-2xl border border-white/10 bg-black/50 overflow-hidden">
+                <div className="flex items-stretch">
+                    {/* Team 1 */}
+                    <div className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-6 px-4 ${tie.winnerId === team1Id ? 'bg-emerald-500/8' : ''}`}>
+                        {tie.winnerId === team1Id && (
+                            <Trophy className="h-4 w-4 text-emerald-400 mb-1" />
+                        )}
+                        <span className={`font-oswald font-bold text-xl text-center leading-tight tracking-wide ${
+                            tie.winnerId === team1Id ? 'text-emerald-300' : isCompleted ? 'text-white/40' : 'text-white'
+                        }`}>
+                            {team1Name}
+                        </span>
+                        {tie.winnerId === team1Id && (
+                            <span className="text-[9px] uppercase tracking-widest text-emerald-500 font-bold">Winner</span>
+                        )}
+                    </div>
+
+                    {/* Score / Status centre */}
+                    <div className="shrink-0 flex flex-col items-center justify-center px-6 py-6 border-x border-white/8 text-center">
+                        {hasScore ? (
+                            <>
+                                <div className="flex items-baseline gap-2">
+                                    <span className={`text-3xl font-black font-oswald tabular-nums ${tie.winnerId === team1Id ? 'text-emerald-400' : 'text-white/40'}`}>
+                                        {t1SubWins}
+                                    </span>
+                                    <span className="text-gray-600 text-lg font-light">—</span>
+                                    <span className={`text-3xl font-black font-oswald tabular-nums ${tie.winnerId === team2Id ? 'text-emerald-400' : 'text-white/40'}`}>
+                                        {t2SubWins}
+                                    </span>
+                                </div>
+                                <span className="text-[9px] uppercase tracking-widest text-gray-600 mt-1 font-medium">sub-matches</span>
+                            </>
+                        ) : isCompleted ? (
+                            <span className="text-[9px] uppercase tracking-widest text-emerald-500 font-bold">Completed</span>
+                        ) : (
+                            <span className="text-[9px] uppercase tracking-widest text-blue-400 font-bold">In Progress</span>
+                        )}
+                    </div>
+
+                    {/* Team 2 */}
+                    <div className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-6 px-4 ${tie.winnerId === team2Id ? 'bg-emerald-500/8' : ''}`}>
+                        {tie.winnerId === team2Id && (
+                            <Trophy className="h-4 w-4 text-emerald-400 mb-1" />
+                        )}
+                        <span className={`font-oswald font-bold text-xl text-center leading-tight tracking-wide ${
+                            tie.winnerId === team2Id ? 'text-emerald-300' : isCompleted ? 'text-white/40' : 'text-white'
+                        }`}>
+                            {team2Name}
+                        </span>
+                        {tie.winnerId === team2Id && (
+                            <span className="text-[9px] uppercase tracking-widest text-emerald-500 font-bold">Winner</span>
+                        )}
+                    </div>
+                </div>
             </div>
 
-            {/* Lineups */}
+            {/* ── Lineups ── */}
             {lineups.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {lineups.map((lineup: any) => {
-                        const isTeam1 = lineup.teamId === tie.teams?.team1Id;
-                        return (
-                            <div key={lineup._id} className="bg-black/30 border border-white/10 rounded-lg p-3">
-                                <p className="text-xs text-gray-400 mb-2 uppercase font-semibold">
-                                    {isTeam1 ? team1Name : team2Name} Lineup
-                                </p>
-                                <div className="space-y-1">
-                                    {(lineup.assignments || []).map((a: any) => {
-                                        const slotConf = categoryConfig?.subTeamSlots?.find((s: any) => s.slotNumber === a.slotNumber);
-                                        return (
-                                            <div key={a.slotNumber} className="flex items-center justify-between text-sm px-2 py-1 bg-white/5 rounded">
-                                                <span className="text-gray-500 text-xs">{slotConf?.label || `Slot ${a.slotNumber}`}</span>
-                                                <span className="text-white">{a.playerNames?.join(' & ') || 'TBD'}</span>
-                                            </div>
-                                        );
-                                    })}
+                <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Lineups</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {lineups.map((lineup: any) => {
+                            const isTeam1 = lineup.teamId === team1Id;
+                            return (
+                                <div key={lineup._id} className="bg-black/40 border border-white/8 rounded-xl p-4">
+                                    <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-3">
+                                        {isTeam1 ? team1Name : team2Name}
+                                    </p>
+                                    <div className="space-y-1.5">
+                                        {(lineup.assignments || []).map((a: any) => {
+                                            const slotConf = categoryConfig?.subTeamSlots?.find((s: any) => s.slotNumber === a.slotNumber);
+                                            return (
+                                                <div key={a.slotNumber} className="flex items-center justify-between gap-3 py-1.5 px-3 bg-white/5 rounded-lg">
+                                                    <span className="text-[10px] text-gray-500 shrink-0">{slotConf?.label || `Slot ${a.slotNumber}`}</span>
+                                                    <span className="text-sm text-white font-medium text-right">{a.playerNames?.join(' & ') || 'TBD'}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
-            {/* Sub-matches */}
+            {/* ── Sub-matches ── */}
             <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-gray-400 uppercase">Sub-Matches</h4>
-                {subMatches.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No sub-matches yet.</p>
-                ) : subMatches.map((sm: any) => {
-                    const slotConfig = categoryConfig?.subTeamSlots?.find((s: any) => s.slotNumber === sm.subMatchSlotNumber);
-                    const label = sm.slotLabel || slotConfig?.label || `Match ${sm.subMatchSlotNumber}`;
-                    const p1Name = sm.player1?.name || team1Name;
-                    const p2Name = sm.player2?.name || team2Name;
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                    Sub-Matches
+                    {subMatches.length > 0 && (
+                        <span className="ml-2 text-gray-700 normal-case tracking-normal">
+                            ({subMatches.filter(sm => sm.status === 'completed').length}/{subMatches.length} done)
+                        </span>
+                    )}
+                </h4>
 
-                    return (
-                        <div key={sm._id} className="flex items-center justify-between p-3 bg-black/40 border border-white/10 rounded-lg">
-                            <div className="flex items-center gap-3 flex-1">
-                                <span className="text-xs text-gray-500 font-mono w-24 shrink-0">{label}</span>
-                                <span className={`text-sm ${sm.winnerId === sm.player1?.teamId ? 'text-emerald-400 font-semibold' : 'text-white'}`}>
-                                    {p1Name}
-                                </span>
-                                <span className="text-xs text-gray-600">vs</span>
-                                <span className={`text-sm ${sm.winnerId === sm.player2?.teamId ? 'text-emerald-400 font-semibold' : 'text-white'}`}>
-                                    {p2Name}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {sm.status === 'completed' ? (
-                                    <>
-                                        <span className="px-2 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-400 rounded uppercase font-bold">Done</span>
-                                        {sm.gameScores && (
-                                            <span className="text-xs text-gray-500">
-                                                {sm.gameScores.map((g: any) => `${g.team1Score}-${g.team2Score}`).join(', ')}
-                                            </span>
+                {subMatches.length === 0 ? (
+                    <p className="text-gray-600 text-sm py-4 text-center">No sub-matches yet.</p>
+                ) : (
+                    <div className="flex flex-col gap-2">
+                        {subMatches.map((sm: any) => {
+                            const slotConfig = categoryConfig?.subTeamSlots?.find((s: any) => s.slotNumber === sm.subMatchSlotNumber);
+                            const label = sm.slotLabel || slotConfig?.label || `Match ${sm.subMatchSlotNumber}`;
+                            const p1Name = sm.player1?.name || team1Name;
+                            const p2Name = sm.player2?.name || team2Name;
+                            const smDone = sm.status === 'completed';
+                            const p1Wins = smDone && sm.winnerId === sm.player1?.teamId;
+                            const p2Wins = smDone && sm.winnerId === sm.player2?.teamId;
+                            const gameScores: string[] = smDone && sm.gameScores
+                                ? sm.gameScores.map((g: any) => `${g.team1Score}–${g.team2Score}`)
+                                : [];
+
+                            return (
+                                <div
+                                    key={sm._id}
+                                    className={`rounded-xl border overflow-hidden ${
+                                        smDone ? 'border-white/8 bg-black/30' : 'border-white/5 bg-black/20'
+                                    }`}
+                                >
+                                    {/* Label row */}
+                                    <div className="flex items-center justify-between px-4 py-1.5 border-b border-white/5 bg-white/[0.02]">
+                                        <span className="text-[10px] text-gray-500 font-medium">{label}</span>
+                                        {smDone ? (
+                                            <span className="text-[9px] uppercase font-bold tracking-wider text-emerald-500">Done</span>
+                                        ) : (
+                                            <span className="text-[9px] uppercase font-bold tracking-wider text-gray-600">Upcoming</span>
                                         )}
-                                    </>
-                                ) : (
-                                    <span className="px-2 py-0.5 text-[10px] bg-blue-500/20 text-blue-400 rounded uppercase font-bold">Upcoming</span>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
+                                    </div>
+
+                                    {/* Players row */}
+                                    <div className="flex items-stretch">
+                                        {/* Player 1 */}
+                                        <div className={`flex-1 flex items-center justify-end gap-2 px-4 py-3 ${p1Wins ? 'bg-emerald-500/5' : ''}`}>
+                                            <span className={`text-sm font-medium text-right leading-tight ${p1Wins ? 'text-emerald-300 font-bold' : smDone ? 'text-white/40' : 'text-white/80'}`}>
+                                                {p1Name}
+                                            </span>
+                                        </div>
+
+                                        {/* Score */}
+                                        <div className="shrink-0 flex flex-col items-center justify-center px-3 border-x border-white/5 min-w-[80px] text-center">
+                                            {gameScores.length > 0 ? (
+                                                <div className="flex flex-col gap-0.5">
+                                                    {gameScores.map((gs, gi) => (
+                                                        <span key={gi} className="text-xs font-bold text-gray-300 tabular-nums">{gs}</span>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[9px] text-gray-700 uppercase font-bold tracking-wider">vs</span>
+                                            )}
+                                        </div>
+
+                                        {/* Player 2 */}
+                                        <div className={`flex-1 flex items-center gap-2 px-4 py-3 ${p2Wins ? 'bg-emerald-500/5' : ''}`}>
+                                            <span className={`text-sm font-medium leading-tight ${p2Wins ? 'text-emerald-300 font-bold' : smDone ? 'text-white/40' : 'text-white/80'}`}>
+                                                {p2Name}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     );

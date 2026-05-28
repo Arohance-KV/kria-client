@@ -18,9 +18,9 @@ import PlayersTab from './player-tournament/PlayersTab';
 import TeamsTab from './player-tournament/TeamsTab';
 import AuctionTab from './player-tournament/AuctionTab';
 import BracketTab from './player-tournament/BracketTab';
-import TeamLeagueTab from './player-tournament/TeamLeagueTab';
 import LeaderboardTab from './player-tournament/LeaderboardTab';
 import AwardsTab from './player-tournament/AwardsTab';
+import { sportRegistry } from '@/sports/registry';
 
 type TabKey = 'overview' | 'categories' | 'players' | 'teams' | 'auction' | 'bracket' | 'team_league' | 'leaderboard' | 'awards';
 
@@ -282,7 +282,11 @@ const PlayerTournamentDetailPage = () => {
                             <div className="flex gap-2 p-1.5 bg-white/5 border border-white/10 rounded-2xl w-fit overflow-x-auto max-w-full no-scrollbar">
                                 {TABS
                                     .filter(tab => {
-                                        if (tab === 'team_league') return categories.some(c => c.bracketType === 'team_league');
+                                        if (tab === 'team_league') {
+                                            const plugin = tournament?.sport ? sportRegistry.get(tournament.sport) : undefined;
+                                            const pluginTab = plugin?.playerTournamentTabs?.find(t => t.key === 'team_league');
+                                            return pluginTab ? pluginTab.visible(categories) : false;
+                                        }
                                         return true;
                                     })
                                     .map(tab => {
@@ -307,6 +311,8 @@ const PlayerTournamentDetailPage = () => {
                                     myTeam={myTeam}
                                     myTeamAssignment={myTeamAssignment}
                                     isTeamDataReady={isTeamDataReady}
+                                    tournamentId={tournament._id}
+                                    sport={tournament.sport}
                                 />
                             )}
                             {activeTab === 'categories' && (
@@ -348,12 +354,13 @@ const PlayerTournamentDetailPage = () => {
                                     tournamentId={id}
                                 />
                             )}
-                            {activeTab === 'team_league' && id && (
-                                <TeamLeagueTab
-                                    categories={categories}
-                                    tournamentId={id}
-                                />
-                            )}
+                            {activeTab === 'team_league' && id && tournament?.sport && (() => {
+                                const plugin = sportRegistry.get(tournament.sport);
+                                const pluginTab = plugin?.playerTournamentTabs?.find(t => t.key === 'team_league');
+                                if (!pluginTab) return null;
+                                const TabComponent = pluginTab.component;
+                                return <TabComponent tournamentId={id} categories={categories} />;
+                            })()}
                             {activeTab === 'leaderboard' && id && tournament && (
                                 <LeaderboardTab
                                     categories={categories}

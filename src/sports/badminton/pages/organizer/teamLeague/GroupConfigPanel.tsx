@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Loader2, Shuffle, Plus, X, Save, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { teamLeagueApi } from '../../../../api/teamLeague';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 
 interface Team {
     _id: string;

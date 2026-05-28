@@ -339,9 +339,10 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
     const c1 = getC1(match, competitorType);
     const c2 = getC2(match, competitorType);
     const done = match.status === 'completed' || match.status === 'walkover';
+    const live = match.status === 'in_progress';
     const isC1W = done && match.winnerId === c1.id;
     const isC2W = done && match.winnerId === c2.id;
-    const pending = !done && (c1.isTBD || c2.isTBD);
+    const pending = !done && !live && (c1.isTBD || c2.isTBD);
 
     // Build per-game score chips from gameScores array (e.g. "21–15 · 21–18")
     const gameChips = (match.gameScores || [])
@@ -351,11 +352,13 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
 
     return (
         <div className={`h-full flex flex-col rounded-xl overflow-hidden border transition-colors ${
-            done
-                ? 'border-white/[0.07] bg-[#141414]'
-                : pending
-                    ? 'border-white/[0.04] bg-[#0d0d0d]'
-                    : 'border-primary/25 bg-[#111] hover:border-primary/40'
+            live
+                ? 'border-red-500/40 bg-[#111] hover:border-red-500/60'
+                : done
+                    ? 'border-white/[0.07] bg-[#141414]'
+                    : pending
+                        ? 'border-white/[0.04] bg-[#0d0d0d]'
+                        : 'border-primary/25 bg-[#111] hover:border-primary/40'
         }`}>
             {/* Header: match number + game scores + status pill */}
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.05] bg-black/20 shrink-0">
@@ -369,15 +372,30 @@ const MatchCard: React.FC<{ match: Match; competitorType: 'player' | 'team' }> =
                         </span>
                     )}
                 </div>
-                <span className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${
-                    done
-                        ? 'bg-emerald-500/15 text-emerald-500'
-                        : pending
+                {live ? (
+                    <Link
+                        to={`/live/${match._id}`}
+                        className="ml-2 shrink-0 px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 hover:bg-red-500/25 text-[8px] font-bold uppercase tracking-widest flex items-center gap-1"
+                    >
+                        <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" /> Live
+                    </Link>
+                ) : done ? (
+                    <Link
+                        to={`/live/${match._id}`}
+                        className="ml-2 shrink-0 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 text-[8px] font-bold uppercase tracking-widest"
+                        title="View scorecard, fall of wickets, partnerships, charts"
+                    >
+                        Scorecard
+                    </Link>
+                ) : (
+                    <span className={`ml-2 shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${
+                        pending
                             ? 'bg-white/5 text-gray-600'
                             : 'bg-primary/15 text-primary'
-                }`}>
-                    {done ? 'Done' : pending ? 'Pending' : 'Upcoming'}
-                </span>
+                    }`}>
+                        {pending ? 'Pending' : 'Upcoming'}
+                    </span>
+                )}
             </div>
 
             {/* Competitor 1 */}

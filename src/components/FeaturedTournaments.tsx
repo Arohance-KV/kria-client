@@ -15,6 +15,9 @@ export const FeaturedTournaments = ({ filters }: FeaturedTournamentsProps) => {
     const navigate = useNavigate();
     const { publicTournaments, isLoading } = useAppSelector((state) => state.tournament);
 
+    // Hide tournaments that aren't visible to players yet — drafts and deactivated ones.
+    const visibleTournaments = publicTournaments.filter(t => t.status !== 'draft' && t.isActive !== false);
+
     useEffect(() => {
         dispatch(fetchPublicTournaments({ 
             limit: 6,
@@ -38,9 +41,9 @@ export const FeaturedTournaments = ({ filters }: FeaturedTournamentsProps) => {
                         Discover and join the most anticipated sports events in your city. From casual leagues to professional championships.
                     </p>
                 </div>
-                {publicTournaments.length > 0 && (
+                {visibleTournaments.length > 0 && (
                     <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-600 border border-white/10 rounded-full px-3 py-1.5 flex-shrink-0">
-                        {publicTournaments.length} events
+                        {visibleTournaments.length} events
                     </span>
                 )}
             </div>
@@ -49,9 +52,9 @@ export const FeaturedTournaments = ({ filters }: FeaturedTournamentsProps) => {
                 <div className="flex justify-center items-center py-20">
                     <Loader2 className="h-8 w-8 text-primary animate-spin" />
                 </div>
-            ) : publicTournaments.length > 0 ? (
+            ) : visibleTournaments.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-                    {publicTournaments.map((tournament) => (
+                    {visibleTournaments.map((tournament) => (
                         <TournamentCard
                             key={tournament._id}
                             tournament={tournament}

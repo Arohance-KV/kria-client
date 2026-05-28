@@ -74,7 +74,7 @@ const StatChip = ({ icon: Icon, label, value, accent = false }: { icon: any; lab
 const PlayerProfilePage = () => {
     const navigate  = useNavigate();
     const dispatch  = useAppDispatch();
-    const { user, role, isLoading, playerStats, statsLoading } = useAppSelector(s => s.auth);
+    const { user, role, isLoading, playerStats, statsLoading, error } = useAppSelector(s => s.auth);
     const { myRegistrations, isLoading: isRegLoading, tournamentHistory, historyLoading } = useAppSelector(s => s.registration);
 
     const [isEditing, setIsEditing] = useState(false);
@@ -124,7 +124,20 @@ const PlayerProfilePage = () => {
 
     const handleSave = async () => {
         if (!role) return;
-        const result = await dispatch(updateProfile({ role, data: editData }));
+        // Required fields are always sent; optional fields are omitted when blank.
+        // The server validators use `.optional()`, which only skips `undefined` —
+        // an empty string (e.g. dateOfBirth: "") still hits isISO8601() and 400s.
+        // Omitting blank keys also leaves existing values untouched ($set semantics).
+        const payload: Record<string, string> = {
+            firstName: editData.firstName,
+            lastName:  editData.lastName,
+            phone:     editData.phone,
+        };
+        (['gender', 'dateOfBirth', 'sport', 'location'] as const).forEach(key => {
+            const val = editData[key]?.trim();
+            if (val) payload[key] = val;
+        });
+        const result = await dispatch(updateProfile({ role, data: payload }));
         if (updateProfile.fulfilled.match(result)) setIsEditing(false);
     };
 
@@ -265,6 +278,11 @@ const PlayerProfilePage = () => {
                         )}
 
                         <div className="flex flex-col gap-2 w-full mt-1">
+                            {isEditing && error && (
+                                <p className="text-xs text-red-400 text-center bg-red-500/10 border border-red-500/30 rounded-full px-3 py-2">
+                                    {error}
+                                </p>
+                            )}
                             {isEditing ? (
                                 <div className="flex gap-2">
                                     <button onClick={() => setIsEditing(false)} className="flex-1 py-2 rounded-full border border-white/20 text-sm font-medium hover:bg-white/10 transition-colors">
@@ -639,11 +657,13 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
     const currentYear = new Date().getFullYear();
     const years = Array.from({ length: currentYear - 1949 }, (_, i) => currentYear - i);
 
-    const [day, month, year] = React.useMemo(() => {
-        if (!value) return ['', '', ''];
-        const [y, m, d] = value.split('-');
-        return [d || '', m || '', y || ''];
-    }, [value]);
+    // Keep the three parts in local state. Driving the <select>s straight from
+    // `value` meant an incomplete pick (e.g. only the year) resolved back to ''
+    // and the dropdowns snapped to their placeholder, so a full date could never
+    // be assembled and DOB was never sent. Seed once from the incoming value.
+    const [day, setDay]     = React.useState(() => (value ? value.split('-')[2] || '' : ''));
+    const [month, setMonth] = React.useState(() => (value ? value.split('-')[1] || '' : ''));
+    const [year, setYear]   = React.useState(() => (value ? value.split('-')[0] || '' : ''));
 
     const daysInMonth = React.useMemo(() => {
         if (!month || !year) return 31;
@@ -652,7 +672,8 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
 
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-    const update = (d: string, m: string, y: string) => {
+    // Emit a combined ISO date (YYYY-MM-DD) only once all three parts are set.
+    const emit = (d: string, m: string, y: string) => {
         if (d && m && y) {
             const maxDay = new Date(parseInt(y), parseInt(m), 0).getDate();
             const safeDay = Math.min(parseInt(d), maxDay).toString().padStart(2, '0');
@@ -662,6 +683,19 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
         }
     };
 
+    const pickDay   = (d: string) => { setDay(d); emit(d, month, year); };
+    const pickMonth = (m: string) => {
+        // Clamp an already-chosen day to the new month's length (e.g. 31 → Feb).
+        const max = year ? new Date(parseInt(year), parseInt(m), 0).getDate() : 31;
+        const d   = day && parseInt(day) > max ? String(max).padStart(2, '0') : day;
+        setMonth(m); setDay(d); emit(d, m, year);
+    };
+    const pickYear  = (y: string) => {
+        const max = month ? new Date(parseInt(y), parseInt(month), 0).getDate() : 31;
+        const d   = day && parseInt(day) > max ? String(max).padStart(2, '0') : day;
+        setYear(y); setDay(d); emit(d, month, y);
+    };
+
     return (
         <div className="flex flex-col gap-1.5 w-full">
             <span className="text-xs text-gray-500 text-center tracking-wide uppercase font-medium">Date of Birth</span>
@@ -669,7 +703,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
                 {/* Day */}
                 <select
                     value={day}
-                    onChange={e => update(e.target.value, month, year)}
+                    onChange={e => pickDay(e.target.value)}
                     className={selectCls}
                     style={{ WebkitAppearance: 'none' }}
                 >
@@ -684,7 +718,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
                 {/* Month */}
                 <select
                     value={month}
-                    onChange={e => update(day, e.target.value, year)}
+                    onChange={e => pickMonth(e.target.value)}
                     className={selectCls}
                     style={{ WebkitAppearance: 'none', flex: '1.6' }}
                 >
@@ -699,7 +733,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
                 {/* Year */}
                 <select
                     value={year}
-                    onChange={e => update(day, month, e.target.value)}
+                    onChange={e => pickYear(e.target.value)}
                     className={selectCls}
                     style={{ WebkitAppearance: 'none', flex: '1.3' }}
                 >

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Loader2, Users, Swords, Trophy, BarChart3, LayoutDashboard } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import { fetchTournamentTeams } from '../../../store/slices/teamSlice';
-import { teamLeagueApi } from '../../../api/teamLeague';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { fetchTournamentTeams } from '@/store/slices/teamSlice';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 import GroupConfigPanel from './teamLeague/GroupConfigPanel';
 import TieManagementPanel from './teamLeague/TieManagementPanel';
 import GroupStandingsTable from './teamLeague/GroupStandingsTable';
@@ -27,6 +27,7 @@ export default function TeamLeagueSection({ tournamentId, categories }: Props) {
     const [groups, setGroups] = useState<any[]>([]);
     const [standings, setStandings] = useState<any[]>([]);
     const [stageNumber, setStageNumber] = useState(1);
+    const [availableStages, setAvailableStages] = useState<number[]>([1]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -67,12 +68,28 @@ export default function TeamLeagueSection({ tournamentId, categories }: Props) {
         }
     }, [selectedCategoryId, stageNumber]);
 
+    // Derive which stages actually exist (a stage only appears once it has groups —
+    // e.g. Stage 2 shows up only after teams have been advanced into it).
+    const refreshStages = useCallback(async () => {
+        if (!selectedCategoryId) { setAvailableStages([1]); return; }
+        try {
+            const overview = await teamLeagueApi.getOverview(selectedCategoryId);
+            const stages: number[] = (overview?.stages || [])
+                .map((s: any) => s.stageNumber)
+                .filter((n: any) => typeof n === 'number');
+            setAvailableStages(stages.length > 0 ? Array.from(new Set(stages)).sort((a, b) => a - b) : [1]);
+        } catch {
+            setAvailableStages([1]);
+        }
+    }, [selectedCategoryId]);
+
     useEffect(() => {
         if (selectedCategoryId) {
             refreshGroups();
             refreshStandings();
+            refreshStages();
         }
-    }, [selectedCategoryId, stageNumber, refreshGroups, refreshStandings]);
+    }, [selectedCategoryId, stageNumber, refreshGroups, refreshStandings, refreshStages]);
 
     if (teamLeagueCategories.length === 0) {
         return (
@@ -118,10 +135,10 @@ export default function TeamLeagueSection({ tournamentId, categories }: Props) {
                 )}
             </div>
 
-            {/* Stage selector */}
+            {/* Stage selector — only stages that exist for this category */}
             <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-400">Stage:</span>
-                {[1, 2, 3].map(s => (
+                {availableStages.map(s => (
                     <button
                         key={s}
                         onClick={() => setStageNumber(s)}
@@ -197,7 +214,9 @@ export default function TeamLeagueSection({ tournamentId, categories }: Props) {
                             topNPerGroup={selectedCategory?.teamLeagueConfig?.topNPerGroup || 1}
                             onRefresh={refreshStandings}
                             onAdvanced={() => {
+                                refreshStages();
                                 setStageNumber(stageNumber + 1);
+                                setActiveTab('ties');
                                 refreshGroups();
                                 refreshStandings();
                             }}

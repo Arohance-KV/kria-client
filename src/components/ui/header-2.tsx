@@ -16,14 +16,17 @@ export function Header() {
         {
             label: 'Features',
             href: '#features',
+            internal: false,
         },
         {
-            label: 'About',
-            href: '#about',
+            label: 'Our Story',
+            href: '/story',
+            internal: true,
         },
         {
-            label: 'Explore',
-            href: '#explore',
+            label: 'Contact',
+            href: '/contact',
+            internal: true,
         },
     ];
 
@@ -70,17 +73,31 @@ export function Header() {
 
                 <div className={cn("hidden md:flex items-center gap-6", { "gap-2": scrolled })}>
                     {links.map((link, i) => (
-                        <a
-                            key={i}
-                            className={cn(
-                                buttonVariants({ variant: 'ghost' }),
-                                "text-sm font-medium hover:text-primary transition-colors text-white/80 hover:bg-transparent",
-                                scrolled ? "text-xs px-3 py-1" : ""
-                            )}
-                            href={link.href}
-                        >
-                            {link.label}
-                        </a>
+                        link.internal ? (
+                            <button
+                                key={i}
+                                onClick={() => navigate(link.href)}
+                                className={cn(
+                                    buttonVariants({ variant: 'ghost' }),
+                                    "text-sm font-medium hover:text-primary transition-colors text-white/80 hover:bg-transparent",
+                                    scrolled ? "text-xs px-3 py-1" : ""
+                                )}
+                            >
+                                {link.label}
+                            </button>
+                        ) : (
+                            <a
+                                key={i}
+                                className={cn(
+                                    buttonVariants({ variant: 'ghost' }),
+                                    "text-sm font-medium hover:text-primary transition-colors text-white/80 hover:bg-transparent",
+                                    scrolled ? "text-xs px-3 py-1" : ""
+                                )}
+                                href={link.href}
+                            >
+                                {link.label}
+                            </a>
+                        )
                     ))}
                     <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-white bg-transparent" onClick={() => navigate('/login')}>
                         Sign In
@@ -101,14 +118,24 @@ export function Header() {
             {open && (
                 <div className="flex flex-col items-center justify-center flex-1 space-y-8 w-full md:hidden">
                     {links.map((link) => (
-                        <a
-                            key={link.label}
-                            className="text-2xl font-oswald text-white hover:text-primary transition-colors min-h-[44px] flex items-center"
-                            href={link.href}
-                            onClick={() => setOpen(false)}
-                        >
-                            {link.label}
-                        </a>
+                        link.internal ? (
+                            <button
+                                key={link.label}
+                                className="text-2xl font-oswald text-white hover:text-primary transition-colors min-h-[44px] flex items-center"
+                                onClick={() => { setOpen(false); navigate(link.href); }}
+                            >
+                                {link.label}
+                            </button>
+                        ) : (
+                            <a
+                                key={link.label}
+                                className="text-2xl font-oswald text-white hover:text-primary transition-colors min-h-[44px] flex items-center"
+                                href={link.href}
+                                onClick={() => setOpen(false)}
+                            >
+                                {link.label}
+                            </a>
+                        )
                     ))}
                     <div className="flex flex-col gap-4 w-full max-w-xs pt-4">
                         <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary hover:text-white bg-transparent h-12 text-lg" onClick={() => { setOpen(false); navigate('/login'); }}>

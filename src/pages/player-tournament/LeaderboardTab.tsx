@@ -17,6 +17,13 @@ interface LeaderboardEntry {
     winPercentage: number;
 }
 
+interface Slot {
+    slotNumber: number;
+    matchType: string;
+    label: string;
+    leaderboard: LeaderboardEntry[];
+}
+
 interface Props {
     categories: Category[];
     tournamentId: string;
@@ -80,6 +87,8 @@ function getColumns(sportType: string): Column[] {
 const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
     const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+    const [slots, setSlots] = useState<Slot[]>([]);
+    const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
     const [sportType, setSportType] = useState<string>(sport);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -90,10 +99,15 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
             try {
                 const res = await API.get(`/matches/leaderboard/${selectedCat}`);
                 const payload = res.data?.data?.data || res.data?.data || {};
+                const nextSlots: Slot[] = payload.slots || [];
+                setSlots(nextSlots);
                 setLeaderboard(payload.leaderboard || []);
+                setSelectedSlot(nextSlots.length ? nextSlots[0].slotNumber : null);
                 setSportType(payload.sportType || sport);
             } catch {
+                setSlots([]);
                 setLeaderboard([]);
+                setSelectedSlot(null);
             } finally {
                 setIsLoading(false);
             }
@@ -102,6 +116,8 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
     }, [selectedCat, sport]);
 
     const columns = getColumns(sportType);
+    const activeSlot = slots.find(s => s.slotNumber === selectedSlot);
+    const activeEntries = slots.length ? (activeSlot?.leaderboard || []) : leaderboard;
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -121,12 +137,31 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                 )}
             </div>
 
+            {/* Per-slot tabs (team-league categories only) */}
+            {!isLoading && slots.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {slots.map(slot => (
+                        <button
+                            key={slot.slotNumber}
+                            onClick={() => setSelectedSlot(slot.slotNumber)}
+                            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
+                                slot.slotNumber === selectedSlot
+                                    ? 'bg-primary text-black border-primary'
+                                    : 'bg-white/5 text-gray-300 border-white/10 hover:border-primary/40'
+                            }`}
+                        >
+                            {slot.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Content */}
             {isLoading ? (
                 <div className="flex justify-center p-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-            ) : leaderboard.length === 0 ? (
+            ) : activeEntries.length === 0 ? (
                 <div className="bg-white/5 border border-white/10 rounded-3xl p-10 text-center text-gray-400 flex flex-col items-center gap-3">
                     <Trophy className="h-10 w-10 opacity-30" />
                     <p>No completed matches yet. Leaderboard will update as matches are played.</p>
@@ -147,7 +182,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {leaderboard.map((entry) => (
+                            {activeEntries.map((entry) => (
                                 <tr
                                     key={entry._id}
                                     className="border-b border-white/5 hover:bg-white/[0.03] transition-colors"

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { RefreshCw, BarChart3, ArrowRight, Loader2, Trophy } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { teamLeagueApi } from '../../../../api/teamLeague';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 
 interface Group {
     _id: string;

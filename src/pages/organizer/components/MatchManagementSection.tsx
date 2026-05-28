@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Trophy, Swords, CheckCircle2 } from 'lucide-react';
 import API from '../../../api/axios';
+import { sportRegistry } from '@/sports/registry';
 
 interface CategoryInfo { _id: string; name: string; status: string }
 
@@ -24,6 +25,7 @@ interface Match {
 
 interface Props {
     tournamentId: string;
+    sport: string;
     categories: CategoryInfo[];
 }
 
@@ -42,7 +44,7 @@ function getC2(match: Match) {
     return { id: match.teams.team2Id, name: match.teams.team2Name, teamName: '', isTBD: match.teams.team2Name === 'TBD' };
 }
 
-const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) => {
+const MatchManagementSection: React.FC<Props> = ({ tournamentId, sport, categories }) => {
     const [selectedCat, setSelectedCat] = useState<string>('');
     const [matches, setMatches] = useState<Match[]>([]);
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
@@ -50,7 +52,8 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
     const [isLoading, setIsLoading] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [scoringMatchId, setScoringMatchId] = useState<string | null>(null);
+
+    const ResultSection = sportRegistry.get(sport)?.matchResultSection;
 
     const eligibleCategories = categories.filter(c =>
         ['auction', 'bracket_configured', 'ongoing', 'completed'].includes(c.status)
@@ -94,27 +97,6 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
             setError(err.response?.data?.data?.message || err.response?.data?.message || 'Failed to generate bracket');
         } finally {
             setIsGenerating(false);
-        }
-    };
-
-    const handleRecordResult = async (matchId: string, winnerId: string, gameScores: { gameNumber: number; team1Score: number; team2Score: number }[]) => {
-        try {
-            const totalT1 = gameScores.filter(g => g.team1Score > g.team2Score).length;
-            const totalT2 = gameScores.filter(g => g.team2Score > g.team1Score).length;
-            await API.post(`/matches/${matchId}/result`, {
-                winnerId,
-                gameScores,
-                result: {
-                    team1Total: totalT1,
-                    team2Total: totalT2,
-                    marginOfVictory: `${Math.max(totalT1, totalT2)}-${Math.min(totalT1, totalT2)}`,
-                },
-                winReason: 'by_score',
-            });
-            setScoringMatchId(null);
-            await fetchMatches();
-        } catch (err: any) {
-            setError(err.response?.data?.data?.message || 'Failed to record result');
         }
     };
 
@@ -194,10 +176,8 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
                                             key={match._id}
                                             match={match}
                                             competitorType={competitorType}
-                                            isScoring={scoringMatchId === match._id}
-                                            onStartScoring={() => setScoringMatchId(match._id)}
-                                            onCancelScoring={() => setScoringMatchId(null)}
-                                            onRecordResult={handleRecordResult}
+                                            ResultSection={ResultSection}
+                                            onRecorded={fetchMatches}
                                         />
                                     ))}
                                 </div>
@@ -216,42 +196,13 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, categories }) =
 const OrganizerMatchCard: React.FC<{
     match: Match;
     competitorType: 'player' | 'team';
-    isScoring: boolean;
-    onStartScoring: () => void;
-    onCancelScoring: () => void;
-    onRecordResult: (matchId: string, winnerId: string, gameScores: any[]) => Promise<void>;
-}> = ({ match, competitorType, isScoring, onStartScoring, onCancelScoring, onRecordResult }) => {
+    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
+    onRecorded: () => void;
+}> = ({ match, competitorType, ResultSection, onRecorded }) => {
     const c1 = getC1(match);
     const c2 = getC2(match);
     const isTBD = c1.isTBD || c2.isTBD;
     const isCompleted = match.status === 'completed' || match.status === 'walkover';
-    const canScore = !isCompleted && !isTBD;
-
-    const bestOf = match.matchConfig?.bestOf || 3;
-    const [gameScores, setGameScores] = useState<{ gameNumber: number; team1Score: number; team2Score: number }[]>(
-        Array.from({ length: bestOf }, (_, i) => ({ gameNumber: i + 1, team1Score: 0, team2Score: 0 }))
-    );
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const updateScore = (gameIdx: number, team: 'team1Score' | 'team2Score', value: number) => {
-        setGameScores(prev => prev.map((g, i) => i === gameIdx ? { ...g, [team]: Math.max(0, value) } : g));
-    };
-
-    const handleSubmit = async () => {
-        const t1Won = gameScores.filter(g => g.team1Score > g.team2Score).length;
-        const t2Won = gameScores.filter(g => g.team2Score > g.team1Score).length;
-        if (t1Won === t2Won) return;
-
-        const winnerId = t1Won > t2Won ? c1.id : c2.id;
-        setIsSubmitting(true);
-        await onRecordResult(match._id, winnerId, gameScores);
-        setIsSubmitting(false);
-    };
-
-    const t1GamesWon = gameScores.filter(g => g.team1Score > g.team2Score).length;
-    const t2GamesWon = gameScores.filter(g => g.team2Score > g.team1Score).length;
-    const needToWin = Math.ceil(bestOf / 2);
-    const hasWinner = t1GamesWon >= needToWin || t2GamesWon >= needToWin;
 
     return (
         <div className={`rounded-2xl border overflow-hidden transition-all ${isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.03]' : 'border-white/10 bg-black/20'}`}>
@@ -289,71 +240,11 @@ const OrganizerMatchCard: React.FC<{
                         {isCompleted && match.result && (
                             <span className="text-sm font-bold text-gray-300">{match.result.team1Total} - {match.result.team2Total}</span>
                         )}
-                        {canScore && !isScoring && (
-                            <button onClick={onStartScoring} className="px-4 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
-                                Record Result
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Scoring form */}
-            {isScoring && (
-                <div className="px-5 pb-5 pt-2 border-t border-white/5 flex flex-col gap-4">
-                    <p className="text-xs text-gray-400">Enter scores for each game (Best of {bestOf})</p>
-                    <div className="grid gap-3">
-                        {gameScores.map((game, idx) => (
-                            <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3">
-                                <span className="text-xs text-gray-500 w-16 shrink-0">Game {idx + 1}</span>
-                                <div className="flex items-center gap-2 flex-1 justify-center">
-                                    <span className="text-xs text-gray-400 w-20 text-right truncate">{c1.name}</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={game.team1Score}
-                                        onChange={e => updateScore(idx, 'team1Score', parseInt(e.target.value) || 0)}
-                                        className="w-14 text-center py-1.5 rounded-lg bg-black/50 border border-white/10 text-white text-sm focus:outline-none focus:border-primary"
-                                    />
-                                    <span className="text-gray-600 text-xs">-</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={game.team2Score}
-                                        onChange={e => updateScore(idx, 'team2Score', parseInt(e.target.value) || 0)}
-                                        className="w-14 text-center py-1.5 rounded-lg bg-black/50 border border-white/10 text-white text-sm focus:outline-none focus:border-primary"
-                                    />
-                                    <span className="text-xs text-gray-400 w-20 truncate">{c2.name}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center justify-center gap-4 text-sm">
-                        <span className={`font-bold ${t1GamesWon > t2GamesWon ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            {c1.name}: {t1GamesWon} game{t1GamesWon !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-gray-600">—</span>
-                        <span className={`font-bold ${t2GamesWon > t1GamesWon ? 'text-emerald-400' : 'text-gray-400'}`}>
-                            {c2.name}: {t2GamesWon} game{t2GamesWon !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-
-                    <div className="flex justify-end gap-3">
-                        <button onClick={onCancelScoring} className="px-4 py-2 rounded-xl border border-white/10 text-white hover:bg-white/5 text-sm font-medium transition-colors">
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleSubmit}
-                            disabled={!hasWinner || isSubmitting}
-                            className="flex items-center gap-2 px-6 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-colors disabled:opacity-50"
-                        >
-                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                            Submit Result
-                        </button>
-                    </div>
-                </div>
-            )}
+            {ResultSection && <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />}
         </div>
     );
 };

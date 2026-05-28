@@ -12,15 +12,23 @@ import CreateTournamentPage from './pages/organizer/CreateTournamentPage';
 import TournamentDetailPage from './pages/organizer/TournamentDetailPage';
 import AuctionDisplay from './pages/AuctionDisplay';
 import BracketPage from './pages/BracketPage';
+import ContactPage from './pages/ContactPage';
+import SupportPage from './pages/SupportPage';
+import OurStoryPage from './pages/OurStoryPage';
+import LiveScoreboardPage from './pages/LiveScoreboardPage';
 
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import OrganizerProfilePage from './pages/organizer/OrganizerProfilePage';
+import { sportRegistry } from '@/sports/registry';
 
 function App() {
     return (
         <Router>
             <Routes>
                 <Route path="/" element={<HomePage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/support" element={<SupportPage />} />
+                <Route path="/story" element={<OurStoryPage />} />
                 <Route path="/login" element={<SignInPage />} />
                 <Route path="/register" element={<SignUpPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -30,6 +38,9 @@ function App() {
 
                 {/* Public Bracket View */}
                 <Route path="/bracket/:tournamentId/:categoryId" element={<BracketPage />} />
+
+                {/* Public Live Scoreboard (Broadcast Screen) */}
+                <Route path="/live/:matchId" element={<LiveScoreboardPage />} />
 
                 {/* Protected Player Routes */}
                 <Route element={<ProtectedRoute allowedRoles={['player']} />}>
@@ -44,6 +55,9 @@ function App() {
                     <Route path="/organizer/profile" element={<OrganizerProfilePage />} />
                     <Route path="/organizer/tournament/create" element={<CreateTournamentPage />} />
                     <Route path="/organizer/tournament/:id" element={<TournamentDetailPage />} />
+
+                    {/* Sport-plugin-contributed organizer routes. Empty in Phase 0. */}
+                    {sportRegistry.list().flatMap(plugin => plugin.organizerRoutes ?? [])}
                 </Route>
             </Routes>
         </Router>
