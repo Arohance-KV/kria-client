@@ -14,12 +14,14 @@ import TeamLeagueSection from './pages/organizer/TeamLeagueSection';
 import TeamLeagueTab from './pages/player-tournament/TeamLeagueTab';
 import BadmintonCategoryForm from './pages/organizer/BadmintonCategoryForm';
 import BadmintonMatchResultSection from './pages/organizer/BadmintonMatchResultSection';
+import BadmintonLiveScoreboard from './pages/public/BadmintonLiveScoreboard';
 
 sportRegistry.register({
     sportKey: 'badminton',
     displayName: 'Badminton',
     categoryForm: BadmintonCategoryForm,
     matchResultSection: BadmintonMatchResultSection,
+    liveScoreboardRenderer: BadmintonLiveScoreboard,
     organizerTournamentSections: [
         {
             key: 'team_league',
