@@ -664,6 +664,7 @@ function TieDetailPublic({
                             const p1Name = sm.player1?.name || team1Name;
                             const p2Name = sm.player2?.name || team2Name;
                             const smDone = sm.status === 'completed';
+                            const smLive = sm.status === 'in_progress';
                             const p1Wins = smDone && sm.winnerId === sm.player1?.teamId;
                             const p2Wins = smDone && sm.winnerId === sm.player2?.teamId;
                             const gameScores: string[] = smDone && sm.gameScores
@@ -682,6 +683,8 @@ function TieDetailPublic({
                                         <span className="text-[10px] text-gray-500 font-medium">{label}</span>
                                         {smDone ? (
                                             <span className="text-[9px] uppercase font-bold tracking-wider text-emerald-500">Done</span>
+                                        ) : smLive ? (
+                                            <span className="text-[9px] uppercase font-bold tracking-wider text-red-400">Live</span>
                                         ) : (
                                             <span className="text-[9px] uppercase font-bold tracking-wider text-gray-600">Upcoming</span>
                                         )}
@@ -704,6 +707,13 @@ function TieDetailPublic({
                                                         <span key={gi} className="text-xs font-bold text-gray-300 tabular-nums">{gs}</span>
                                                     ))}
                                                 </div>
+                                            ) : smLive ? (
+                                                <a
+                                                    href={`/live/${sm._id}`}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[10px] font-bold uppercase tracking-widest"
+                                                >
+                                                    <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" /> Live
+                                                </a>
                                             ) : (
                                                 <span className="text-[9px] text-gray-700 uppercase font-bold tracking-wider">vs</span>
                                             )}

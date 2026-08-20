@@ -320,10 +320,13 @@ const PlayerTournamentDetailPage = () => {
                                     myTeamAssignment={myTeamAssignment}
                                     isTeamDataReady={isTeamDataReady}
                                     tournamentId={tournament._id}
-                                    // LiveNowBanner gates its cricket fetch on sport === 'cricket'; make sure a
-                                    // multi-sport tournament that hosts cricket still shows live cricket matches
-                                    // even when cricket isn't the tournament's first/primary sport.
-                                    sport={tournamentSports.includes('cricket') ? 'cricket' : tournamentSports[0]}
+                                    // LiveNowBanner now supports both cricket and badminton team-league live
+                                    // scoring. Prefer cricket when the tournament hosts it (matches prior
+                                    // behavior), otherwise prefer badminton (which has live sub-matches to
+                                    // surface via team league), else fall back to whichever sport is first.
+                                    sport={tournamentSports.includes('cricket')
+                                        ? 'cricket'
+                                        : tournamentSports.includes('badminton') ? 'badminton' : tournamentSports[0]}
                                 />
                             )}
                             {activeTab === 'categories' && (
