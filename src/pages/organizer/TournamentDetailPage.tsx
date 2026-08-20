@@ -285,6 +285,9 @@ const TournamentDetailPage = () => {
     const tournamentSports: string[] = currentTournament
         ? ((currentTournament as any).sports?.length ? (currentTournament as any).sports : [currentTournament.sport].filter(Boolean))
         : [];
+    // team_league is a badminton bracket type — resolve its plugin from the badminton
+    // sport when the tournament hosts it, else fall back to the tournament's first sport.
+    const teamLeagueSportKey = tournamentSports.find((s: string) => s === 'badminton') || tournamentSports[0];
 
     // Staff may edit an assigned tournament but not manage staff, delete it, or view payments.
     const staffHiddenGroups: GroupKey[] = ['admin', 'danger'];
@@ -299,7 +302,7 @@ const TournamentDetailPage = () => {
         .filter(i => !isStaff || !staffHiddenSections.includes(i.key))
         .filter(item => {
             if (item.key !== 'team_league') return true;
-            const plugin = currentTournament?.sport ? sportRegistry.get(currentTournament.sport) : undefined;
+            const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;
             const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
             if (!section) return false;
             return section.visible(categories.map(c => ({
@@ -505,7 +508,7 @@ const TournamentDetailPage = () => {
             case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: (c as any).sport }))} /> : null;
             case 'team_league': {
                 if (!currentTournament || !id) return null;
-                const plugin = sportRegistry.get(currentTournament.sport);
+                const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;
                 const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
                 const projectedCategories = categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig }));
                 if (!section || !section.visible(projectedCategories)) return null;

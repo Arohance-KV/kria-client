@@ -24,8 +24,10 @@ export default function LiveScoreboardPage() {
                 const categoryId = match?.categoryId;
                 let resolvedSport: string | null = null;
                 if (categoryId) {
-                    const category = extract(await API.get(`/categories/${categoryId}`));
-                    resolvedSport = category?.sport || null;
+                    try {
+                        const category = extract(await API.get(`/categories/${categoryId}`));
+                        resolvedSport = category?.sport || null;
+                    } catch { /* fall through to tournament-sport fallback below */ }
                 }
                 if (!resolvedSport) {
                     const tournamentId = match?.tournamentId;
