@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -56,6 +56,11 @@ const LocationMarker: React.FC<{
 
 const MapController: React.FC<{ lat: string | number; lng: string | number }> = ({ lat, lng }) => {
     const map = useMap();
+    // ponytail: Leaflet renders grey tiles when its container mounts at size 0 (hidden/animated parent). Force a resize once.
+    React.useEffect(() => {
+        const t = setTimeout(() => map.invalidateSize(), 250);
+        return () => clearTimeout(t);
+    }, [map]);
     React.useEffect(() => {
         if (lat && lng) {
             map.flyTo([Number(lat), Number(lng)], map.getZoom() < 13 ? 14 : map.getZoom(), {
@@ -155,6 +160,74 @@ const CreateTournamentPage = () => {
     const [geoLoading, setGeoLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [showResults, setShowResults] = useState(false);
+    const justPickedRef = useRef(false);
+
+    // Reverse-geocode a dropped/dragged pin to fill address + city (only fields left empty).
+    const reverseFill = async (lat: number, lng: number) => {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=en&lat=${lat}&lon=${lng}`);
+            const data = await res.json();
+            const addr = data.address || {};
+            const city = addr.city || addr.town || addr.village || addr.suburb || addr.county || '';
+            setFormData(prev => ({
+                ...prev,
+                venue: {
+                    ...prev.venue,
+                    city: prev.venue.city || city,
+                    address: prev.venue.address || data.display_name || prev.venue.address,
+                }
+            }));
+        } catch { /* reverse geocode is best-effort */ }
+    };
+
+    // ponytail: coords + optional reverse-fill in one place; used by click, drag, and search-pick.
+    const setCoords = (lat: number, lng: number, fill = true) => {
+        setFormData(prev => ({ ...prev, venue: { ...prev.venue, coordinates: { lat, lng } } }));
+        if (fill) reverseFill(lat, lng);
+    };
+
+    // Debounced Nominatim autocomplete. 500ms respects the free tier's ~1 req/s policy.
+    useEffect(() => {
+        if (justPickedRef.current) { justPickedRef.current = false; return; }
+        const q = searchQuery.trim();
+        if (q.length < 3) { setSearchResults([]); setShowResults(false); return; }
+        setSearchLoading(true);
+        const t = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=en&q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                setSearchResults(Array.isArray(data) ? data : []);
+                setShowResults(true);
+            } catch {
+                setSearchResults([]);
+            } finally {
+                setSearchLoading(false);
+            }
+        }, 500);
+        return () => clearTimeout(t);
+    }, [searchQuery]);
+
+    const pickResult = (r: any) => {
+        const lat = parseFloat(Number(r.lat).toFixed(6));
+        const lng = parseFloat(Number(r.lon).toFixed(6));
+        const addr = r.address || {};
+        const city = addr.city || addr.town || addr.village || addr.suburb || addr.county || '';
+        setFormData(prev => ({
+            ...prev,
+            venue: {
+                ...prev.venue,
+                coordinates: { lat, lng },
+                city: prev.venue.city || city,
+                address: prev.venue.address || r.display_name,
+            }
+        }));
+        justPickedRef.current = true;
+        setSearchQuery(r.display_name);
+        setShowResults(false);
+        setSearchResults([]);
+    };
 
     const handleGetLocation = () => {
         if (!navigator.geolocation) return;
@@ -163,41 +236,11 @@ const CreateTournamentPage = () => {
             (pos) => {
                 const lat = parseFloat(pos.coords.latitude.toFixed(6));
                 const lng = parseFloat(pos.coords.longitude.toFixed(6));
-                setFormData(prev => ({
-                    ...prev,
-                    venue: {
-                        ...prev.venue,
-                        coordinates: { lat, lng }
-                    }
-                }));
+                setCoords(lat, lng);
                 setGeoLoading(false);
             },
             () => setGeoLoading(false)
         );
-    };
-
-    const handleSearchLocation = async (e?: React.SyntheticEvent) => {
-        if (e) e.preventDefault();
-        if (!searchQuery.trim()) return;
-        setSearchLoading(true);
-        try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(searchQuery)}`);
-            const data = await res.json();
-            if (data && data.length > 0) {
-                const lat = parseFloat(Number(data[0].lat).toFixed(6));
-                const lng = parseFloat(Number(data[0].lon).toFixed(6));
-                setFormData(prev => ({
-                    ...prev,
-                    venue: { ...prev.venue, coordinates: { lat, lng } }
-                }));
-            } else {
-                alert('Location not found. Try a different search term.');
-            }
-        } catch (error) {
-            console.error('Failed to search location:', error);
-        } finally {
-            setSearchLoading(false);
-        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -407,26 +450,39 @@ const CreateTournamentPage = () => {
                                         Get my location
                                     </button>
                                 </div>
-                                <div className="flex gap-2 w-full mt-2">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-                                        <Input
-                                            type="text"
-                                            placeholder="Search a location to pin (e.g. Bangalore, Kanteerava)..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSearchLocation(e)}
-                                            className="bg-black/50 border-white/10 text-white pl-9 text-sm h-10"
-                                        />
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleSearchLocation}
-                                        disabled={searchLoading || !searchQuery.trim()}
-                                        className="flex items-center justify-center gap-2 px-4 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-medium transition-colors disabled:opacity-50 border border-white/10"
-                                    >
-                                        {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-                                    </button>
+                                <div className="relative w-full mt-2">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 z-10" />
+                                    {searchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin z-10" />}
+                                    <Input
+                                        type="text"
+                                        placeholder="Search venue, apartment, or area (min 3 letters)..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (searchResults[0]) pickResult(searchResults[0]); } }}
+                                        className="bg-black/50 border-white/10 text-white pl-9 pr-9 text-sm h-10"
+                                    />
+                                    {showResults && searchResults.length > 0 && (
+                                        <ul className="absolute z-[1000] mt-1 w-full max-h-64 overflow-auto rounded-lg border border-white/10 bg-zinc-900 shadow-xl shadow-black/40">
+                                            {searchResults.map((r) => (
+                                                <li key={r.place_id}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => pickResult(r)}
+                                                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0"
+                                                    >
+                                                        <MapPin className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                                        <span className="leading-snug">{r.display_name}</span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                    {showResults && !searchLoading && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
+                                        <div className="absolute z-[1000] mt-1 w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-gray-400 shadow-xl">
+                                            No matches — try a nearby landmark, then drag the pin to the exact spot.
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="mt-4 border border-white/10 rounded-xl overflow-hidden shadow-lg shadow-black/20" style={{ height: '300px' }}>
                                     <MapContainer
@@ -446,10 +502,7 @@ const CreateTournamentPage = () => {
                                         <LocationMarker
                                             lat={formData.venue.coordinates.lat}
                                             lng={formData.venue.coordinates.lng}
-                                            onChange={(lat, lng) => setFormData(prev => ({
-                                                ...prev,
-                                                venue: { ...prev.venue, coordinates: { lat, lng } }
-                                            }))}
+                                            onChange={(lat, lng) => setCoords(lat, lng)}
                                         />
                                         <MapController lat={formData.venue.coordinates.lat} lng={formData.venue.coordinates.lng} />
                                     </MapContainer>
