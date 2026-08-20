@@ -16,12 +16,24 @@ export default function LiveScoreboardPage() {
         if (!matchId) return;
         (async () => {
             try {
-                // Legacy match read returns the match (with tournamentId) but not sport.
+                // Resolve the sport from the match's OWN category, not the tournament — in a
+                // multi-sport tournament, a match belonging to a non-first sport would otherwise
+                // render with the wrong scoreboard. Fall back to the tournament's sport only for
+                // legacy/single-sport data where the category has no sport recorded.
                 const match = extract(await API.get(`/matches/${matchId}`));
-                const tournamentId = match?.tournamentId;
-                if (!tournamentId) throw new Error('Match has no tournament.');
-                const tournament = extract(await API.get(`/tournament/${tournamentId}`));
-                if (active) setSport(tournament?.sport || null);
+                const categoryId = match?.categoryId;
+                let resolvedSport: string | null = null;
+                if (categoryId) {
+                    const category = extract(await API.get(`/categories/${categoryId}`));
+                    resolvedSport = category?.sport || null;
+                }
+                if (!resolvedSport) {
+                    const tournamentId = match?.tournamentId;
+                    if (!tournamentId) throw new Error('Match has no tournament.');
+                    const tournament = extract(await API.get(`/tournament/${tournamentId}`));
+                    resolvedSport = tournament?.sport || (tournament?.sports?.[0] ?? null);
+                }
+                if (active) setSport(resolvedSport);
             } catch (e: any) {
                 if (active) setError(e?.response?.data?.message || e?.message || 'Could not load match.');
             }
