@@ -82,4 +82,20 @@ export const teamLeagueApi = {
         const res = await API.get(`/sports/badminton/team-league/${categoryId}/overview`);
         return extract(res);
     },
+
+    // Live scoring
+    startLiveScoring: async (matchId: string) => {
+        const res = await API.post(`/sports/badminton/team-league/sub-matches/${matchId}/live/start`);
+        return extract(res);
+    },
+
+    recordLivePoint: async (matchId: string, body: { team: 1 | 2; delta: 1 | -1 }) => {
+        const res = await API.post(`/sports/badminton/team-league/sub-matches/${matchId}/live/point`, body);
+        return extract(res);
+    },
+
+    getLiveSubMatches: async (tournamentId: string) => {
+        const res = await API.get(`/sports/badminton/team-league/live/${tournamentId}`);
+        return extract(res);
+    },
 };
