@@ -9,6 +9,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { registerUser, verifyOtp, setPassword, Role, resetRegistration, clearError } from '../../store/slices/authSlice';
+import logo from '@/assets/logo.png';
 
 export default function SignUpPage() {
     const [role, setRole] = useState<Role | null>(null);
@@ -103,7 +104,10 @@ export default function SignUpPage() {
 
     if (!role) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-black/95 p-4 py-24 font-montserrat">
+            <div className="flex min-h-screen flex-col items-center justify-center bg-black/95 p-4 py-24 font-montserrat">
+                <Link to="/" className="mb-6" aria-label="Back to home">
+                    <img src={logo} alt="Kria Sports" className="h-10 w-auto transition-opacity hover:opacity-80" />
+                </Link>
                 <Card className="w-full max-w-4xl border-white/10 bg-black/50 text-white backdrop-blur-md p-8">
                     <div className="text-center mb-10">
                         <h1 className="text-4xl font-bold font-oswald tracking-wide text-primary mb-2">Join Kria Sports</h1>

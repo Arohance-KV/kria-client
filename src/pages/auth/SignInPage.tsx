@@ -8,6 +8,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loginUser, requestLoginOtp, verifyLoginOtp, clearError, Role } from '../../store/slices/authSlice';
+import logo from '@/assets/logo.png';
 
 export default function SignInPage() {
     const [showPassword, setShowPassword] = useState(false);
@@ -52,7 +53,10 @@ export default function SignInPage() {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-black/95 p-4 py-24 font-montserrat">
+        <div className="flex min-h-screen flex-col items-center justify-center bg-black/95 p-4 py-24 font-montserrat">
+            <Link to="/" className="mb-6" aria-label="Back to home">
+                <img src={logo} alt="Kria Sports" className="h-10 w-auto transition-opacity hover:opacity-80" />
+            </Link>
             <Card className="w-full max-w-md border-white/10 bg-black/50 text-white backdrop-blur-md">
                 <CardHeader className="space-y-1">
                     <CardTitle className="text-2xl font-bold font-oswald tracking-wide text-primary">Sign in</CardTitle>
