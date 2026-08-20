@@ -212,7 +212,7 @@ const CreateTournamentPage = () => {
         <div className="min-h-screen bg-[#111] text-white font-montserrat flex flex-col items-center">
 
             {/* Header */}
-            <header className="w-full flex items-center justify-between px-8 py-6 max-w-4xl z-10 sticky top-0 bg-[#111]/80 backdrop-blur-md border-b border-white/5">
+            <header className="w-full flex items-center justify-between px-8 py-6 max-w-4xl z-50 sticky top-0 bg-[#111]/80 backdrop-blur-md border-b border-white/5">
                 <button
                     onClick={() => navigate('/organizer/home')}
                     className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-white/5 transition-colors text-white font-medium"

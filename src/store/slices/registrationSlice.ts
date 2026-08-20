@@ -234,6 +234,20 @@ export const rejectRegistration = createAsyncThunk(
     }
 );
 
+// Manually assign (or reassign) a player to a team (Organizer)
+export const manualAssignPlayer = createAsyncThunk(
+    'registration/manualAssign',
+    async ({ registrationId, teamId, soldPrice }: { registrationId: string; teamId: string; soldPrice?: number }, { rejectWithValue }) => {
+        try {
+            const response = await API.post(`/registrations/${registrationId}/manual-assign`, { teamId, soldPrice });
+            const data = response.data?.data?.data || response.data?.data;
+            return { registrationId, teamId, data };
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 // --- SLICE ---
 
 const registrationSlice = createSlice({
@@ -374,6 +388,21 @@ const registrationSlice = createSlice({
         });
         builder.addCase(rejectRegistration.rejected, (state, action) => {
             state.isLoading = false;
+            state.error = action.payload as string;
+        });
+
+        // MANUAL ASSIGN
+        builder.addCase(manualAssignPlayer.pending, (state) => {
+            state.error = null;
+        });
+        builder.addCase(manualAssignPlayer.fulfilled, (state, action) => {
+            const { registrationId, teamId, data } = action.payload;
+            const newStatus = data?.status || 'assigned';
+            state.tournamentRegistrations = state.tournamentRegistrations.map(reg =>
+                reg._id === registrationId ? { ...reg, teamId, status: newStatus } : reg
+            );
+        });
+        builder.addCase(manualAssignPlayer.rejected, (state, action) => {
             state.error = action.payload as string;
         });
     },

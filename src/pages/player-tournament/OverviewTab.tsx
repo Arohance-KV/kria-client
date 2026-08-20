@@ -58,7 +58,7 @@ const OverviewTab: React.FC<Props> = ({ description, user, myTeam, myTeamAssignm
                             <h3 className="text-4xl font-oswald font-black tracking-wide text-white leading-tight">{myTeam.name}</h3>
                             {myTeamAssignment?.auctionData?.soldPrice && (
                                 <p className="text-sm mt-1" style={{ color: myTeam.primaryColor || '#F97316' }}>
-                                    Sold for ₹{myTeamAssignment.auctionData.soldPrice.toLocaleString()}
+                                    {myTeamAssignment.status === 'auctioned' ? 'Sold for' : 'Assigned for'} ₹{myTeamAssignment.auctionData.soldPrice.toLocaleString()}
                                 </p>
                             )}
                         </div>

@@ -592,7 +592,7 @@ const HistoryCard = ({ entry }: { entry: TournamentHistoryEntry }) => {
                 <div className="flex flex-col gap-2 items-end shrink-0">
                     {entry.auctionData?.soldPrice ? (
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">Auction Price</span>
+                            <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">{entry.status === 'auctioned' ? 'Auction Price' : 'Price'}</span>
                             <span className="text-2xl font-mono font-black text-primary">
                                 ₹{entry.auctionData.soldPrice.toLocaleString()}
                             </span>
