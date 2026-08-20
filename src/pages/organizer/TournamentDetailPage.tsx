@@ -163,7 +163,7 @@ const TournamentDetailPage = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [formData, setFormData] = useState({
-        name: '', description: '', sport: 'badminton', bannerImage: '',
+        name: '', description: '', sports: ['badminton'] as string[], bannerImage: '',
         startDate: '', endDate: '', registrationDeadline: '',
         venue: { name: '', address: '', city: '' },
         settings: { maxTeams: 8, defaultBudget: 100000, auctionType: 'manual', allowLateRegistration: false },
@@ -179,10 +179,13 @@ const TournamentDetailPage = () => {
 
     useEffect(() => {
         if (currentTournament) {
+            const initialSports = (currentTournament as any).sports?.length
+                ? (currentTournament as any).sports
+                : [currentTournament.sport].filter(Boolean);
             setFormData({
                 name: currentTournament.name || '',
                 description: currentTournament.description || '',
-                sport: currentTournament.sport || 'badminton',
+                sports: initialSports.length ? initialSports : ['badminton'],
                 bannerImage: currentTournament.bannerImage || '',
                 startDate: currentTournament.startDate ? currentTournament.startDate.split('T')[0] : '',
                 endDate: currentTournament.endDate ? currentTournament.endDate.split('T')[0] : '',
@@ -220,6 +223,10 @@ const TournamentDetailPage = () => {
 
     const handleSave = async () => {
         if (!id) return;
+        if (formData.sports.length === 0) {
+            alert('Please select at least one sport.');
+            return;
+        }
         const result = await dispatch(updateTournament({ id, data: formData }));
         if (updateTournament.fulfilled.match(result)) setIsEditing(false);
     };
@@ -615,19 +622,28 @@ const TournamentDetailPage = () => {
                             )}
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Sport</Label>
+                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Sports</Label>
                             {isEditing ? (
-                                /* ponytail: single-sport edit only; full sports editing is a follow-up */
-                                <select name="sport" className="flex h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white appearance-none" value={formData.sport} onChange={handleInputChange}>
-                                    <option value="badminton">Badminton</option>
-                                    <option value="cricket">Cricket</option>
-                                    <option value="football">Football</option>
-                                    <option value="kabaddi">Kabaddi</option>
-                                    <option value="table_tennis">Table Tennis</option>
-                                    <option value="tennis">Tennis</option>
-                                </select>
+                                <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-white/10 bg-black/40">
+                                    {sportRegistry.list().map((p) => p.sportKey).map((s) => (
+                                        <label key={s} className="flex items-center gap-2 text-sm text-white capitalize">
+                                            <input
+                                                type="checkbox"
+                                                value={s}
+                                                checked={formData.sports.includes(s)}
+                                                onChange={(e) => {
+                                                    const next = e.target.checked
+                                                        ? [...formData.sports, s]
+                                                        : formData.sports.filter((x) => x !== s);
+                                                    setFormData(prev => ({ ...prev, sports: next }));
+                                                }}
+                                            />
+                                            {s.replace('_', ' ')}
+                                        </label>
+                                    ))}
+                                </div>
                             ) : (
-                                <p className="text-white font-medium capitalize">{currentTournament?.sport?.replace('_', ' ')}</p>
+                                <p className="text-white font-medium capitalize">{tournamentSports.map(s => s.replace('_', ' ')).join(', ')}</p>
                             )}
                         </div>
                         <div className="space-y-1.5">
