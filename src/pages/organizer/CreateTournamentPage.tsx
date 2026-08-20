@@ -82,7 +82,7 @@ const CreateTournamentPage = () => {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        sport: 'badminton',
+        sports: ['badminton'],
         bannerImage: '',
         startDate: '',
         endDate: '',
@@ -245,6 +245,10 @@ const CreateTournamentPage = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (formData.sports.length === 0) {
+            alert('Please select at least one sport.');
+            return;
+        }
         const result = await dispatch(createTournament(formData));
         if (createTournament.fulfilled.match(result)) {
             navigate('/organizer/home');
@@ -298,20 +302,25 @@ const CreateTournamentPage = () => {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="sport" className="text-gray-400">Sport *</Label>
-                                <select
-                                    id="sport" name="sport" required
-                                    className="flex h-12 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-white appearance-none"
-                                    value={formData.sport} onChange={handleInputChange}
-                                >
-                                    <option value="badminton">Badminton</option>
-                                    <option value="bowling">Bowling</option>
-                                    <option value="cricket">Cricket</option>
-                                    <option value="football">Football</option>
-                                    <option value="kabaddi">Kabaddi</option>
-                                    <option value="table_tennis">Table Tennis</option>
-                                    <option value="tennis">Tennis</option>
-                                </select>
+                                <Label className="text-gray-400">Sports *</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['badminton', 'bowling', 'cricket', 'football', 'kabaddi', 'table_tennis', 'tennis'].map((s) => (
+                                        <label key={s} className="flex items-center gap-2 text-sm text-white capitalize">
+                                            <input
+                                                type="checkbox"
+                                                value={s}
+                                                checked={formData.sports.includes(s)}
+                                                onChange={(e) => {
+                                                    const next = e.target.checked
+                                                        ? [...formData.sports, s]
+                                                        : formData.sports.filter((x) => x !== s);
+                                                    setFormData(prev => ({ ...prev, sports: next }));
+                                                }}
+                                            />
+                                            {s.replace('_', ' ')}
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
