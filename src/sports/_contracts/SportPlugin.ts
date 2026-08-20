@@ -157,6 +157,8 @@ export interface CategoryFormProps {
     onSuccess: () => void;
     /** Called to close the form without saving. */
     onCancel: () => void;
+    /** The sport this category is being created under (create mode). Sent in the create payload so the server routes to the right sport. */
+    sport?: string;
 }
 
 export interface MatchResultSectionProps {

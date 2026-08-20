@@ -102,10 +102,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                             category={editingCategory}
                             onSuccess={onFormSuccess}
                             onCancel={closeForm}
-                            // ponytail: sport-specific forms (e.g. BadmintonCategoryForm) don't yet read
-                            // this prop into their create payload — wiring that up is a follow-up that
-                            // touches CategoryFormProps / each sport's form, outside this task's scope.
-                            {...({ sport: editingCategory ? editingCategory.sport : selectedSport } as any)}
+                            sport={editingCategory ? (editingCategory as any).sport : selectedSport}
                         />
                     </div>
                 );

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { createTournament } from '../../store/slices/tournamentSlice';
 import { uploadImage } from '../../api/upload';
+import { sportRegistry } from '@/sports/registry';
 
 // Fix Leaflet's default icon issue with bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -304,7 +305,7 @@ const CreateTournamentPage = () => {
                             <div className="space-y-2">
                                 <Label className="text-gray-400">Sports *</Label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['badminton', 'bowling', 'cricket', 'football', 'kabaddi', 'table_tennis', 'tennis'].map((s) => (
+                                    {sportRegistry.list().map((p) => p.sportKey).map((s) => (
                                         <label key={s} className="flex items-center gap-2 text-sm text-white capitalize">
                                             <input
                                                 type="checkbox"

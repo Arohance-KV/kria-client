@@ -57,7 +57,7 @@ function fromCategory(c: any): BadmintonFormState {
     };
 }
 
-export default function BadmintonCategoryForm({ tournamentId, category, onSuccess, onCancel }: CategoryFormProps) {
+export default function BadmintonCategoryForm({ tournamentId, category, onSuccess, onCancel, sport }: CategoryFormProps) {
     const dispatch = useAppDispatch();
     const { isLoading } = useAppSelector(state => state.category);
     const isEdit = !!category;
@@ -83,7 +83,7 @@ export default function BadmintonCategoryForm({ tournamentId, category, onSucces
         const payload = buildPayload();
         const result = isEdit
             ? await dispatch(updateCategory({ id: (category as any)._id, data: payload }))
-            : await dispatch(createCategory({ tournamentId, data: payload }));
+            : await dispatch(createCategory({ tournamentId, data: { ...payload, ...(sport ? { sport } : {}) } }));
         const ok = isEdit ? updateCategory.fulfilled.match(result) : createCategory.fulfilled.match(result);
         if (ok) onSuccess();
     };
