@@ -8,9 +8,10 @@ import {
 import HoverFooter from '@/components/HoverFooter';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logout, updateProfile, fetchPlayerStats, uploadPlayerProfileImage } from '../store/slices/authSlice';
-import { fetchMyRegistrations, withdrawRegistration, fetchPlayerTournamentHistory, TournamentHistoryEntry } from '../store/slices/registrationSlice';
+import { fetchMyRegistrations, withdrawRegistration, fetchPlayerTournamentHistory } from '../store/slices/registrationSlice';
 import { Badge } from '@/components/ui/badge';
 import { getMyPayments } from '@/api/payment';
+import TournamentHistoryView, { sportEmoji } from '../components/TournamentHistoryView';
 
 // ─── Dashboard card ──────────────────────────────────────────────────────────
 const DashboardCard = ({ icon: Icon, title, onClick }: { icon: any; title: string; onClick?: () => void }) => (
@@ -24,39 +25,12 @@ const DashboardCard = ({ icon: Icon, title, onClick }: { icon: any; title: strin
     </div>
 );
 
-// ─── Skill badge ─────────────────────────────────────────────────────────────
-const skillColor = (level?: string) => {
-    switch (level?.toLowerCase()) {
-        case 'beginner':     return 'text-blue-400  border-blue-400/30  bg-blue-400/10';
-        case 'intermediate': return 'text-amber-400 border-amber-400/30 bg-amber-400/10';
-        case 'advanced':     return 'text-primary   border-primary/30   bg-primary/10';
-        case 'professional': return 'text-purple-400 border-purple-400/30 bg-purple-400/10';
-        default:             return 'text-gray-400  border-gray-400/30  bg-gray-400/10';
-    }
-};
-
-// ─── Tournament status badge ──────────────────────────────────────────────────
-const tournamentStatusColor = (status: string) => {
-    switch (status) {
-        case 'completed':   return 'text-green-400 border-green-400/20 bg-green-400/10';
-        case 'ongoing':     return 'text-blue-400  border-blue-400/20  bg-blue-400/10';
-        case 'cancelled':   return 'text-red-400   border-red-400/20   bg-red-400/10';
-        default:            return 'text-yellow-400 border-yellow-400/20 bg-yellow-400/10';
-    }
-};
-
 // ─── Registration status badge ────────────────────────────────────────────────
 const regStatusColor = (status: string) => {
     if (status === 'approved' || status === 'assigned') return 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10';
     if (status === 'auctioned')                          return 'text-primary border-primary/20 bg-primary/10';
     if (status === 'rejected' || status === 'withdrawn') return 'text-red-400 border-red-400/20 bg-red-400/10';
     return 'text-yellow-400 border-yellow-400/20 bg-yellow-400/10';
-};
-
-// ─── Sport emoji ──────────────────────────────────────────────────────────────
-const sportEmoji = (sport?: string) => {
-    const map: Record<string, string> = { badminton: '🏸', cricket: '🏏', football: '⚽', tennis: '🎾', table_tennis: '🏓', kabaddi: '🤼' };
-    return sport ? (map[sport.toLowerCase()] ?? '🏅') : '🏅';
 };
 
 // ─── Stat chip ────────────────────────────────────────────────────────────────
@@ -82,7 +56,15 @@ const PlayerProfilePage = () => {
     const [activeView, setActiveView] = useState<'dashboard' | 'registrations' | 'history' | 'invoices'>('dashboard');
     const [invoices, setInvoices]     = useState<any[]>([]);
     const [invoicesLoading, setInvoicesLoading] = useState(false);
+    const [shareCopied, setShareCopied] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleShare = () => {
+        if (!user?._id) return;
+        navigator.clipboard.writeText(`${window.location.origin}/players/${user._id}`);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+    };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -171,9 +153,12 @@ const PlayerProfilePage = () => {
                 <div className="w-full bg-zinc-900/80 backdrop-blur-xl border border-white/10 rounded-[40px] p-8 flex flex-col shadow-2xl relative overflow-hidden h-fit">
                     <div className="flex items-center justify-between mb-8">
                         <h2 className="text-2xl font-oswald font-bold tracking-widest text-white">PROFILE</h2>
-                        <div className="flex gap-4 text-gray-400">
+                        <div className="flex gap-4 text-gray-400 items-center">
                             <UserPlus className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
-                            <Share2  className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
+                            <button onClick={handleShare} title="Copy public profile link" className="flex items-center gap-1">
+                                <Share2 className={`h-5 w-5 transition-colors ${shareCopied ? 'text-primary' : 'hover:text-white'}`} />
+                                {shareCopied && <span className="text-[10px] text-primary">Copied!</span>}
+                            </button>
                             <Settings className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
                         </div>
                     </div>
@@ -500,123 +485,18 @@ const PlayerProfilePage = () => {
                         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <h3 className="text-2xl font-oswald font-bold tracking-wide">Tournament History</h3>
 
-                            {/* Aggregate stats banner */}
-                            {playerStats && playerStats.totalTournaments > 0 && (
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                    <MiniStat label="Tournaments" value={playerStats.totalTournaments} color="text-white" />
-                                    <MiniStat label="Matches"     value={playerStats.totalMatchesPlayed} color="text-blue-400" />
-                                    <MiniStat label="Wins"        value={playerStats.totalMatchesWon}    color="text-green-400" />
-                                    {playerStats.totalEarnings > 0 && (
-                                        <MiniStat label="Total Earnings" value={`₹${playerStats.totalEarnings.toLocaleString()}`} color="text-primary" />
-                                    )}
-                                </div>
-                            )}
-
-                            {historyLoading ? (
-                                <div className="flex justify-center py-10">
-                                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                                </div>
-                            ) : tournamentHistory.length === 0 ? (
-                                <EmptyState icon={Award} message="No tournament history yet. Register and participate to see your journey here." cta="Find Tournaments" onCta={() => navigate('/player/home')} />
-                            ) : (
-                                <div className="flex flex-col gap-4">
-                                    {tournamentHistory.map((entry: TournamentHistoryEntry) => (
-                                        <HistoryCard key={entry._id} entry={entry} />
-                                    ))}
-                                </div>
-                            )}
+                            <TournamentHistoryView
+                                history={tournamentHistory}
+                                loading={historyLoading}
+                                emptyMessage="No tournament history yet. Register and participate to see your journey here."
+                                onFindTournaments={() => navigate('/player/home')}
+                            />
                         </div>
                     )}
                 </div>
             </main>
 
             <HoverFooter />
-        </div>
-    );
-};
-
-// ─── History card ─────────────────────────────────────────────────────────────
-const HistoryCard = ({ entry }: { entry: TournamentHistoryEntry }) => {
-    const t    = entry.tournament;
-    const cat  = entry.category;
-    const team = entry.team;
-    const stats = entry.stats;
-
-    return (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-colors">
-            <div className="flex flex-col md:flex-row gap-4 justify-between">
-                {/* Left info */}
-                <div className="flex flex-col gap-2 flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-xl">{sportEmoji(t?.sport)}</span>
-                        <h4 className="text-lg font-bold font-oswald tracking-wide text-white truncate">
-                            {t?.name || 'Tournament'}
-                        </h4>
-                        {t?.status && (
-                            <Badge variant="outline" className={`text-[10px] uppercase font-bold px-2 py-0.5 ${tournamentStatusColor(t.status)}`}>
-                                {t.status}
-                            </Badge>
-                        )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
-                        {cat?.name && <span>📂 {cat.name}</span>}
-                        {t?.venue?.city && <><span className="text-gray-600">•</span><span>📍 {t.venue.city}</span></>}
-                        {t?.startDate && (
-                            <><span className="text-gray-600">•</span>
-                            <span>🗓 {new Date(t.startDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span></>
-                        )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mt-1">
-                        <Badge variant="outline" className={`text-[10px] uppercase font-bold px-2 py-0.5 ${regStatusColor(entry.status)}`}>
-                            {entry.status}
-                        </Badge>
-                        {entry.profile?.skillLevel && (
-                            <Badge variant="outline" className={`text-[10px] uppercase font-bold px-2 py-0.5 ${skillColor(entry.profile.skillLevel)}`}>
-                                {entry.profile.skillLevel}
-                            </Badge>
-                        )}
-                        {team && (
-                            <Badge variant="outline" className="text-[10px] font-bold px-2 py-0.5 bg-white/5 border-white/20 text-white flex items-center gap-1">
-                                {team.primaryColor && (
-                                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: team.primaryColor }} />
-                                )}
-                                {team.name}
-                            </Badge>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right: stats + auction price */}
-                <div className="flex flex-col gap-2 items-end shrink-0">
-                    {entry.auctionData?.soldPrice ? (
-                        <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">{entry.status === 'auctioned' ? 'Auction Price' : 'Price'}</span>
-                            <span className="text-2xl font-mono font-black text-primary">
-                                ₹{entry.auctionData.soldPrice.toLocaleString()}
-                            </span>
-                        </div>
-                    ) : entry.auctionData?.basePrice ? (
-                        <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">Base Price</span>
-                            <span className="text-lg font-mono font-bold text-gray-300">
-                                ₹{entry.auctionData.basePrice.toLocaleString()}
-                            </span>
-                        </div>
-                    ) : null}
-
-                    {stats && (stats.matchesPlayed > 0 || stats.matchesWon > 0) && (
-                        <div className="flex gap-3 mt-1">
-                            <MiniStat label="Played" value={stats.matchesPlayed} color="text-white" small />
-                            <MiniStat label="Won"    value={stats.matchesWon}    color="text-green-400" small />
-                            {stats.pointsContributed > 0 && (
-                                <MiniStat label="Pts" value={stats.pointsContributed} color="text-primary" small />
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
         </div>
     );
 };
@@ -628,13 +508,6 @@ const StatField = ({ label, value }: { label: string; value: string }) => (
         <div className="bg-white/5 border border-white/10 rounded-full px-5 py-2.5 text-white font-medium">
             {value}
         </div>
-    </div>
-);
-
-const MiniStat = ({ label, value, color, small }: { label: string; value: string | number; color: string; small?: boolean }) => (
-    <div className={`flex flex-col items-center bg-white/5 border border-white/10 rounded-xl px-4 ${small ? 'py-2' : 'py-3'}`}>
-        <span className={`${small ? 'text-lg' : 'text-2xl'} font-bold font-oswald ${color}`}>{value}</span>
-        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">{label}</span>
     </div>
 );
 

@@ -7,6 +7,7 @@ import SignUpPage from './pages/auth/SignUpPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import PlayerHomePage from './pages/PlayerHomePage';
 import PlayerProfilePage from './pages/PlayerProfilePage';
+import PublicPlayerProfilePage from './pages/PublicPlayerProfilePage';
 import PlayerTournamentDetailPage from './pages/PlayerTournamentDetailPage';
 import OrganizerHomePage from './pages/organizer/OrganizerHomePage';
 import CreateTournamentPage from './pages/organizer/CreateTournamentPage';
@@ -56,6 +57,9 @@ function App() {
 
                     {/* Public Live Scoreboard (Broadcast Screen) */}
                     <Route path="/live/:matchId" element={<LiveScoreboardPage />} />
+
+                    {/* Public Player Profile (anyone can view a player's sports + stats) */}
+                    <Route path="/players/:id" element={<PublicPlayerProfilePage />} />
 
                     {/* Protected Player Routes */}
                     <Route element={<ProtectedRoute allowedRoles={['player']} />}>

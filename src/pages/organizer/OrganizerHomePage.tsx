@@ -460,6 +460,7 @@ const OrganizerHomePage = () => {
     const navigate = useNavigate();
     const dispatch = useAppDispatch();
     const { user } = useAppSelector(s => s.auth);
+    const isStaff = user?.role === 'staff';
     const { myTournaments, isLoading, error } = useAppSelector(s => s.tournament);
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
@@ -496,6 +497,7 @@ const OrganizerHomePage = () => {
                         </Link>
 
                         <div className="flex items-center gap-4">
+                            {!isStaff && (
                             <motion.button
                                 whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                                 onClick={() => navigate('/organizer/tournament/create')}
@@ -504,6 +506,7 @@ const OrganizerHomePage = () => {
                                 <PlusCircle className="h-3.5 w-3.5" />
                                 CREATE TOURNAMENT
                             </motion.button>
+                            )}
 
                             <Link to="/organizer/profile" className="flex items-center gap-3 group cursor-pointer">
                                 <span className="hidden sm:block text-sm text-zinc-300 font-medium tracking-wide group-hover:text-white transition-colors">
@@ -662,7 +665,14 @@ const OrganizerHomePage = () => {
 
                         {/* Empty global */}
                         {!isLoading && !error && myTournaments.length === 0 && (
-                            <EmptyState onCreateClick={() => navigate('/organizer/tournament/create')} />
+                            isStaff ? (
+                                <div className="flex flex-col items-center py-14 text-center gap-3">
+                                    <TrendingUp className="h-10 w-10 text-zinc-700" />
+                                    <p className="text-zinc-500 text-sm">No tournaments assigned to you yet.</p>
+                                </div>
+                            ) : (
+                                <EmptyState onCreateClick={() => navigate('/organizer/tournament/create')} />
+                            )
                         )}
 
                         {/* Empty filtered */}
@@ -690,7 +700,7 @@ const OrganizerHomePage = () => {
                         </AnimatePresence>
 
                         {/* Mobile CTA */}
-                        {!isLoading && (
+                        {!isLoading && !isStaff && (
                             <motion.div
                                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.4, delay: 0.7 }}

@@ -154,6 +154,8 @@ const TournamentDetailPage = () => {
     const dispatch = useAppDispatch();
     const { currentTournament, isLoading, error } = useAppSelector((state) => state.tournament);
     const { categories } = useAppSelector((state) => state.registration);
+    const { user } = useAppSelector((state) => state.auth);
+    const isStaff = user?.role === 'staff';
 
     const [activeGroup, setActiveGroup] = useState<GroupKey>('dashboard');
     const [activeSection, setActiveSection] = useState<SectionKey>('overview');
@@ -273,10 +275,17 @@ const TournamentDetailPage = () => {
     const tournamentStatus = currentTournament?.status || 'draft';
     const status = statusColors[tournamentStatus] || statusColors.draft;
 
-    const visibleGroups = NAV_GROUPS.filter(g => !g.condition || g.condition(tournamentStatus));
+    // Staff may edit an assigned tournament but not manage staff, delete it, or view payments.
+    const staffHiddenGroups: GroupKey[] = ['admin', 'danger'];
+    const staffHiddenSections: SectionKey[] = ['payments'];
+
+    const visibleGroups = NAV_GROUPS
+        .filter(g => !g.condition || g.condition(tournamentStatus))
+        .filter(g => !isStaff || !staffHiddenGroups.includes(g.key));
     const activeGroupData = visibleGroups.find(g => g.key === activeGroup) || visibleGroups[0];
     const visibleItems = (activeGroupData?.items
         .filter(i => !i.condition || i.condition(tournamentStatus))
+        .filter(i => !isStaff || !staffHiddenSections.includes(i.key))
         .filter(item => {
             if (item.key !== 'team_league') return true;
             const plugin = currentTournament?.sport ? sportRegistry.get(currentTournament.sport) : undefined;
