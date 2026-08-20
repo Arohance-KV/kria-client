@@ -8,6 +8,7 @@ export interface Category {
     tournamentId: string;
     name: string;
     description?: string;
+    sport?: string;
     gender: 'male' | 'female' | 'mixed';
     ageGroup: {
         min?: number;

@@ -8,6 +8,7 @@ export interface Category {
     tournamentId: string;
     name: string;
     description?: string;
+    sport?: string;
     minAge?: number;
     maxAge?: number;
     gender: 'Male' | 'Female' | 'Mixed' | 'Any';
@@ -74,7 +75,7 @@ export interface TournamentHistoryEntry {
     profile?: { skillLevel?: string; age?: number; gender?: string };
     auctionData?: { basePrice?: number; soldPrice?: number; auctionedAt?: string };
     stats?: { matchesPlayed: number; matchesWon: number; pointsContributed: number };
-    tournament?: { _id: string; name: string; sport: string; startDate: string; endDate: string; status: string; venue?: { name: string; city: string } };
+    tournament?: { _id: string; name: string; sport: string; sports?: string[]; startDate: string; endDate: string; status: string; venue?: { name: string; city: string } };
     category?: { _id: string; name: string; gender: string };
     team?: { _id: string; name: string; primaryColor?: string };
     createdAt: string;

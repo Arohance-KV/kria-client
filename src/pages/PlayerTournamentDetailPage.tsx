@@ -229,8 +229,8 @@ const PlayerTournamentDetailPage = () => {
     const statusConfig = getStatusConfig(tournament.status);
 
     // Fallback rule: legacy single-sport tournaments only have `sport`.
-    const tournamentSports: string[] = (tournament as any).sports?.length
-        ? (tournament as any).sports
+    const tournamentSports: string[] = tournament.sports?.length
+        ? tournament.sports
         : [tournament.sport].filter(Boolean);
     // team_league is a badminton bracket type — resolve its plugin from the badminton
     // sport when the tournament hosts it, else fall back to the tournament's first sport.

@@ -65,7 +65,7 @@ export function TournamentCard({ tournament, onClick }: TournamentCardProps) {
                     {/* Sport badge */}
                     <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-white/70 capitalize">
-                            {((tournament as any).sports?.length ? (tournament as any).sports : [tournament.sport].filter(Boolean)).map((s: string) => s.replace('_', ' ')).join(', ')}
+                            {(tournament.sports?.length ? tournament.sports : [tournament.sport].filter(Boolean)).map((s: string) => s.replace('_', ' ')).join(', ')}
                         </span>
                     </div>
                 </div>

@@ -8,6 +8,7 @@ export interface Tournament {
     name: string;
     description?: string;
     sport: string;
+    sports?: string[];
     bannerImage?: string;
     startDate: string;
     endDate: string;

@@ -97,7 +97,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
         // Seed the column layout from the selected category's own sport (falling back to the
         // tournament-level sport) so a multi-sport tournament doesn't flash the wrong columns
         // while the leaderboard request for this category is still in flight.
-        const selectedCategory = categories.find(c => c._id === selectedCat) as any;
+        const selectedCategory = categories.find(c => c._id === selectedCat);
         setSportType(selectedCategory?.sport || sport);
         const fetchLeaderboard = async () => {
             setIsLoading(true);

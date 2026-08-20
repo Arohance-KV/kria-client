@@ -179,8 +179,8 @@ const TournamentDetailPage = () => {
 
     useEffect(() => {
         if (currentTournament) {
-            const initialSports = (currentTournament as any).sports?.length
-                ? (currentTournament as any).sports
+            const initialSports = currentTournament.sports?.length
+                ? currentTournament.sports
                 : [currentTournament.sport].filter(Boolean);
             setFormData({
                 name: currentTournament.name || '',
@@ -283,7 +283,7 @@ const TournamentDetailPage = () => {
     const status = statusColors[tournamentStatus] || statusColors.draft;
 
     const tournamentSports: string[] = currentTournament
-        ? ((currentTournament as any).sports?.length ? (currentTournament as any).sports : [currentTournament.sport].filter(Boolean))
+        ? (currentTournament.sports?.length ? currentTournament.sports : [currentTournament.sport].filter(Boolean))
         : [];
     // team_league is a badminton bracket type — resolve its plugin from the badminton
     // sport when the tournament hosts it, else fall back to the tournament's first sport.
@@ -504,8 +504,8 @@ const TournamentDetailPage = () => {
             case 'registrations': return currentTournament && id ? <RegistrationsSection tournamentId={id} /> : null;
             case 'payments': return currentTournament && id ? <PaymentsSection tournamentId={id} /> : null;
             case 'auction': return currentTournament && id ? <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: (c as any).sport }))} /> : null;
-            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: (c as any).sport }))} /> : null;
+            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: c.sport }))} /> : null;
+            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: c.sport }))} /> : null;
             case 'team_league': {
                 if (!currentTournament || !id) return null;
                 const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;

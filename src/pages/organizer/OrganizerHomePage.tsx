@@ -58,7 +58,7 @@ const getGreeting = () => {
 };
 
 const getTournamentSports = (t: Tournament): string[] => {
-    const sports = (t as any).sports;
+    const sports = t.sports;
     return sports?.length ? sports : [t.sport].filter(Boolean);
 };
 
