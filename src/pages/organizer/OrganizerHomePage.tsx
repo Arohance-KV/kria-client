@@ -57,9 +57,15 @@ const getGreeting = () => {
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 };
 
+const getTournamentSports = (t: Tournament): string[] => {
+    const sports = (t as any).sports;
+    return sports?.length ? sports : [t.sport].filter(Boolean);
+};
+
 const getSportBreakdown = (ts: Tournament[]) => {
     const counts: Record<string, number> = {};
-    ts.forEach(t => { counts[t.sport] = (counts[t.sport] ?? 0) + 1; });
+    // A tournament hosting multiple sports counts toward each of them.
+    ts.forEach(t => getTournamentSports(t).forEach(s => { counts[s] = (counts[s] ?? 0) + 1; }));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
 };
 
@@ -155,7 +161,10 @@ const FilterTabs = ({ active, onChange }: { active: FilterType; onChange: (f: Fi
 
 const TournamentCard = ({ tournament, index }: { tournament: Tournament; index: number }) => {
     const status = STATUS_CONFIG[tournament.status] ?? STATUS_CONFIG.draft;
-    const sport = SPORT_CONFIG[tournament.sport] ?? { label: tournament.sport, color: '#F97316' };
+    const tournamentSports = getTournamentSports(tournament);
+    const sportConfigs = tournamentSports.map(s => SPORT_CONFIG[s] ?? { label: s, color: '#F97316' });
+    // Primary sport drives the accent bar/icon color; all sports get their own label pill below.
+    const sport = sportConfigs[0] ?? { label: tournament.sport, color: '#F97316' };
 
     return (
         <motion.div
@@ -187,10 +196,12 @@ const TournamentCard = ({ tournament, index }: { tournament: Tournament; index: 
                             {tournament.name}
                         </h3>
                         <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                                style={{ background: `${sport.color}15`, color: sport.color }}>
-                                {sport.label}
-                            </span>
+                            {sportConfigs.map((cfg, i) => (
+                                <span key={tournamentSports[i]} className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                                    style={{ background: `${cfg.color}15`, color: cfg.color }}>
+                                    {cfg.label}
+                                </span>
+                            ))}
                             {tournament.venue?.city && (
                                 <>
                                     <span className="text-zinc-600 text-xs">•</span>
@@ -284,7 +295,10 @@ const NextEventCard = ({
     const featured = upcoming[0] ?? active[0] ?? null;
     if (!featured) return null;
 
-    const sport = SPORT_CONFIG[featured.sport] ?? { label: featured.sport, color: '#F97316' };
+    const featuredSports = getTournamentSports(featured);
+    const featuredSportConfigs = featuredSports.map(s => SPORT_CONFIG[s] ?? { label: s, color: '#F97316' });
+    // Primary sport drives the accent color; all sports get their own label pill below.
+    const sport = featuredSportConfigs[0] ?? { label: featured.sport, color: '#F97316' };
     const status = STATUS_CONFIG[featured.status] ?? STATUS_CONFIG.draft;
     const isUpcoming = !!(upcoming[0]);
 
@@ -311,11 +325,15 @@ const NextEventCard = ({
                         <ArrowUpRight className="h-4 w-4 text-zinc-600 group-hover:text-white group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all duration-200" />
                     </div>
 
-                    {/* Sport badge */}
-                    <span className="self-start px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                        style={{ background: `${sport.color}18`, color: sport.color }}>
-                        {sport.label}
-                    </span>
+                    {/* Sport badge(s) */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {featuredSportConfigs.map((cfg, i) => (
+                            <span key={featuredSports[i]} className="self-start px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                                style={{ background: `${cfg.color}18`, color: cfg.color }}>
+                                {cfg.label}
+                            </span>
+                        ))}
+                    </div>
 
                     {/* Name */}
                     <h4 className="font-oswald font-bold text-white text-lg leading-tight">
