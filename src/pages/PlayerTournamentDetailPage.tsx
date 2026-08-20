@@ -228,6 +228,14 @@ const PlayerTournamentDetailPage = () => {
     };
     const statusConfig = getStatusConfig(tournament.status);
 
+    // Fallback rule: legacy single-sport tournaments only have `sport`.
+    const tournamentSports: string[] = (tournament as any).sports?.length
+        ? (tournament as any).sports
+        : [tournament.sport].filter(Boolean);
+    // team_league is a badminton bracket type — resolve its plugin from the badminton
+    // sport when the tournament hosts it, else fall back to the tournament's first sport.
+    const teamLeagueSportKey = tournamentSports.find(s => s === 'badminton') || tournamentSports[0];
+
     return (
         <SmoothScroll>
             <div className="min-h-screen bg-[#111] text-white font-montserrat flex flex-col items-center">
@@ -253,7 +261,7 @@ const PlayerTournamentDetailPage = () => {
                                             {statusConfig.label}
                                         </Badge>
                                         <Badge variant="secondary" className="bg-white/10 text-white backdrop-blur-md border border-white/10 uppercase tracking-wider text-[10px] font-bold">
-                                            {tournament.sport}
+                                            {tournamentSports.join(', ')}
                                         </Badge>
                                         <Badge variant="secondary" className="bg-white/10 text-white backdrop-blur-md border border-white/10 uppercase tracking-wider text-[10px] font-bold flex items-center gap-1.5">
                                             <MapPin className="h-3 w-3 text-primary" /> {tournament.venue?.city || 'TBD'}
@@ -283,7 +291,7 @@ const PlayerTournamentDetailPage = () => {
                                 {TABS
                                     .filter(tab => {
                                         if (tab === 'team_league') {
-                                            const plugin = tournament?.sport ? sportRegistry.get(tournament.sport) : undefined;
+                                            const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;
                                             const pluginTab = plugin?.playerTournamentTabs?.find(t => t.key === 'team_league');
                                             return pluginTab ? pluginTab.visible(categories) : false;
                                         }
@@ -312,7 +320,10 @@ const PlayerTournamentDetailPage = () => {
                                     myTeamAssignment={myTeamAssignment}
                                     isTeamDataReady={isTeamDataReady}
                                     tournamentId={tournament._id}
-                                    sport={tournament.sport}
+                                    // LiveNowBanner gates its cricket fetch on sport === 'cricket'; make sure a
+                                    // multi-sport tournament that hosts cricket still shows live cricket matches
+                                    // even when cricket isn't the tournament's first/primary sport.
+                                    sport={tournamentSports.includes('cricket') ? 'cricket' : tournamentSports[0]}
                                 />
                             )}
                             {activeTab === 'categories' && (
@@ -354,8 +365,8 @@ const PlayerTournamentDetailPage = () => {
                                     tournamentId={id}
                                 />
                             )}
-                            {activeTab === 'team_league' && id && tournament?.sport && (() => {
-                                const plugin = sportRegistry.get(tournament.sport);
+                            {activeTab === 'team_league' && id && teamLeagueSportKey && (() => {
+                                const plugin = sportRegistry.get(teamLeagueSportKey);
                                 const pluginTab = plugin?.playerTournamentTabs?.find(t => t.key === 'team_league');
                                 if (!pluginTab) return null;
                                 const TabComponent = pluginTab.component;
@@ -365,7 +376,7 @@ const PlayerTournamentDetailPage = () => {
                                 <LeaderboardTab
                                     categories={categories}
                                     tournamentId={id}
-                                    sport={tournament.sport}
+                                    sport={tournamentSports[0]}
                                 />
                             )}
                             {activeTab === 'awards' && tournament && (

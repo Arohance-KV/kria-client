@@ -94,6 +94,11 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
 
     useEffect(() => {
         if (!selectedCat) return;
+        // Seed the column layout from the selected category's own sport (falling back to the
+        // tournament-level sport) so a multi-sport tournament doesn't flash the wrong columns
+        // while the leaderboard request for this category is still in flight.
+        const selectedCategory = categories.find(c => c._id === selectedCat) as any;
+        setSportType(selectedCategory?.sport || sport);
         const fetchLeaderboard = async () => {
             setIsLoading(true);
             try {
@@ -103,7 +108,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                 setSlots(nextSlots);
                 setLeaderboard(payload.leaderboard || []);
                 setSelectedSlot(nextSlots.length ? nextSlots[0].slotNumber : null);
-                setSportType(payload.sportType || sport);
+                setSportType(payload.sportType || selectedCategory?.sport || sport);
             } catch {
                 setSlots([]);
                 setLeaderboard([]);
@@ -113,7 +118,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
             }
         };
         fetchLeaderboard();
-    }, [selectedCat, sport]);
+    }, [selectedCat, sport, categories]);
 
     const columns = getColumns(sportType);
     const activeSlot = slots.find(s => s.slotNumber === selectedSlot);
