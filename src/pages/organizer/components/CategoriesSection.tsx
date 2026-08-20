@@ -24,10 +24,10 @@ const statusColors: Record<string, { bg: string; text: string; border: string; l
 
 interface Props {
     tournamentId: string;
-    sport: string;
+    sports: string[];
 }
 
-export default function CategoriesSection({ tournamentId, sport }: Props) {
+export default function CategoriesSection({ tournamentId, sports }: Props) {
     const dispatch = useAppDispatch();
     const { categories, isLoading } = useAppSelector(state => state.category);
 
@@ -35,8 +35,16 @@ export default function CategoriesSection({ tournamentId, sport }: Props) {
     const [editingCategory, setEditingCategory] = useState<any | null>(null);
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [analyticsCategory, setAnalyticsCategory] = useState<any>(null);
+    const [selectedSport, setSelectedSport] = useState(sports[0]);
 
-    const plugin = sportRegistry.get(sport);
+    // Keep selectedSport valid if the tournament's sport list changes.
+    useEffect(() => {
+        if (sports.length > 0 && !sports.includes(selectedSport)) {
+            setSelectedSport(sports[0]);
+        }
+    }, [sports, selectedSport]);
+
+    const plugin = sportRegistry.get(selectedSport);
     const CategoryForm = plugin?.categoryForm;
 
     useEffect(() => {
@@ -67,18 +75,41 @@ export default function CategoriesSection({ tournamentId, sport }: Props) {
                     </button>
                 )}
                 {!showForm && !CategoryForm && (
-                    <span className="text-xs text-gray-500">Category creation for "{sport}" is not available.</span>
+                    <span className="text-xs text-gray-500">Category creation for "{selectedSport}" is not available.</span>
                 )}
             </div>
 
-            {showForm && CategoryForm && (
-                <CategoryForm
-                    tournamentId={tournamentId}
-                    category={editingCategory}
-                    onSuccess={onFormSuccess}
-                    onCancel={closeForm}
-                />
-            )}
+            {showForm && (() => {
+                // Editing an existing category uses that category's own sport plugin;
+                // creating a new one uses the sport picked below (selectedSport).
+                const ActiveCategoryForm = editingCategory
+                    ? sportRegistry.get(editingCategory.sport)?.categoryForm
+                    : CategoryForm;
+                if (!ActiveCategoryForm) return null;
+                return (
+                    <div className="flex flex-col gap-4">
+                        {sports.length > 1 && !editingCategory && (
+                            <select
+                                className="flex h-10 rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white capitalize w-fit"
+                                value={selectedSport}
+                                onChange={(e) => setSelectedSport(e.target.value)}
+                            >
+                                {sports.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                            </select>
+                        )}
+                        <ActiveCategoryForm
+                            tournamentId={tournamentId}
+                            category={editingCategory}
+                            onSuccess={onFormSuccess}
+                            onCancel={closeForm}
+                            // ponytail: sport-specific forms (e.g. BadmintonCategoryForm) don't yet read
+                            // this prop into their create payload — wiring that up is a follow-up that
+                            // touches CategoryFormProps / each sport's form, outside this task's scope.
+                            {...({ sport: editingCategory ? editingCategory.sport : selectedSport } as any)}
+                        />
+                    </div>
+                );
+            })()}
 
             {isLoading && categories.length === 0 ? (
                 <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -136,7 +167,7 @@ export default function CategoriesSection({ tournamentId, sport }: Props) {
                                         {(category.status === 'completed' || (category.status === 'groups_configured' && category.bracketType === 'team_league')) && <button onClick={() => openAnalytics(category)} className="p-2 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 rounded flex items-center gap-1.5" title="Analytics & Awards"><Trophy className="h-4 w-4" /> <span className="text-xs font-semibold uppercase pr-1">Awards</span></button>}
                                     </div>
                                     <div className="flex gap-2">
-                                        {CategoryForm && <button onClick={() => { setEditingCategory(category); setIsCreating(false); }} className="p-2 text-primary hover:text-white hover:bg-primary/20 rounded transition-colors"><Edit2 className="h-4 w-4" /></button>}
+                                        {sportRegistry.get(category.sport)?.categoryForm && <button onClick={() => { setEditingCategory(category); setIsCreating(false); }} className="p-2 text-primary hover:text-white hover:bg-primary/20 rounded transition-colors"><Edit2 className="h-4 w-4" /></button>}
                                         <button onClick={() => handleDelete(category._id)} className="p-2 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"><Trash2 className="h-4 w-4" /></button>
                                     </div>
                                 </div>

@@ -275,6 +275,10 @@ const TournamentDetailPage = () => {
     const tournamentStatus = currentTournament?.status || 'draft';
     const status = statusColors[tournamentStatus] || statusColors.draft;
 
+    const tournamentSports: string[] = currentTournament
+        ? ((currentTournament as any).sports?.length ? (currentTournament as any).sports : [currentTournament.sport].filter(Boolean))
+        : [];
+
     // Staff may edit an assigned tournament but not manage staff, delete it, or view payments.
     const staffHiddenGroups: GroupKey[] = ['admin', 'danger'];
     const staffHiddenSections: SectionKey[] = ['payments'];
@@ -457,7 +461,7 @@ const TournamentDetailPage = () => {
                         {/* Tournament name at bottom of panel */}
                         <div className="px-4 py-4 border-t border-white/5">
                             <p className="text-[10px] text-gray-600 font-medium truncate">{currentTournament?.name}</p>
-                            <p className="text-[10px] text-gray-700 capitalize mt-0.5">{currentTournament?.sport?.replace('_', ' ')}</p>
+                            <p className="text-[10px] text-gray-700 capitalize mt-0.5">{tournamentSports.map((s) => s.replace('_', ' ')).join(', ')}</p>
                         </div>
                     </div>
                 </div>
@@ -485,13 +489,13 @@ const TournamentDetailPage = () => {
             case 'schedule': return <ScheduleSection />;
             case 'location': return <LocationSection />;
             case 'settings': return <SettingsSection />;
-            case 'categories': return currentTournament && id ? <CategoriesSection tournamentId={id} sport={currentTournament.sport} /> : null;
+            case 'categories': return currentTournament && id ? <CategoriesSection tournamentId={id} sports={tournamentSports} /> : null;
             case 'teams': return currentTournament && id ? <TeamsSection tournamentId={id} defaultBudget={currentTournament.settings?.defaultBudget || 100000} /> : null;
             case 'registrations': return currentTournament && id ? <RegistrationsSection tournamentId={id} /> : null;
             case 'payments': return currentTournament && id ? <PaymentsSection tournamentId={id} /> : null;
             case 'auction': return currentTournament && id ? <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sport={currentTournament.sport} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType }))} /> : null;
-            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sport={currentTournament.sport} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
+            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: (c as any).sport }))} /> : null;
+            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: (c as any).sport }))} /> : null;
             case 'team_league': {
                 if (!currentTournament || !id) return null;
                 const plugin = sportRegistry.get(currentTournament.sport);
@@ -515,7 +519,7 @@ const TournamentDetailPage = () => {
             <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
                     <h2 className="text-2xl md:text-3xl font-oswald font-bold tracking-wide text-white">{currentTournament?.name}</h2>
-                    <p className="text-gray-500 mt-1 text-sm capitalize">{currentTournament?.sport?.replace('_', ' ')} · {currentTournament?.venue?.city}</p>
+                    <p className="text-gray-500 mt-1 text-sm capitalize">{tournamentSports.map((s) => s.replace('_', ' ')).join(', ')} · {currentTournament?.venue?.city}</p>
                 </div>
 
                 {/* Stats */}
@@ -613,6 +617,7 @@ const TournamentDetailPage = () => {
                         <div className="space-y-1.5">
                             <Label className="text-gray-500 text-xs uppercase tracking-wider">Sport</Label>
                             {isEditing ? (
+                                /* ponytail: single-sport edit only; full sports editing is a follow-up */
                                 <select name="sport" className="flex h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white appearance-none" value={formData.sport} onChange={handleInputChange}>
                                     <option value="badminton">Badminton</option>
                                     <option value="cricket">Cricket</option>

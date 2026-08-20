@@ -3,7 +3,7 @@ import { Loader2, Trophy, Swords, CheckCircle2 } from 'lucide-react';
 import API from '../../../api/axios';
 import { sportRegistry } from '@/sports/registry';
 
-interface CategoryInfo { _id: string; name: string; status: string }
+interface CategoryInfo { _id: string; name: string; status: string; sport?: string }
 
 interface Match {
     _id: string;
@@ -25,7 +25,7 @@ interface Match {
 
 interface Props {
     tournamentId: string;
-    sport: string;
+    sports: string[];
     categories: CategoryInfo[];
 }
 
@@ -44,7 +44,7 @@ function getC2(match: Match) {
     return { id: match.teams.team2Id, name: match.teams.team2Name, teamName: '', isTBD: match.teams.team2Name === 'TBD' };
 }
 
-const MatchManagementSection: React.FC<Props> = ({ tournamentId, sport, categories }) => {
+const MatchManagementSection: React.FC<Props> = ({ tournamentId, sports, categories }) => {
     const [selectedCat, setSelectedCat] = useState<string>('');
     const [matches, setMatches] = useState<Match[]>([]);
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
@@ -52,8 +52,6 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, sport, categori
     const [isLoading, setIsLoading] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const ResultSection = sportRegistry.get(sport)?.matchResultSection;
 
     const eligibleCategories = categories.filter(c =>
         ['auction', 'bracket_configured', 'ongoing', 'completed'].includes(c.status)
@@ -106,6 +104,9 @@ const MatchManagementSection: React.FC<Props> = ({ tournamentId, sport, categori
     const hasBracket = matches.length > 0;
     const hasScoringStarted = matches.some(m => m.status === 'completed');
     const canGenerate = selectedCategory && selectedCategory.status === 'auction' && !hasScoringStarted;
+    // Use the selected category's own sport for its plugin; fall back to the
+    // tournament's first sport only when no category is selected (empty state).
+    const ResultSection = sportRegistry.get(selectedCategory?.sport || sports[0])?.matchResultSection;
 
     return (
         <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">

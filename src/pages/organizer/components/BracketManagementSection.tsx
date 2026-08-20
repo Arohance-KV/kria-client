@@ -11,7 +11,7 @@ import TeamLeagueBracketView from '@/sports/badminton/pages/organizer/teamLeague
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string }
+interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string; sport?: string }
 
 interface Match {
     _id: string;
@@ -33,7 +33,7 @@ interface Match {
 
 interface Props {
     tournamentId: string;
-    sport: string;
+    sports: string[];
     categories: CategoryInfo[];
 }
 
@@ -93,8 +93,7 @@ function computeCardPositions(visible: { name: string; matches: Match[] }[]): nu
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const BracketManagementSection: React.FC<Props> = ({ tournamentId, sport, categories }) => {
-    const ResultSection = sportRegistry.get(sport)?.matchResultSection;
+const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categories }) => {
     const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
     const [matches, setMatches] = useState<Match[]>([]);
     const [rounds, setRounds] = useState<Record<string, Match[]>>({});
@@ -114,6 +113,9 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sport, catego
     const eligibleCategories = categories.filter(c => !['draft'].includes(c.status));
     const selectedCategory = categories.find(c => c._id === selectedCat);
     const isTeamLeague = selectedCategory?.bracketType === 'team_league';
+    // Use the selected category's own sport for its plugin; fall back to the
+    // tournament's first sport only when no category is selected (empty state).
+    const ResultSection = sportRegistry.get(selectedCategory?.sport || sports[0])?.matchResultSection;
     const canGenerate = !isTeamLeague && !hasBracket && eligibleCategories.some(c => c._id === selectedCat);
 
     const fetchMatches = useCallback(async () => {
