@@ -19,6 +19,7 @@ function currentGame(gameScores: any[]) {
 export default function BadmintonScoringConsole({ match: initial, onClose, onSaved, setError }: Props) {
     const [match, setMatch] = useState<any>(initial);
     const [busy, setBusy] = useState(false);
+    const [starting, setStarting] = useState(false);
 
     const team1Id = match.player1?.teamId || match.teams?.team1Id;
     const team2Id = match.player2?.teamId || match.teams?.team2Id;
@@ -36,10 +37,13 @@ export default function BadmintonScoringConsole({ match: initial, onClose, onSav
         if (match.status !== 'in_progress' && match.status !== 'completed') {
             (async () => {
                 try {
+                    setStarting(true);
                     const updated = await teamLeagueApi.startLiveScoring(match._id);
                     setMatch(updated);
                 } catch (e: any) {
                     setError(e.response?.data?.message || 'Failed to start live scoring');
+                } finally {
+                    setStarting(false);
                 }
             })();
         }
@@ -47,7 +51,7 @@ export default function BadmintonScoringConsole({ match: initial, onClose, onSav
     }, []);
 
     const point = async (team: 1 | 2, delta: 1 | -1) => {
-        if (busy || completed) return;
+        if (busy || completed || starting) return;
         setBusy(true);
         setError(null);
         try {
@@ -85,14 +89,14 @@ export default function BadmintonScoringConsole({ match: initial, onClose, onSav
                             <div className="text-5xl font-extrabold text-white tabular-nums">{side.score}</div>
                             <button
                                 onClick={() => point(side.n, 1)}
-                                disabled={busy || completed}
+                                disabled={busy || completed || starting}
                                 className="flex items-center gap-1 px-5 py-3 rounded-full bg-primary text-white font-bold hover:bg-primary/90 disabled:opacity-50"
                             >
                                 <Plus className="h-4 w-4" /> Point
                             </button>
                             <button
                                 onClick={() => point(side.n, -1)}
-                                disabled={busy || completed}
+                                disabled={busy || completed || starting}
                                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-white disabled:opacity-40"
                             >
                                 <Undo2 className="h-3 w-3" /> Undo
