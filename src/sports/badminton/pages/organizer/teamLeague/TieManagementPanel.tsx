@@ -3,6 +3,7 @@ import { Loader2, Plus, Trash2, ChevronDown, ChevronRight, Swords, Users, Eye, A
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 import LineupAssignmentModal from './LineupAssignmentModal';
 import SubMatchResultModal from './SubMatchResultModal';
+import BadmintonScoringConsole from './BadmintonScoringConsole';
 
 interface Team { _id: string; name: string }
 interface Group { _id: string; groupName: string; groupNumber: number; teamIds: string[] }
@@ -33,6 +34,9 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
 
     // Sub-match result modal
     const [resultModal, setResultModal] = useState<any>(null);
+
+    // Live scoring console
+    const [liveConsole, setLiveConsole] = useState<any>(null);
 
     const getTeamName = (teamId: string) => teams.find(t => t._id === teamId)?.name || teamId;
 
@@ -221,12 +225,21 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
                                                     Done
                                                 </span>
                                             ) : (
-                                                <button
-                                                    onClick={() => setResultModal(sm)}
-                                                    className="px-3 py-1 text-xs bg-primary/20 text-primary hover:bg-primary/30 rounded-full font-medium"
-                                                >
-                                                    Record Result
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setLiveConsole(sm)}
+                                                        className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-red-500/15 text-red-400 text-xs font-medium hover:bg-red-500/25"
+                                                    >
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                                        {sm.status === 'in_progress' ? 'Continue live' : 'Score live'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setResultModal(sm)}
+                                                        className="px-3 py-1.5 rounded-full border border-white/10 text-gray-300 text-xs hover:bg-white/10"
+                                                    >
+                                                        Enter final result
+                                                    </button>
+                                                </div>
                                             )}
                                             {sm.winnerId && (
                                                 <span className="text-xs text-emerald-400">
@@ -259,6 +272,16 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
                     <SubMatchResultModal
                         match={resultModal}
                         onClose={() => setResultModal(null)}
+                        onSaved={refreshTieDetail}
+                        setError={setError}
+                    />
+                )}
+
+                {/* Live scoring console */}
+                {liveConsole && (
+                    <BadmintonScoringConsole
+                        match={liveConsole}
+                        onClose={() => setLiveConsole(null)}
                         onSaved={refreshTieDetail}
                         setError={setError}
                     />
