@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
     fetchRegistrationsByTournament,
+    fetchTournamentCategories,
     approveRegistration,
     rejectRegistration,
     manualAssignPlayer
@@ -28,6 +29,7 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
 
     useEffect(() => {
         dispatch(fetchRegistrationsByTournament({ tournamentId }));
+        dispatch(fetchTournamentCategories(tournamentId));
         dispatch(fetchTournamentTeams(tournamentId));
     }, [dispatch, tournamentId]);
 
