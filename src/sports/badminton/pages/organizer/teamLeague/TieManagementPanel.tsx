@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Plus, Trash2, ChevronDown, ChevronRight, Swords, Users, Eye, ArrowLeft } from 'lucide-react';
+import { Loader2, Plus, Trash2, ChevronDown, ChevronRight, Swords, Users, Eye, ArrowLeft, Shuffle } from 'lucide-react';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 import LineupAssignmentModal from './LineupAssignmentModal';
 import SubMatchResultModal from './SubMatchResultModal';
@@ -22,6 +22,7 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
     const [ties, setTies] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [randomizing, setRandomizing] = useState(false);
     const [newTie, setNewTie] = useState({ team1Id: '', team2Id: '' });
 
     // Tie detail view
@@ -82,6 +83,22 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
             setError(e.response?.data?.message || 'Failed to create tie');
         } finally {
             setCreating(false);
+        }
+    };
+
+    const handleRandomizeTies = async () => {
+        if (!selectedGroupId) return;
+        if (ties.length > 0 && !confirm('This group already has ties. Delete them first, then randomize. Cannot generate over existing ties.')) return;
+        setRandomizing(true);
+        setError(null);
+        try {
+            await teamLeagueApi.generateGroupTies(selectedGroupId, categoryId);
+            refreshTies();
+            onRefresh();
+        } catch (e: any) {
+            setError(e.response?.data?.message || 'Failed to generate ties');
+        } finally {
+            setRandomizing(false);
         }
     };
 
@@ -340,6 +357,19 @@ export default function TieManagementPanel({ categoryId, groups, teams, category
                     {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                     Create Tie
                 </button>
+
+                <div className="ml-auto flex items-center gap-2">
+                    <span className="hidden sm:inline text-xs text-gray-500">{groupTeams.length} teams · {groupTeams.length > 1 ? (groupTeams.length * (groupTeams.length - 1)) / 2 : 0} ties</span>
+                    <button
+                        onClick={handleRandomizeTies}
+                        disabled={randomizing || groupTeams.length < 2 || ties.length > 0}
+                        title={ties.length > 0 ? 'Delete existing ties to randomize' : 'Auto-create a shuffled round-robin (every team plays each other once)'}
+                        className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-full text-sm font-medium hover:bg-white/20 disabled:opacity-40"
+                    >
+                        {randomizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
+                        Randomize (Round-Robin)
+                    </button>
+                </div>
             </div>
 
             {/* Ties list */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
     ArrowLeft, Save, Trash2, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon,
     Loader2, AlertCircle, CheckCircle, Play, XCircle, DoorOpen, Lock, Gavel,
@@ -157,8 +157,13 @@ const TournamentDetailPage = () => {
     const { user } = useAppSelector((state) => state.auth);
     const isStaff = user?.role === 'staff';
 
-    const [activeGroup, setActiveGroup] = useState<GroupKey>('dashboard');
-    const [activeSection, setActiveSection] = useState<SectionKey>('overview');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialSection = (searchParams.get('section') as SectionKey) || 'overview';
+    const groupForSection = (s: SectionKey): GroupKey =>
+        NAV_GROUPS.find(g => g.items.some(i => i.key === s))?.key ?? 'dashboard';
+
+    const [activeGroup, setActiveGroup] = useState<GroupKey>(groupForSection(initialSection));
+    const [activeSection, setActiveSection] = useState<SectionKey>(initialSection);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -176,6 +181,15 @@ const TournamentDetailPage = () => {
         }
         return () => { dispatch(clearCurrentTournament()); };
     }, [id, dispatch]);
+
+    // Keep the active section in the URL so a refresh restores the same tab.
+    useEffect(() => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('section', activeSection);
+            return next;
+        }, { replace: true });
+    }, [activeSection]);
 
     useEffect(() => {
         if (currentTournament) {

@@ -375,7 +375,7 @@ const AuctionDisplay: React.FC = () => {
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
                 {/* ── LEFT PANEL: TEAMS ───────────────────────────────────── */}
-                <div id="teams-panel" style={{
+                <div id="teams-panel" data-lenis-prevent style={{
                     width: '21%',
                     background: '#121212',
                     borderRight: '1px solid rgba(255,255,255,0.06)',

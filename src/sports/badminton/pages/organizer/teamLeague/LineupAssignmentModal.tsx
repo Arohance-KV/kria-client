@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Loader2, Save, X, Users, Search, ChevronDown } from 'lucide-react';
+import { Loader2, Save, X, Users, Search, ChevronDown, Shuffle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 import API from '@/api/axios';
@@ -225,6 +225,32 @@ export default function LineupAssignmentModal({ tieId, teamId, teamName, categor
         }));
     };
 
+    // Fill every slot with distinct random players from the roster.
+    const handleRandomize = () => {
+        const needed = subTeamSlots.reduce((n: number, s: any) => n + (s.matchType === 'singles' ? 1 : 2), 0);
+        if (roster.length < needed) {
+            setError(`Need ${needed} players to fill the lineup, roster has ${roster.length}.`);
+            return;
+        }
+        setError(null);
+        const pool = [...roster];
+        for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        let k = 0;
+        setAssignments(subTeamSlots.map((s: any) => {
+            const count = s.matchType === 'singles' ? 1 : 2;
+            const picks = pool.slice(k, k + count);
+            k += count;
+            return {
+                slotNumber: s.slotNumber,
+                playerIds: picks.map(p => p.playerId || p._id),
+                playerNames: picks.map(p => p.fullName),
+            };
+        }));
+    };
+
     // All playerIds selected in this lineup (for exclusion in pickers)
     const allSelectedIds = assignments.flatMap(a => a.playerIds.filter(Boolean));
 
@@ -274,6 +300,12 @@ export default function LineupAssignmentModal({ tieId, teamId, teamName, categor
                             <div className="flex items-center gap-2 p-2.5 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-400">
                                 <Users className="h-3.5 w-3.5 text-primary shrink-0" />
                                 {roster.length} player{roster.length !== 1 ? 's' : ''} in roster
+                                <button
+                                    onClick={handleRandomize}
+                                    className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 text-primary hover:bg-primary/25 font-medium"
+                                >
+                                    <Shuffle className="h-3.5 w-3.5" /> Randomize
+                                </button>
                             </div>
                         )}
 

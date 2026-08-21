@@ -31,6 +31,11 @@ export const teamLeagueApi = {
         return extract(res);
     },
 
+    generateGroupTies: async (groupId: string, categoryId: string) => {
+        const res = await API.post(`/sports/badminton/team-league/groups/${groupId}/ties/generate`, { categoryId });
+        return extract(res);
+    },
+
     deleteTie: async (tieId: string) => {
         const res = await API.delete(`/sports/badminton/team-league/ties/${tieId}`);
         return extract(res);

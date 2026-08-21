@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import SpinTheWheel from '../../../components/SpinTheWheel';
 import { socket } from '../../../lib/socket';
+import { getAppLenis } from '@/context/LenisContext';
 
 // ============================================================================
 // CONFETTI
@@ -63,6 +64,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     const [showSpinWheel, setShowSpinWheel] = useState(false);
     const [soldLog, setSoldLog] = useState<any[]>([]);
     const prevStatusRef = useRef<string | null>(null);
+    const sectionRef = useRef<HTMLElement>(null);
 
     // Start auction settings
     const [showStartSettings, setShowStartSettings] = useState(false);
@@ -134,6 +136,18 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
             .then((data: any) => setSoldLog(data.logs || []))
             .catch(() => setSoldLog([]));
     }, [selectedCategoryId, tournamentId, auctionState?.auction?.logsCount]);
+
+    // On sale, the tall bidding grid collapses to a short celebration; without this
+    // the (Lenis) scroll clamps to the new bottom, dumping the organizer at page end.
+    // Bring the auction panel back into view instead.
+    useEffect(() => {
+        if (auctionState?.auction?.status !== 'sold') return;
+        const el = sectionRef.current;
+        if (!el) return;
+        const lenis = getAppLenis();
+        if (lenis) lenis.scrollTo(el, { offset: -20 });
+        else el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [auctionState?.auction?.status]);
 
     // ========================================================================
     // ACTIONS
@@ -280,7 +294,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     const hasTiedTeams = (liveBid?.tiedTeams?.length || 0) >= 2;
 
     return (
-        <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
+        <section ref={sectionRef} className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
             <ConfettiOverlay show={showConfetti} />
 
             {/* Header */}
