@@ -288,8 +288,6 @@ export default function CricketLiveScoreboard({ matchId }: { matchId: string }) 
     const completed = live?.matchStatus === 'completed' || match.status === 'completed';
     const team1 = { id: String(match?.teams?.team1Id), name: match?.teams?.team1Name || 'Team 1' };
     const team2 = { id: String(match?.teams?.team2Id), name: match?.teams?.team2Name || 'Team 2' };
-    const winnerName = String(match?.winnerId) === team1.id ? team1.name
-        : String(match?.winnerId) === team2.id ? team2.name : null;
     const currentInnings = (live?.currentInnings ?? 1) as 1 | 2;
     const currentInningsCard = currentInnings === 1 ? scorecard?.innings1 : scorecard?.innings2;
     const otherInningsCard = currentInnings === 1 ? scorecard?.innings2 : scorecard?.innings1;
@@ -357,31 +355,22 @@ export default function CricketLiveScoreboard({ matchId }: { matchId: string }) 
                         brands={brands}
                     />
 
+                    {/* Match summary — replaces the live-only cards once the game is over */}
+                    {completed && <MatchSummarySlide match={match} scorecard={scorecard} brands={brands} />}
+
                     {/* ── Two-column layout ── */}
                     {/*   mobile: sidebar (order-1) first → live data visible above fold   */}
                     {/*   desktop: scorecards left, sidebar right (sticky)                 */}
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_460px] gap-4 items-start">
 
                         {/* ── RIGHT sidebar (shown first on mobile) ── */}
+                        {/* Live-only cards (at the crease / current partnership / run rates)
+                            are hidden once the match is over — the summary block above covers it. */}
                         <div className="flex flex-col gap-4 order-1 lg:order-2 lg:sticky lg:top-13">
-                            <AtTheCreaseCard match={match} live={live} names={names} />
-                            <PartnershipCard partnership={currentInningsCard?.currentPartnership ?? null} />
-                            <RunRateBar match={match} live={live} />
+                            {!completed && <AtTheCreaseCard match={match} live={live} names={names} />}
+                            {!completed && <PartnershipCard partnership={currentInningsCard?.currentPartnership ?? null} />}
+                            {!completed && <RunRateBar match={match} live={live} />}
                             <Innings1Panel innings1={scorecard?.innings1 ?? null} currentInnings={currentInnings} />
-
-                            {/* Winner — sidebar on desktop */}
-                            {completed && (
-                                <div className="anim-fadeup card-ipl card-gold-border flex items-center gap-3 px-5 py-4">
-                                    <Trophy className="h-6 w-6 text-[#f59e0b] shrink-0" />
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-widest text-[#f59e0b] font-bold mb-0.5">Match Result</div>
-                                        <div className="font-bold text-white text-base">
-                                            {winnerName ? `${winnerName} won` : 'Match complete'}
-                                            {match?.result?.marginOfVictory ? ` · ${match.result.marginOfVictory}` : ''}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
                         {/* ── LEFT main column (scorecards + charts) ── */}
@@ -1598,6 +1587,136 @@ function BroadcastHeroSlide({ match, live, scorecard, currentInnings, team1Name,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MATCH SUMMARY SLIDE — shown in place of the live hero once the match is over
+// ═══════════════════════════════════════════════════════════════════════════
+
+function computeMatchSummary(scorecard: Scorecard | null) {
+    const innings = [scorecard?.innings1, scorecard?.innings2].filter(Boolean) as InningsScorecard[];
+    if (innings.length === 0) return null;
+
+    // Highest run-scorer across both innings — tie-break: fewer balls faced.
+    let topBat: (BatterEntry & { teamName: string }) | null = null;
+    // Highest wicket-taker — tie-break: fewer runs conceded.
+    let topBowl: (BowlerEntry & { teamName: string }) | null = null;
+    // Biggest partnership.
+    let bestPartnership: (PartnershipRecord & { teamName: string }) | null = null;
+
+    for (const inn of innings) {
+        for (const b of inn.battingCard) {
+            if (!topBat || b.runs > topBat.runs || (b.runs === topBat.runs && b.ballsFaced < topBat.ballsFaced)) {
+                topBat = { ...b, teamName: inn.battingTeamName };
+            }
+        }
+        for (const bw of inn.bowlingCard) {
+            if (!topBowl || bw.wickets > topBowl.wickets || (bw.wickets === topBowl.wickets && bw.runs < topBowl.runs)) {
+                topBowl = { ...bw, teamName: inn.bowlingTeamName };
+            }
+        }
+        for (const p of inn.partnerships) {
+            if (!bestPartnership || p.runs > bestPartnership.runs) {
+                bestPartnership = { ...p, teamName: inn.battingTeamName };
+            }
+        }
+    }
+    return { innings, topBat, topBowl, bestPartnership };
+}
+
+function MatchSummarySlide({ match, scorecard, brands }: { match: any; scorecard: Scorecard | null; brands: TeamBrandMap }) {
+    const summary = computeMatchSummary(scorecard);
+    const team1Id = String(match?.teams?.team1Id);
+    const team2Id = String(match?.teams?.team2Id);
+    const team1Name = match?.teams?.team1Name || 'Team 1';
+    const team2Name = match?.teams?.team2Name || 'Team 2';
+    const winnerName = String(match?.winnerId) === team1Id ? team1Name
+        : String(match?.winnerId) === team2Id ? team2Name : null;
+    const margin = match?.result?.marginOfVictory;
+
+    if (!summary) {
+        return <div className="card-ipl p-10 text-center text-gray-400 font-bold">Match summary unavailable.</div>;
+    }
+    const { innings, topBat, topBowl, bestPartnership } = summary;
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* Result banner */}
+            <div className="card-ipl card-gold-border overflow-hidden">
+                <div className="h-0.5 w-full bg-linear-to-r from-transparent via-[#f59e0b] to-transparent" />
+                <div className="p-6 flex flex-col items-center gap-3 text-center">
+                    <Trophy className="h-10 w-10 text-[#f59e0b]" />
+                    <div className="text-[10px] uppercase tracking-widest text-[#f59e0b] font-bold">Match Result</div>
+                    <div className="score-hero text-4xl sm:text-5xl font-black text-white leading-none">
+                        {winnerName ? `${winnerName} won` : 'Match complete'}
+                    </div>
+                    {margin && <div className="text-lg text-gray-300 font-semibold">{margin}</div>}
+
+                    {/* Innings totals */}
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+                        {innings.map(inn => (
+                            <div key={inn.inningsNumber} className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-white/3 border border-white/8">
+                                <TeamLogo brand={brands[String(inn.battingTeamId)]} size={26} />
+                                <div className="text-left">
+                                    <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">{inn.battingTeamName}</div>
+                                    <div className="score-hero text-xl font-black text-white tabular-nums leading-none">
+                                        {inn.totals.runs}/{inn.totals.wickets}
+                                        <span className="text-xs text-gray-400 font-normal ml-1">({inn.totals.overs})</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Top performers */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {topBat && (
+                    <div className="card-ipl p-5 flex flex-col gap-2">
+                        <div className="text-[10px] uppercase tracking-widest text-[#f59e0b] font-bold">Top Scorer</div>
+                        <div className="text-xl font-black text-white leading-tight">{topBat.name}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">{topBat.teamName}</div>
+                        <div className="score-hero text-4xl font-black text-white tabular-nums mt-1 leading-none">
+                            {topBat.runs}<span className="text-lg text-gray-400 font-normal"> ({topBat.ballsFaced})</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            {topBat.fours > 0 && <span className="text-blue-400 font-bold mr-2">{topBat.fours}×4</span>}
+                            {topBat.sixes > 0 && <span className="text-emerald-400 font-bold mr-2">{topBat.sixes}×6</span>}
+                            <span className="text-gray-500">SR {topBat.strikeRate.toFixed(1)}</span>
+                        </div>
+                    </div>
+                )}
+                {topBowl && (
+                    <div className="card-ipl p-5 flex flex-col gap-2">
+                        <div className="text-[10px] uppercase tracking-widest text-[#60a5fa] font-bold">Top Wicket-Taker</div>
+                        <div className="text-xl font-black text-white leading-tight">{topBowl.name}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">{topBowl.teamName}</div>
+                        <div className="score-hero text-4xl font-black text-white tabular-nums mt-1 leading-none">
+                            {topBowl.wickets}<span className="text-lg text-gray-400 font-normal">/{topBowl.runs}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            <span className="text-gray-300 font-semibold">{topBowl.overs} ov</span>
+                            <span className="text-gray-500 ml-2">Econ {topBowl.economy.toFixed(2)}</span>
+                        </div>
+                    </div>
+                )}
+                {bestPartnership && (
+                    <div className="card-ipl p-5 flex flex-col gap-2">
+                        <div className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold">Best Partnership</div>
+                        <div className="text-base font-bold text-white leading-tight">
+                            {bestPartnership.batter1Name} <span className="text-gray-500">&amp;</span> {bestPartnership.batter2Name}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">{bestPartnership.teamName}</div>
+                        <div className="score-hero text-4xl font-black text-white tabular-nums mt-1 leading-none">
+                            {bestPartnership.runs}<span className="text-lg text-gray-400 font-normal"> ({bestPartnership.balls})</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">for the {bestPartnership.wicketNumber === 1 ? '1st' : bestPartnership.wicketNumber === 2 ? '2nd' : bestPartnership.wicketNumber === 3 ? '3rd' : `${bestPartnership.wicketNumber}th`} wicket</div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // BROADCAST MODE — full-screen slideshow cycling through panels
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1644,8 +1763,13 @@ function BroadcastMode({
     };
 
     const slides: BroadcastSlide[] = [
-        // Live score overview — always first
-        ...(live ? [{
+        // Lead slide: match summary once the game is over (live-only panels like
+        // "at the crease" / "required RR" / "this over" make no sense), otherwise
+        // the live score overview.
+        ...(completed ? [{
+            id: 'match-summary', title: 'Match Summary', duration: 14000,
+            node: <MatchSummarySlide match={match} scorecard={scorecard} brands={brands} />,
+        }] : live ? [{
             id: 'score-hero', title: 'Live Score', duration: 14000,
             node: <BroadcastHeroSlide match={match} live={live} scorecard={scorecard}
                       currentInnings={currentInnings} team1Name={team1} team2Name={team2} brands={brands} />,
@@ -1732,16 +1856,22 @@ function BroadcastMode({
                             <span className="text-base sm:text-lg text-gray-400 font-normal ml-2">{oversDisplay(live)} ov</span>
                         </span>
                     )}
-                    {live?.target != null && (
+                    {!completed && live?.target != null && (
                         <span className="text-sm font-bold text-[#F97316] tabular-nums hidden sm:block">
                             Need {Math.max(0, live.target - (live.runs ?? 0))} off {(match?.matchConfig?.maxOvers ?? 20) * 6 - (live.completedOvers ?? 0) * 6 - (live.ballsInCurrentOver ?? 0)} balls
                         </span>
                     )}
                 </div>
-                <span className="flex items-center gap-1.5 live-badge rounded-full bg-red-500/10 border border-red-500/40 px-3 py-1 text-xs font-bold uppercase tracking-widest text-red-400 shrink-0">
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                    Broadcast
-                </span>
+                {completed ? (
+                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-bold uppercase tracking-widest text-emerald-400 shrink-0">
+                        <Trophy className="h-3 w-3" /> Full Time
+                    </span>
+                ) : (
+                    <span className="flex items-center gap-1.5 live-badge rounded-full bg-red-500/10 border border-red-500/40 px-3 py-1 text-xs font-bold uppercase tracking-widest text-red-400 shrink-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                        Broadcast
+                    </span>
+                )}
             </header>
 
             {/* Slide content — fades when slide changes via key */}

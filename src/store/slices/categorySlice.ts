@@ -192,6 +192,19 @@ export const completeCategory = createAsyncThunk(
     }
 );
 
+// Directly set status (organizer dropdown — used to correct mistakes / revert).
+export const setCategoryStatus = createAsyncThunk(
+    'category/setStatus',
+    async ({ id, status }: { id: string; status: string }, { rejectWithValue }) => {
+        try {
+            const response = await API.post(`/categories/${id}/status`, { status });
+            return response.data?.data?.data || response.data?.data;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 // --- SLICE ---
 
 const categorySlice = createSlice({
@@ -259,7 +272,7 @@ const categorySlice = createSlice({
         });
         builder.addCase(deleteCategory.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
 
-        const statusThunks = [openCategoryRegistration, startCategoryAuction, configureCategoryBracket, startCategory, completeCategory];
+        const statusThunks = [openCategoryRegistration, startCategoryAuction, configureCategoryBracket, startCategory, completeCategory, setCategoryStatus];
         statusThunks.forEach(thunk => {
             builder.addCase(thunk.pending, (state) => { state.isLoading = true; state.error = null; });
             builder.addCase(thunk.fulfilled, handleStatusActionSuccess);

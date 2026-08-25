@@ -41,6 +41,9 @@ export const auctionApi = {
     next: (tournamentId: string, categoryId: string) =>
         API.post('/auction/next', { tournamentId, categoryId }),
 
+    distribute: (tournamentId: string, categoryId: string) =>
+        API.post('/auction/distribute', { tournamentId, categoryId }),
+
     skip: (tournamentId: string, categoryId: string) =>
         API.post('/auction/skip', { tournamentId, categoryId }),
 

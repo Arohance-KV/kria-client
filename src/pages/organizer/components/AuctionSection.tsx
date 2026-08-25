@@ -60,6 +60,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     const [loading, setLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
     const [showConfetti, setShowConfetti] = useState(false);
     const [showSpinWheel, setShowSpinWheel] = useState(false);
     const [soldLog, setSoldLog] = useState<any[]>([]);
@@ -170,6 +171,19 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
         setActionLoading(null);
     };
 
+    const handleDistribute = async () => {
+        if (!window.confirm('Distribute all approved, unassigned players in this category evenly across the teams? They are assigned to teams without running the auction.')) return;
+        setActionLoading('distribute'); setError(null); setNotice(null);
+        try {
+            const res = await auctionApi.distribute(tournamentId, selectedCategoryId);
+            const data = res.data?.data?.data;
+            setNotice(`Assigned ${data?.assigned ?? 0} player${data?.assigned === 1 ? '' : 's'} across ${data?.teams ?? 0} team${data?.teams === 1 ? '' : 's'}.`);
+        } catch (err: any) {
+            setError(err?.response?.data?.data?.message || err?.response?.data?.message || 'Failed to distribute players');
+        }
+        setActionLoading(null);
+    };
+
     const handleBid = async (teamId: string) => {
         setActionLoading(`bid-${teamId}`); setError(null);
         try {
@@ -209,7 +223,9 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     const handleTriggerSpinWheel = async () => {
         try {
             const res = await auctionApi.triggerSpinWheel(tournamentId, selectedCategoryId);
-            return res.data?.data?.winnerId || null;
+            // Server wraps the payload as res.data.data.data (SuccessResponse under
+            // the response envelope) — the same triple-nesting every other call uses.
+            return res.data?.data?.data?.winnerId || null;
         } catch (err: any) {
             setError(err?.response?.data?.data?.message || 'Failed to trigger spin wheel');
             return null;
@@ -319,6 +335,12 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
                 </div>
             )}
 
+            {notice && (
+                <div className="flex items-center gap-3 p-4 bg-emerald-900/20 border border-emerald-900/50 rounded-xl text-emerald-300 text-sm">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0" /> {notice}
+                </div>
+            )}
+
             {/* No category */}
             {!selectedCategoryId && (
                 <div className="p-10 text-center text-gray-500">
@@ -342,9 +364,20 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
                     </div>
 
                     {!showStartSettings ? (
-                        <button onClick={() => setShowStartSettings(true)} className="flex items-center gap-2 px-8 py-3 rounded-full bg-primary hover:bg-primary/90 text-white font-bold text-sm transition-all shadow-lg shadow-primary/20">
-                            <Gavel className="h-5 w-5" /> Configure & Start
-                        </button>
+                        <div className="flex flex-col items-center gap-3">
+                            <button onClick={() => setShowStartSettings(true)} className="flex items-center gap-2 px-8 py-3 rounded-full bg-primary hover:bg-primary/90 text-white font-bold text-sm transition-all shadow-lg shadow-primary/20">
+                                <Gavel className="h-5 w-5" /> Configure & Start
+                            </button>
+                            <div className="flex items-center gap-2 text-xs text-gray-600 uppercase tracking-widest">
+                                <span className="h-px w-8 bg-white/10" /> or <span className="h-px w-8 bg-white/10" />
+                            </div>
+                            <button onClick={handleDistribute} disabled={actionLoading === 'distribute'}
+                                className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-sm transition-all disabled:opacity-50">
+                                {actionLoading === 'distribute' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                                Distribute Players Evenly
+                            </button>
+                            <p className="text-xs text-gray-600 max-w-xs text-center">Splits the category's approved players across all teams without an auction.</p>
+                        </div>
                     ) : (
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-4">
                             <h3 className="text-lg font-oswald font-bold text-white">Auction Settings</h3>
@@ -688,11 +721,16 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
                                         <div className="space-y-2 max-h-[300px] overflow-y-auto">
                                             {[...soldLog].reverse().map((log, i) => (
                                                 <div key={log._id || i} className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-xl">
-                                                    <div>
-                                                        <p className="text-sm text-white font-medium">{log.playerName}</p>
-                                                        <p className="text-xs text-gray-500">→ {log.teamName}</p>
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        {log.playerPhoto && (
+                                                            <img src={log.playerPhoto} alt={log.playerName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-primary/40" />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm text-white font-medium truncate">{log.playerName}</p>
+                                                            <p className="text-xs text-gray-500 truncate">→ {log.teamName}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-sm font-mono font-bold text-primary">₹{log.finalPrice?.toLocaleString()}</div>
+                                                    <div className="text-sm font-mono font-bold text-primary shrink-0">₹{log.finalPrice?.toLocaleString()}</div>
                                                 </div>
                                             ))}
                                         </div>

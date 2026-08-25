@@ -4,7 +4,7 @@ import {
     ArrowLeft, Save, Trash2, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon,
     Loader2, AlertCircle, CheckCircle, Play, XCircle, DoorOpen, Lock, Gavel,
     LayoutDashboard, ListTree, Trophy, UserCog, Swords, Target, Menu, X,
-    Shield, Sliders, UserCheck,
+    Shield, Sliders, UserCheck, Megaphone,
 } from 'lucide-react';
 import HoverFooter from '@/components/HoverFooter';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,7 @@ import { fetchTournamentCategories } from '../../store/slices/registrationSlice'
 import TeamsSection from './components/TeamsSection';
 import StaffSection from './components/StaffSection';
 import CategoriesSection from './components/CategoriesSection';
+import AnnouncementsPanel from '@/components/AnnouncementsPanel';
 import RegistrationsSection from './components/RegistrationsSection';
 import AuctionSection from './components/AuctionSection';
 import MatchManagementSection from './components/MatchManagementSection';
@@ -33,6 +34,7 @@ type GroupKey = 'dashboard' | 'info' | 'players' | 'teams' | 'compete' | 'admin'
 
 type SectionKey =
     | 'overview'
+    | 'announcements'
     | 'basic'
     | 'schedule'
     | 'location'
@@ -71,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'OVERVIEW',
         items: [
             { key: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+            { key: 'announcements', label: 'Announcements', icon: Megaphone },
         ],
     },
     {
@@ -509,6 +512,7 @@ const TournamentDetailPage = () => {
     function renderSection() {
         switch (activeSection) {
             case 'overview': return <OverviewSection />;
+            case 'announcements': return id ? <AnnouncementsPanel tournamentId={id} canManage={true} /> : null;
             case 'basic': return <BasicInfoSection />;
             case 'schedule': return <ScheduleSection />;
             case 'location': return <LocationSection />;

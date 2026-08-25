@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Layers, Plus, Trash2, Edit2, Loader2, DoorOpen, Gavel, Play, CheckCircle, Trophy } from 'lucide-react';
+import { Layers, Plus, Trash2, Edit2, Loader2, Trophy } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
     fetchTournamentCategories,
     deleteCategory,
     openCategoryRegistration,
     startCategoryAuction,
+    configureCategoryBracket,
     startCategory,
     completeCategory,
+    setCategoryStatus,
 } from '../../../store/slices/categorySlice';
 import { sportRegistry } from '@/sports/registry';
 import CategoryAnalyticsModal from './CategoryAnalyticsModal';
@@ -21,6 +23,10 @@ const statusColors: Record<string, { bg: string; text: string; border: string; l
     ongoing: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30', label: 'Ongoing' },
     completed: { bg: 'bg-emerald-500/10', text: 'text-emerald-500', border: 'border-emerald-500/30', label: 'Completed' },
 };
+
+// Forward pipeline. groups_configured is reached via the team-league tools, not
+// this dropdown, so it's intentionally not a step here.
+const PIPELINE = ['setup', 'registration', 'auction', 'bracket_configured', 'ongoing', 'completed'];
 
 interface Props {
     tournamentId: string;
@@ -57,8 +63,47 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
     const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to delete this category?')) await dispatch(deleteCategory(id));
     };
-    const handleStatusAction = async (id: string, action: any, extra?: any) => { await dispatch(action(extra ?? id)); };
     const openAnalytics = (category: any) => { setAnalyticsCategory(category); setIsAnalyticsOpen(true); };
+
+    // One forward step runs the dedicated transition (with its side-effects);
+    // choosing an earlier stage just resets the status (to undo mistakes).
+    const advanceTo = (category: any, target: string) => {
+        const id = category._id;
+        switch (target) {
+            case 'registration': return dispatch(openCategoryRegistration(id));
+            case 'auction': return dispatch(startCategoryAuction({ id, tournamentId }));
+            // ponytail: team-league brackets are configured via the team-league tools;
+            // picking this for a team-league category will surface a backend error.
+            case 'bracket_configured': return dispatch(configureCategoryBracket(id));
+            case 'ongoing': return dispatch(startCategory(id));
+            case 'completed': return dispatch(completeCategory(id));
+            default: return undefined;
+        }
+    };
+
+    const handleStatusSelect = (category: any, target: string) => {
+        if (target === category.status) return;
+        const curIdx = PIPELINE.indexOf(category.status);
+        const tgtIdx = PIPELINE.indexOf(target);
+        if (curIdx !== -1 && tgtIdx === curIdx + 1) { advanceTo(category, target); return; }
+        if (tgtIdx !== -1 && (curIdx === -1 || tgtIdx < curIdx)) {
+            if (confirm(`Move "${category.name}" to "${statusColors[target]?.label || target}"? This only changes its status.`)) {
+                dispatch(setCategoryStatus({ id: category._id, status: target }));
+            }
+            return;
+        }
+        alert('You can only advance one step at a time. Use the auction console and bracket tools for later stages.');
+    };
+
+    const statusOptions = (category: any) => {
+        const curIdx = PIPELINE.indexOf(category.status);
+        const base = curIdx === -1 ? [category.status, ...PIPELINE] : PIPELINE;
+        return base.map((s) => ({
+            value: s,
+            label: statusColors[s]?.label || s,
+            disabled: curIdx !== -1 && PIPELINE.indexOf(s) > curIdx + 1,
+        }));
+    };
 
     const showForm = isCreating || !!editingCategory;
 
@@ -155,12 +200,17 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                                 </div>
 
                                 <div className="pt-4 border-t border-white/10 flex flex-wrap gap-2 justify-between items-center mt-auto">
-                                    <div className="flex gap-2">
-                                        {category.status === 'setup' && <button onClick={() => handleStatusAction(category._id, openCategoryRegistration)} className="p-2 bg-green-500/10 text-green-500 hover:bg-green-500/20 rounded" title="Open Reg"><DoorOpen className="h-4 w-4" /></button>}
-                                        {category.status === 'registration' && <button onClick={() => handleStatusAction(category._id, startCategoryAuction, { id: category._id, tournamentId })} className="p-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 rounded" title="Start Auction"><Gavel className="h-4 w-4" /></button>}
-                                        {category.status === 'auction' && <button onClick={() => handleStatusAction(category._id, startCategory)} className="p-2 bg-primary/10 text-primary hover:bg-primary/20 rounded" title="Start Playing"><Play className="h-4 w-4" /></button>}
-                                        {category.status === 'ongoing' && <button onClick={() => handleStatusAction(category._id, completeCategory)} className="p-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded" title="Complete"><CheckCircle className="h-4 w-4" /></button>}
-                                        {category.status === 'groups_configured' && category.bracketType === 'team_league' && <button onClick={() => handleStatusAction(category._id, completeCategory)} className="p-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded" title="Complete"><CheckCircle className="h-4 w-4" /></button>}
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={category.status}
+                                            onChange={(e) => handleStatusSelect(category, e.target.value)}
+                                            title="Change status"
+                                            className="h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-xs font-medium text-white focus:outline-none focus:border-primary cursor-pointer"
+                                        >
+                                            {statusOptions(category).map((opt) => (
+                                                <option key={opt.value} value={opt.value} disabled={opt.disabled} className="bg-[#1a1a1a]">{opt.label}</option>
+                                            ))}
+                                        </select>
                                         {(category.status === 'completed' || (category.status === 'groups_configured' && category.bracketType === 'team_league')) && <button onClick={() => openAnalytics(category)} className="p-2 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 rounded flex items-center gap-1.5" title="Analytics & Awards"><Trophy className="h-4 w-4" /> <span className="text-xs font-semibold uppercase pr-1">Awards</span></button>}
                                     </div>
                                     <div className="flex gap-2">

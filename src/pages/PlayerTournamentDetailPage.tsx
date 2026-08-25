@@ -20,11 +20,12 @@ import AuctionTab from './player-tournament/AuctionTab';
 import BracketTab from './player-tournament/BracketTab';
 import LeaderboardTab from './player-tournament/LeaderboardTab';
 import AwardsTab from './player-tournament/AwardsTab';
+import AnnouncementsPanel from '@/components/AnnouncementsPanel';
 import { sportRegistry } from '@/sports/registry';
 
-type TabKey = 'overview' | 'categories' | 'players' | 'teams' | 'auction' | 'bracket' | 'team_league' | 'leaderboard' | 'awards';
+type TabKey = 'overview' | 'announcements' | 'categories' | 'players' | 'teams' | 'auction' | 'bracket' | 'team_league' | 'leaderboard' | 'awards';
 
-const TABS: TabKey[] = ['overview', 'categories', 'players', 'teams', 'auction', 'bracket', 'team_league', 'leaderboard', 'awards'];
+const TABS: TabKey[] = ['overview', 'announcements', 'categories', 'players', 'teams', 'auction', 'bracket', 'team_league', 'leaderboard', 'awards'];
 
 const PlayerTournamentDetailPage = () => {
     const { id } = useParams<{ id: string }>();
@@ -355,6 +356,9 @@ const PlayerTournamentDetailPage = () => {
                                     isTeamsLoading={isTeamsLoading}
                                     myTeam={myTeam}
                                 />
+                            )}
+                            {activeTab === 'announcements' && id && (
+                                <AnnouncementsPanel tournamentId={id} />
                             )}
                             {activeTab === 'auction' && id && (
                                 <AuctionTab

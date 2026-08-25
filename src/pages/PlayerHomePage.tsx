@@ -10,7 +10,12 @@ const PlayerHomePage = () => {
 
     return (
         <SmoothScroll>
-            <div className="min-h-screen bg-[#111] text-white font-montserrat flex flex-col items-center">
+            <div
+                className="min-h-screen text-white font-montserrat flex flex-col items-center"
+                style={{
+                    background: 'linear-gradient(135deg, #1a1613 0%, #121110 40%, #0a0a0a 100%)',
+                }}
+            >
                 <PlayerNavigation />
                 <PlayerFilterMenu filters={filters} onFilterChange={setFilters} />
                 <FeaturedTournaments filters={filters} />

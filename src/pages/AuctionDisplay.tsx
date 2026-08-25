@@ -708,15 +708,20 @@ const AuctionDisplay: React.FC = () => {
                                         border: '1px solid rgba(255,255,255,0.06)',
                                         borderRadius: '10px',
                                         padding: '9px 12px',
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                         gap: '8px',
                                     }}>
-                                        <div style={{ minWidth: 0 }}>
-                                            <div style={{ color: '#e5e7eb', fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {log.playerName}
-                                            </div>
-                                            <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>
-                                                Sold to <span style={{ color: '#9ca3af' }}>{log.teamName}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
+                                            {log.playerPhoto && (
+                                                <img src={log.playerPhoto} alt={log.playerName} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: `1px solid ${ACCENT}40` }} />
+                                            )}
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ color: '#e5e7eb', fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {log.playerName}
+                                                </div>
+                                                <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>
+                                                    Sold to <span style={{ color: '#9ca3af' }}>{log.teamName}</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div style={{ color: ACCENT, fontFamily: 'monospace', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>

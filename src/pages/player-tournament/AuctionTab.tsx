@@ -13,6 +13,7 @@ interface AuctionLog {
     finalPrice: number;
     auctionType: string;
     timestamp: string;
+    playerPhoto?: string | null;
 }
 
 interface Props {
@@ -25,6 +26,7 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
     const [selectedCat, setSelectedCat] = useState<string>('');
     const [logs, setLogs] = useState<AuctionLog[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+    const [notStartedName, setNotStartedName] = useState<string | null>(null);
 
     useEffect(() => {
         if (categories.length > 0 && !selectedCat) {
@@ -51,10 +53,13 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
         fetchLogs();
     }, [selectedCat, tournamentId]);
 
+    // Category status enum (server): setup | registration | auction | groups_configured
+    // | bracket_configured | ongoing | completed. The auction is live at 'auction';
+    // anything past it means the auction already happened.
     const getStatusConfig = (status: string) => {
-        if (status === 'auction_in_progress') return { label: 'Live Now', color: 'bg-red-500/10 text-red-400 border-red-500/20', live: true };
-        if (status === 'ongoing' || status === 'completed') return { label: 'Completed', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', live: false };
-        return { label: 'Upcoming', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20', live: false };
+        if (status === 'auction') return { label: 'Live Now', color: 'bg-red-500/10 text-red-400 border-red-500/20', live: true, started: true };
+        if (['groups_configured', 'bracket_configured', 'ongoing', 'completed'].includes(status)) return { label: 'Completed', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', live: false, started: true };
+        return { label: 'Upcoming', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20', live: false, started: false };
     };
 
     if (categories.length === 0) {
@@ -72,7 +77,7 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
             {/* Category cards */}
             <div className="flex flex-col gap-4">
                 {categories.map(category => {
-                    const { label, color, live } = getStatusConfig(category.status);
+                    const { label, color, live, started } = getStatusConfig(category.status);
                     return (
                         <div key={category._id} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex items-center justify-between gap-4 hover:border-white/20 transition-colors">
                             <div className="flex items-center gap-3">
@@ -83,7 +88,9 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
                                 </span>
                             </div>
                             <button
-                                onClick={() => navigate(`/auction/${tournamentId}/${category._id}`)}
+                                onClick={() => started
+                                    ? navigate(`/auction/${tournamentId}/${category._id}`)
+                                    : setNotStartedName(category.name)}
                                 className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap"
                             >
                                 Watch Live <ArrowRight className="h-3 w-3" />
@@ -140,11 +147,15 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
                                 {/* Player name + avatar */}
                                 <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 rounded-full bg-primary/10 overflow-hidden shrink-0">
-                                        <img
-                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${log.playerName}&backgroundColor=transparent`}
-                                            alt={log.playerName}
-                                            className="w-full h-full object-cover mix-blend-screen scale-125"
-                                        />
+                                        {log.playerPhoto ? (
+                                            <img src={log.playerPhoto} alt={log.playerName} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <img
+                                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${log.playerName}&backgroundColor=transparent`}
+                                                alt={log.playerName}
+                                                className="w-full h-full object-cover mix-blend-screen scale-125"
+                                            />
+                                        )}
                                     </div>
                                     <span className="text-white font-semibold text-sm capitalize truncate">{log.playerName}</span>
                                 </div>
@@ -172,6 +183,22 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
                     </div>
                 )}
             </div>
+
+            {/* Auction-not-started dialog */}
+            {notStartedName && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setNotStartedName(null)}>
+                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-3xl w-full max-w-sm shadow-2xl text-center animate-in fade-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+                        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Clock className="h-7 w-7 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-oswald font-bold text-white mb-2">Auction hasn't started</h3>
+                        <p className="text-gray-400 text-sm mb-6">The auction for <span className="text-white font-semibold">{notStartedName}</span> hasn't started yet. Check back once the organizer begins it.</p>
+                        <button onClick={() => setNotStartedName(null)} className="px-6 py-2.5 rounded-full bg-primary hover:bg-primary/90 text-white font-bold text-sm transition-colors">
+                            Got it
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
