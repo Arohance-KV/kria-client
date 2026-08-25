@@ -102,6 +102,7 @@ const CreateTournamentPage = () => {
             defaultBudget: 100000,
             auctionType: 'manual',
             allowLateRegistration: false,
+            allowMultiCategoryRegistration: true,
         }
     });
 
@@ -584,6 +585,19 @@ const CreateTournamentPage = () => {
                                         onChange={handleInputChange}
                                     />
                                     <span className="text-gray-300 group-hover:text-white transition-colors">Allow Late Registration</span>
+                                </label>
+                            </div>
+
+                            <div className="space-y-2 flex items-center h-full pt-6">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        name="settings.allowMultiCategoryRegistration"
+                                        className="w-5 h-5 rounded border-white/20 bg-black/50 text-primary focus:ring-primary focus:ring-offset-black"
+                                        checked={formData.settings.allowMultiCategoryRegistration}
+                                        onChange={handleInputChange}
+                                    />
+                                    <span className="text-gray-300 group-hover:text-white transition-colors">Allow players to register for multiple categories</span>
                                 </label>
                             </div>
                         </div>
