@@ -59,6 +59,7 @@ export interface Registration {
     };
     categoryDetails?: Category;
     tournamentDetails?: any;
+    role?: 'normal' | 'captain' | 'icon';
     profile?: {
         firstName: string;
         lastName: string;
@@ -249,6 +250,50 @@ export const manualAssignPlayer = createAsyncThunk(
     }
 );
 
+// Set captain (Organizer) — marks ALL of the player's active registrations in
+// this tournament as captain of teamId. The server responds with a summary
+// (not the updated docs), so the fulfilled reducer below patches state itself.
+export const setCaptainRole = createAsyncThunk(
+    'registration/setCaptain',
+    async ({ tournamentId, playerId, teamId }: { tournamentId: string; playerId: string; teamId: string }, { rejectWithValue }) => {
+        try {
+            await API.post(`/registrations/tournaments/${tournamentId}/set-captain`, { playerId, teamId });
+            return { playerId, teamId };
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
+// Set icon player (Organizer) — category-level, a single registration.
+export const setIconRole = createAsyncThunk(
+    'registration/setIcon',
+    async ({ registrationId, teamId }: { registrationId: string; teamId: string }, { rejectWithValue }) => {
+        try {
+            const response = await API.post(`/registrations/${registrationId}/set-icon`, { teamId });
+            const data = response.data?.data?.data || response.data?.data;
+            return data;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
+// Unassign a player from their team (Organizer) — also resets role to 'normal'.
+// Reused as the "remove captain/icon" action.
+export const unassignRegistration = createAsyncThunk(
+    'registration/unassign',
+    async (registrationId: string, { rejectWithValue }) => {
+        try {
+            const response = await API.post(`/registrations/${registrationId}/unassign`);
+            const data = response.data?.data?.data || response.data?.data;
+            return data;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 // --- SLICE ---
 
 const registrationSlice = createSlice({
@@ -404,6 +449,59 @@ const registrationSlice = createSlice({
             );
         });
         builder.addCase(manualAssignPlayer.rejected, (state, action) => {
+            state.error = action.payload as string;
+        });
+
+        // SET CAPTAIN — server returns only { playerId, teamId, count }, so patch
+        // every one of the player's active (non-withdrawn/rejected) registrations
+        // locally, mirroring the server-side filter in setCaptain().
+        builder.addCase(setCaptainRole.pending, (state) => {
+            state.error = null;
+        });
+        builder.addCase(setCaptainRole.fulfilled, (state, action) => {
+            const { playerId, teamId } = action.payload;
+            state.tournamentRegistrations = state.tournamentRegistrations.map(reg =>
+                reg.playerId === playerId && reg.status !== 'withdrawn' && reg.status !== 'rejected'
+                    ? { ...reg, teamId, role: 'captain', status: 'assigned' }
+                    : reg
+            );
+        });
+        builder.addCase(setCaptainRole.rejected, (state, action) => {
+            state.error = action.payload as string;
+        });
+
+        // SET ICON — server returns the full updated registration document.
+        builder.addCase(setIconRole.pending, (state) => {
+            state.error = null;
+        });
+        builder.addCase(setIconRole.fulfilled, (state, action) => {
+            const updated = action.payload;
+            if (updated && updated._id) {
+                state.tournamentRegistrations = state.tournamentRegistrations.map(reg =>
+                    reg._id === updated._id ? updated : reg
+                );
+            }
+        });
+        builder.addCase(setIconRole.rejected, (state, action) => {
+            state.error = action.payload as string;
+        });
+
+        // UNASSIGN — server returns the full updated document with teamId/role
+        // cleared; replace wholesale rather than merge so cleared fields actually
+        // disappear (a merge would keep the stale teamId since $unset removes the
+        // key entirely rather than setting it to null/undefined).
+        builder.addCase(unassignRegistration.pending, (state) => {
+            state.error = null;
+        });
+        builder.addCase(unassignRegistration.fulfilled, (state, action) => {
+            const updated = action.payload;
+            if (updated && updated._id) {
+                state.tournamentRegistrations = state.tournamentRegistrations.map(reg =>
+                    reg._id === updated._id ? updated : reg
+                );
+            }
+        });
+        builder.addCase(unassignRegistration.rejected, (state, action) => {
             state.error = action.payload as string;
         });
     },

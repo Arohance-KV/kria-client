@@ -62,6 +62,7 @@ const AuctionDisplay: React.FC = () => {
     const [tournamentName, setTournamentName] = useState('');
     const [categoryName, setCategoryName]     = useState('');
     const [soldLog, setSoldLog]         = useState<any[]>([]);
+    const [preAssigned, setPreAssigned] = useState<any[]>([]);
     const [showConfetti, setShowConfetti] = useState(false);
     const [bidFlash, setBidFlash]       = useState(false);
 
@@ -109,7 +110,7 @@ const AuctionDisplay: React.FC = () => {
     useEffect(() => {
         if (!tournamentId || !categoryId) return;
         auctionApi.getSoldLog(tournamentId, categoryId)
-            .then((data: any) => setSoldLog(data.logs || []))
+            .then((data: any) => { setSoldLog(data.logs || []); setPreAssigned(data.preAssigned || []); })
             .catch(() => {});
     }, [tournamentId, categoryId, status?.logsCount]);
 
@@ -251,7 +252,7 @@ const AuctionDisplay: React.FC = () => {
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ color: '#6b7280', fontSize: '14px' }}>Players</span>
-                                        <span style={{ color: '#ffffff', fontWeight: 700 }}>{team.playersCount}</span>
+                                        <span style={{ color: '#ffffff', fontWeight: 700 }} title="Includes pre-assigned captains and icon players">{team.playersCount}</span>
                                     </div>
                                 </div>
                             </div>
@@ -420,7 +421,7 @@ const AuctionDisplay: React.FC = () => {
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span style={{ color: '#4b5563', fontSize: '10px', fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Players</span>
-                                        <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '12px' }}>{team.playersCount}</span>
+                                        <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '12px' }} title="Includes pre-assigned captains and icon players">{team.playersCount}</span>
                                     </div>
                                 </div>
                             </div>
@@ -696,12 +697,44 @@ const AuctionDisplay: React.FC = () => {
 
                     {/* Sold Players list */}
                     <div id="sold-log" style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
-                        {soldLog.length === 0 ? (
+                        {soldLog.length === 0 && preAssigned.length === 0 ? (
                             <div style={{ color: '#374151', fontSize: '11px', textAlign: 'center', paddingTop: '28px', fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
                                 No players sold yet
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                                {preAssigned.map((p) => (
+                                    <div key={p.registrationId} style={{
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.06)',
+                                        borderRadius: '10px',
+                                        padding: '9px 12px',
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        gap: '8px',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
+                                            {p.playerPhoto && (
+                                                <img src={p.playerPhoto} alt={p.playerName} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: `1px solid ${ACCENT}40` }} />
+                                            )}
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ color: '#e5e7eb', fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {p.playerName}
+                                                </div>
+                                                <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>
+                                                    <span style={{ color: '#9ca3af' }}>{p.teamName}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                                            padding: '4px 10px', borderRadius: '999px', flexShrink: 0,
+                                            background: p.role === 'captain' ? 'rgba(251,191,36,0.12)' : 'rgba(167,139,250,0.12)',
+                                            color: p.role === 'captain' ? '#fbbf24' : '#a78bfa',
+                                        }}>
+                                            {p.role === 'captain' ? 'Captain' : 'Icon'}
+                                        </span>
+                                    </div>
+                                ))}
                                 {[...soldLog].reverse().map((log, i) => (
                                     <div key={log._id || i} style={{
                                         background: 'rgba(255,255,255,0.03)',

@@ -64,6 +64,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     const [showConfetti, setShowConfetti] = useState(false);
     const [showSpinWheel, setShowSpinWheel] = useState(false);
     const [soldLog, setSoldLog] = useState<any[]>([]);
+    const [preAssigned, setPreAssigned] = useState<any[]>([]);
     const prevStatusRef = useRef<string | null>(null);
     const sectionRef = useRef<HTMLElement>(null);
 
@@ -134,8 +135,8 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
     useEffect(() => {
         if (!selectedCategoryId) return;
         auctionApi.getSoldLog(tournamentId, selectedCategoryId)
-            .then((data: any) => setSoldLog(data.logs || []))
-            .catch(() => setSoldLog([]));
+            .then((data: any) => { setSoldLog(data.logs || []); setPreAssigned(data.preAssigned || []); })
+            .catch(() => { setSoldLog([]); setPreAssigned([]); });
     }, [selectedCategoryId, tournamentId, auctionState?.auction?.logsCount]);
 
     // On sale, the tall bidding grid collapses to a short celebration; without this
@@ -706,7 +707,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
                                                 </div>
                                                 <div className="text-right">
                                                     <div className="text-sm font-mono font-bold text-green-400">₹{team.budget.toLocaleString()}</div>
-                                                    <div className="text-[10px] text-gray-500">{team.playersCount} players</div>
+                                                    <div className="text-[10px] text-gray-500" title="Includes pre-assigned captains and icon players">{team.playersCount} players</div>
                                                 </div>
                                             </div>
                                         ))}
@@ -715,10 +716,26 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
 
                                 <div className="bg-black/30 border border-white/5 rounded-2xl p-4 flex-1">
                                     <h4 className="text-sm font-oswald font-bold text-gray-400 uppercase tracking-widest mb-3">Sold Log ({soldLog.length})</h4>
-                                    {soldLog.length === 0 ? (
+                                    {soldLog.length === 0 && preAssigned.length === 0 ? (
                                         <p className="text-gray-600 text-sm text-center py-4">No players sold yet</p>
                                     ) : (
                                         <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                            {preAssigned.map((p) => (
+                                                <div key={p.registrationId} className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-xl">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        {p.playerPhoto && (
+                                                            <img src={p.playerPhoto} alt={p.playerName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-primary/40" />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm text-white font-medium truncate">{p.playerName}</p>
+                                                            <p className="text-xs text-gray-500 truncate">→ {p.teamName}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full shrink-0 ${p.role === 'captain' ? 'bg-amber-500/10 text-amber-400' : 'bg-violet-500/10 text-violet-400'}`}>
+                                                        {p.role === 'captain' ? 'Captain' : 'Icon'}
+                                                    </span>
+                                                </div>
+                                            ))}
                                             {[...soldLog].reverse().map((log, i) => (
                                                 <div key={log._id || i} className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-xl">
                                                     <div className="flex items-center gap-2.5 min-w-0">
@@ -758,7 +775,7 @@ const AuctionSection: React.FC<AuctionSectionProps> = ({ tournamentId, categorie
                                     <h4 className="font-bold text-white truncate">{team.name}</h4>
                                 </div>
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between"><span className="text-gray-400">Players</span><span className="text-white font-bold">{team.playersCount}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Players</span><span className="text-white font-bold" title="Includes pre-assigned captains and icon players">{team.playersCount}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Spent</span><span className="text-primary font-mono font-bold">₹{team.totalSpent.toLocaleString()}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Budget Left</span><span className="text-green-400 font-mono font-bold">₹{team.budget.toLocaleString()}</span></div>
                                 </div>

@@ -75,3 +75,14 @@ export interface AuctionSoldLog {
     recordedBy: string;
     timestamp: string;
 }
+
+// A captain/icon pre-assigned to a team, shown in the sold log alongside
+// auctioned players — carries a role badge instead of a price.
+export interface AuctionPreAssigned {
+    registrationId: string;
+    playerName: string;
+    playerPhoto?: string | null;
+    teamId: string;
+    teamName: string;
+    role: 'captain' | 'icon';
+}

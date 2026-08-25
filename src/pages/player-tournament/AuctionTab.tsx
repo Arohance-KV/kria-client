@@ -16,6 +16,15 @@ interface AuctionLog {
     playerPhoto?: string | null;
 }
 
+interface PreAssignedEntry {
+    registrationId: string;
+    playerName: string;
+    playerPhoto?: string | null;
+    teamId: string;
+    teamName: string;
+    role: 'captain' | 'icon';
+}
+
 interface Props {
     categories: Category[];
     tournamentId: string;
@@ -25,6 +34,7 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
     const navigate = useNavigate();
     const [selectedCat, setSelectedCat] = useState<string>('');
     const [logs, setLogs] = useState<AuctionLog[]>([]);
+    const [preAssigned, setPreAssigned] = useState<PreAssignedEntry[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
     const [notStartedName, setNotStartedName] = useState<string | null>(null);
 
@@ -44,8 +54,10 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
                 const payload = res.data?.data?.data || res.data?.data || {};
                 const data = payload?.logs || [];
                 setLogs(Array.isArray(data) ? data : []);
+                setPreAssigned(Array.isArray(payload?.preAssigned) ? payload.preAssigned : []);
             } catch {
                 setLogs([]);
+                setPreAssigned([]);
             } finally {
                 setIsLoadingLogs(false);
             }
@@ -121,7 +133,7 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
 
                 {isLoadingLogs ? (
                     <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                ) : logs.length === 0 ? (
+                ) : logs.length === 0 && preAssigned.length === 0 ? (
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center text-gray-400">
                         <Gavel className="h-8 w-8 mx-auto mb-3 opacity-30" />
                         No players have been sold in this category yet.
@@ -135,6 +147,38 @@ const AuctionTab: React.FC<Props> = ({ categories, tournamentId }) => {
                             <span>Team</span>
                             <span className="text-right">Amount</span>
                         </div>
+
+                        {preAssigned.map((p, idx) => (
+                            <div
+                                key={p.registrationId}
+                                className="grid grid-cols-4 items-center gap-2 bg-white/5 border border-white/8 hover:border-white/15 transition-colors rounded-2xl px-4 py-4 group"
+                            >
+                                <span className="text-gray-500 font-bold text-sm">#{idx + 1}</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-primary/10 overflow-hidden shrink-0">
+                                        {p.playerPhoto ? (
+                                            <img src={p.playerPhoto} alt={p.playerName} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <img
+                                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${p.playerName}&backgroundColor=transparent`}
+                                                alt={p.playerName}
+                                                className="w-full h-full object-cover mix-blend-screen scale-125"
+                                            />
+                                        )}
+                                    </div>
+                                    <span className="text-white font-semibold text-sm capitalize truncate">{p.playerName}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                    <span className="text-emerald-400 font-semibold text-sm capitalize truncate">{p.teamName}</span>
+                                </div>
+                                <div className="text-right">
+                                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${p.role === 'captain' ? 'bg-amber-500/10 text-amber-400' : 'bg-violet-500/10 text-violet-400'}`}>
+                                        {p.role === 'captain' ? 'Captain' : 'Icon'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
 
                         {logs.map((log, idx) => (
                             <div

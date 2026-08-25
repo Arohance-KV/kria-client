@@ -5,10 +5,13 @@ import {
     fetchTournamentCategories,
     approveRegistration,
     rejectRegistration,
-    manualAssignPlayer
+    manualAssignPlayer,
+    setCaptainRole,
+    setIconRole,
+    unassignRegistration
 } from '../../../store/slices/registrationSlice';
 import { fetchTournamentTeams } from '../../../store/slices/teamSlice';
-import { Users, Loader2, CheckCircle, XCircle, Clock, ShieldAlert, UserPlus, X } from 'lucide-react';
+import { Users, Loader2, CheckCircle, XCircle, Clock, ShieldAlert, UserPlus, X, Shield, Star, UserMinus } from 'lucide-react';
 
 interface RegistrationsSectionProps {
     tournamentId: string;
@@ -26,6 +29,13 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
     // The registration currently open in the assign modal (null = closed).
     const [assignTarget, setAssignTarget] = useState<any | null>(null);
     const [assignForm, setAssignForm] = useState({ teamId: '', soldPrice: '' });
+
+    // Captain / icon role assignment modal.
+    const [roleTarget, setRoleTarget] = useState<{ reg: any; type: 'captain' | 'icon' } | null>(null);
+    const [roleTeamId, setRoleTeamId] = useState('');
+    const [roleActionLoading, setRoleActionLoading] = useState(false);
+    const [roleModalError, setRoleModalError] = useState('');
+    const [unassigningId, setUnassigningId] = useState<string | null>(null);
 
     useEffect(() => {
         dispatch(fetchRegistrationsByTournament({ tournamentId }));
@@ -64,6 +74,43 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
             dispatch(fetchTournamentTeams(tournamentId));
             setAssignTarget(null);
         }
+    };
+
+    const openRoleModal = (reg: any, type: 'captain' | 'icon') => {
+        setRoleTarget({ reg, type });
+        setRoleTeamId(reg.teamId || '');
+        setRoleModalError('');
+    };
+
+    const handleConfirmRole = async () => {
+        if (!roleTarget || !roleTeamId) return;
+        const { reg, type } = roleTarget;
+        setRoleActionLoading(true);
+        setRoleModalError('');
+        const result = type === 'captain'
+            ? await dispatch(setCaptainRole({ tournamentId, playerId: reg.playerId, teamId: roleTeamId }))
+            : await dispatch(setIconRole({ registrationId: reg._id, teamId: roleTeamId }));
+        setRoleActionLoading(false);
+        const succeeded = type === 'captain' ? setCaptainRole.fulfilled.match(result) : setIconRole.fulfilled.match(result);
+        if (succeeded) {
+            setRoleTarget(null);
+        } else {
+            setRoleModalError((result.payload as string) || `Failed to set ${type}.`);
+        }
+    };
+
+    const handleRemoveRole = async (reg: any) => {
+        const teamName = teams.find(t => t._id === reg.teamId)?.name || 'their team';
+        if (!window.confirm(`Remove ${reg.profile?.firstName} ${reg.profile?.lastName} from ${teamName}? This clears their captain/icon status and team assignment.`)) return;
+        setUnassigningId(reg._id);
+        await dispatch(unassignRegistration(reg._id));
+        setUnassigningId(null);
+    };
+
+    const getRoleBadge = (role?: string) => {
+        if (role === 'captain') return <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><Shield className="h-3 w-3" /> Captain</span>;
+        if (role === 'icon') return <span className="px-2.5 py-1 bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><Star className="h-3 w-3" /> Icon</span>;
+        return <span className="text-gray-600">—</span>;
     };
 
     const getStatusBadge = (status: string) => {
@@ -105,6 +152,7 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                                 <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Gender / Age</th>
                                 <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Status</th>
                                 <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Team</th>
+                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Role</th>
                                 <th className="p-4 rounded-tr-xl text-xs font-bold text-gray-400 uppercase tracking-wider text-right border-0">Actions</th>
                             </tr>
                         </thead>
@@ -128,6 +176,9 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                                         {reg.teamId
                                             ? <span className="font-medium text-white">{teams.find(t => t._id === reg.teamId)?.name || 'Assigned'}</span>
                                             : <span className="text-gray-600">—</span>}
+                                    </td>
+                                    <td className="p-4">
+                                        {getRoleBadge(reg.role)}
                                     </td>
                                     <td className="p-4">
                                         <div className="flex items-center justify-end gap-2">
@@ -158,6 +209,34 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                                                 >
                                                     {assigningId === reg._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
                                                     {reg.teamId ? 'Reassign' : 'Assign'}
+                                                </button>
+                                            )}
+                                            {ASSIGNABLE_STATUSES.includes(reg.status) && reg.role !== 'captain' && (
+                                                <button
+                                                    onClick={() => openRoleModal(reg, 'captain')}
+                                                    className="p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-colors"
+                                                    title="Make captain"
+                                                >
+                                                    <Shield className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                            {ASSIGNABLE_STATUSES.includes(reg.status) && reg.role !== 'icon' && (
+                                                <button
+                                                    onClick={() => openRoleModal(reg, 'icon')}
+                                                    className="p-2 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg transition-colors"
+                                                    title="Make icon player"
+                                                >
+                                                    <Star className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                            {(reg.role === 'captain' || reg.role === 'icon') && (
+                                                <button
+                                                    onClick={() => handleRemoveRole(reg)}
+                                                    disabled={unassigningId === reg._id}
+                                                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors disabled:opacity-50"
+                                                    title="Remove role and team assignment"
+                                                >
+                                                    {unassigningId === reg._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
                                                 </button>
                                             )}
                                         </div>
@@ -198,6 +277,46 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                             <button onClick={handleAssign} disabled={!assignForm.teamId || assigningId === assignTarget._id}
                                 className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50 flex items-center gap-2">
                                 {assigningId === assignTarget._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CAPTAIN / ICON ROLE MODAL */}
+            {roleTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-300">
+                        <button onClick={() => setRoleTarget(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
+                        <h3 className="text-2xl font-oswald font-bold mb-2 flex items-center gap-2">
+                            {roleTarget.type === 'captain' ? <Shield className="h-5 w-5 text-amber-400" /> : <Star className="h-5 w-5 text-violet-400" />}
+                            {roleTarget.type === 'captain' ? 'Set Captain' : 'Set Icon Player'}
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                            <span className="text-white font-bold capitalize">{roleTarget.reg.profile?.firstName} {roleTarget.reg.profile?.lastName}</span>
+                            {roleTarget.type === 'captain'
+                                ? ' will be made captain of the chosen team across all of their categories in this tournament, and excluded from the auction.'
+                                : ' will be marked as the icon player for the chosen team in this category, and excluded from the auction.'}
+                        </p>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Select Team *</label>
+                                <select value={roleTeamId} onChange={e => setRoleTeamId(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/10 text-white focus:outline-none focus:border-primary">
+                                    <option value="">Choose team…</option>
+                                    {teams.map(team => <option key={team._id} value={team._id}>{team.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        {roleModalError && (
+                            <p className="text-xs text-red-400 mt-3">{roleModalError}</p>
+                        )}
+                        <div className="flex justify-end gap-3 mt-8">
+                            <button onClick={() => setRoleTarget(null)} className="px-5 py-2.5 rounded-xl border border-white/10 text-white hover:bg-white/5 font-medium">Cancel</button>
+                            <button onClick={handleConfirmRole} disabled={!roleTeamId || roleActionLoading}
+                                className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50 flex items-center gap-2">
+                                {roleActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                                 Confirm
                             </button>
                         </div>
