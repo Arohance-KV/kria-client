@@ -27,6 +27,22 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
         }
     }, [isOpen, category]);
 
+    // Lock the page behind the modal so the mouse wheel scrolls the report, not the
+    // page underneath. The organizer page's scroll container is <main overflow-y-auto>
+    // (not <body>), so freeze both. Restores prior overflow on close.
+    useEffect(() => {
+        if (!isOpen) return;
+        const main = document.querySelector('main') as HTMLElement | null;
+        const prevBody = document.body.style.overflow;
+        const prevMain = main?.style.overflow ?? '';
+        document.body.style.overflow = 'hidden';
+        if (main) main.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = prevBody;
+            if (main) main.style.overflow = prevMain;
+        };
+    }, [isOpen]);
+
     const fetchAnalytics = async () => {
         try {
             setIsLoading(true);
@@ -70,7 +86,7 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
             <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
                 
                 {/* Header */}
@@ -96,7 +112,7 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="p-6 overflow-y-auto overscroll-contain flex-1 custom-scrollbar">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center p-12 text-gray-400">
                             <Loader2 className="h-8 w-8 animate-spin text-purple-500 mb-4" />
@@ -110,6 +126,27 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
                         </div>
                     ) : (
                         <div className="space-y-6">
+                            {/* Champion banner — the top-ranked competitor once the category is done. */}
+                            {category?.status === 'completed' && analytics[0] && (() => {
+                                const c = analytics[0];
+                                const name = c.profile
+                                    ? `${c.profile.firstName || ''} ${c.profile.lastName || ''}`.trim() || c.profile.name
+                                    : c.team?.name;
+                                return (
+                                    <div className="flex items-center gap-4 p-5 rounded-xl bg-gradient-to-r from-yellow-500/20 to-amber-500/5 border border-yellow-500/30">
+                                        <div className="p-3 bg-yellow-500/20 rounded-xl text-yellow-400 shrink-0">
+                                            <Trophy className="h-7 w-7" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-[0.2em] text-yellow-500/80 font-bold">Category Champion</p>
+                                            <h3 className="text-2xl font-oswald font-bold text-white leading-tight">{name}</h3>
+                                            <p className="text-xs text-gray-400 mt-0.5">
+                                                {c.stats?.matchesWon || 0} wins · {c.stats?.pointsContributed || 0} pts
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
@@ -177,17 +214,23 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
                                                 <td className="p-4 border-l border-white/10">
                                                     {grantingToId === entry._id ? (
                                                         <div className="flex flex-col gap-2 animate-in slide-in-from-right-2">
-                                                            <select 
-                                                                value={awardTitle} 
+                                                            {/* Free-text award name (type any title) with the common ones as suggestions. */}
+                                                            <input
+                                                                list="award-title-presets"
+                                                                value={awardTitle}
                                                                 onChange={(e) => setAwardTitle(e.target.value)}
-                                                                className="h-8 rounded bg-black/50 border border-purple-500/50 text-xs text-white px-2 outline-none"
-                                                            >
-                                                                <option value="MVP">MVP</option>
-                                                                <option value="Player of the Tournament">Player of the Tournament</option>
-                                                                <option value="Best Attacker">Best Attacker</option>
-                                                                <option value="Best Defender">Best Defender</option>
-                                                                <option value="Emerging Talent">Emerging Talent</option>
-                                                            </select>
+                                                                placeholder="Award name…"
+                                                                className="h-8 rounded bg-black/50 border border-purple-500/50 text-xs text-white px-2 outline-none focus:border-purple-400"
+                                                            />
+                                                            <datalist id="award-title-presets">
+                                                                <option value="MVP" />
+                                                                <option value="Player of the Tournament" />
+                                                                <option value="Best Batsman" />
+                                                                <option value="Best Bowler" />
+                                                                <option value="Best Attacker" />
+                                                                <option value="Best Defender" />
+                                                                <option value="Emerging Talent" />
+                                                            </datalist>
                                                             <div className="flex gap-2">
                                                                 <button 
                                                                     onClick={() => handleGrantAward(entry)}

@@ -15,13 +15,14 @@ interface Props {
     initialStrikerId?: string;
     initialNonStrikerId?: string;
     initialBowlerId?: string;
+    maxOversPerBowler?: number;
 }
 
 const EXTRA_LABELS: Record<string, string> = {
     wide: 'Wide', no_ball: 'No-ball', bye: 'Bye', leg_bye: 'Leg-bye',
 };
 
-export default function BallEntryPanel({ matchId, match, live, scorecard, initialStrikerId, initialNonStrikerId, initialBowlerId }: Props) {
+export default function BallEntryPanel({ matchId, match, live, scorecard, initialStrikerId, initialNonStrikerId, initialBowlerId, maxOversPerBowler }: Props) {
     const dispatch = useAppDispatch();
     const names = buildPlayerNameMap(match);
 
@@ -47,6 +48,15 @@ export default function BallEntryPanel({ matchId, match, live, scorecard, initia
 
     const battingXI: PlayerSlot[] = xiSlots(match, live?.battingTeamId);
     const bowlingXI: PlayerSlot[] = xiSlots(match, live?.bowlingTeamId);
+
+    // Bowler over-limit: a bowler who has completed their max overs can't be picked
+    // for another over (mirrors the server rule in match-engine.ts). Fall back to the
+    // match's stored config, then the 4-over default.
+    const maxOvPerBowler = maxOversPerBowler ?? match?.matchConfig?.maxOversPerBowler ?? 4;
+    const bowlerOvers = (id: string): number => live?.bowlerStats?.[id]?.completedOvers ?? 0;
+    const bowlerDisabledIds = new Set(
+        bowlingXI.filter(p => bowlerOvers(p.registrationId) >= maxOvPerBowler).map(p => p.registrationId),
+    );
     const battedOrActive = new Set([strikerId, nonStrikerId].filter(Boolean));
 
     // Derive dismissed IDs from the passed scorecard (no extra fetch needed).
@@ -110,6 +120,8 @@ export default function BallEntryPanel({ matchId, match, live, scorecard, initia
             <NextPlayerPrompt
                 title="Select next bowler (new over)"
                 candidates={bowlingXI}
+                disabledIds={bowlerDisabledIds}
+                noteFor={(id) => `${bowlerOvers(id)}/${maxOvPerBowler} ov`}
                 onSelect={(id) => { setBowlerId(id); setAwaitingBowler(false); }}
             />
         );

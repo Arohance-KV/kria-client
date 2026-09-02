@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, Trophy } from 'lucide-react';
 import { Category } from '../../store/slices/registrationSlice';
 import API from '../../api/axios';
+import { sportRegistry } from '@/sports/registry';
 
 interface LeaderboardEntry {
     _id: string;
@@ -92,12 +93,22 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
     const [sportType, setSportType] = useState<string>(sport);
     const [isLoading, setIsLoading] = useState(false);
 
+    // A sport may ship its own leaderboard (e.g. cricket's batting/bowling board).
+    // When it does, we delegate to it and skip the generic wins/points fetch below.
+    const selectedCategory = categories.find(c => c._id === selectedCat);
+    const sportKey = selectedCategory?.sport || sport;
+    const CustomLeaderboard = sportRegistry.get(sportKey)?.leaderboardRenderer;
+
     useEffect(() => {
         if (!selectedCat) return;
+        // Sport with its own renderer → don't fetch the generic leaderboard.
+        if (sportRegistry.get(sportKey)?.leaderboardRenderer) {
+            setSlots([]); setLeaderboard([]); setSelectedSlot(null);
+            return;
+        }
         // Seed the column layout from the selected category's own sport (falling back to the
         // tournament-level sport) so a multi-sport tournament doesn't flash the wrong columns
         // while the leaderboard request for this category is still in flight.
-        const selectedCategory = categories.find(c => c._id === selectedCat);
         setSportType(selectedCategory?.sport || sport);
         const fetchLeaderboard = async () => {
             setIsLoading(true);
@@ -142,6 +153,10 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                 )}
             </div>
 
+            {/* Sport-specific leaderboard (e.g. cricket batting/bowling stats) */}
+            {CustomLeaderboard && selectedCat && <CustomLeaderboard categoryId={selectedCat} />}
+
+            {!CustomLeaderboard && (<>
             {/* Per-slot tabs (team-league categories only) */}
             {!isLoading && slots.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -209,6 +224,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                     </table>
                 </div>
             )}
+            </>)}
         </div>
     );
 };

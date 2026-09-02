@@ -84,6 +84,14 @@ export interface SportPlugin {
      * A sport without a live scoreboard simply omits this slot.
      */
     liveScoreboardRenderer?: ComponentType<{ matchId: string }>;
+
+    /**
+     * Renders a sport's category leaderboard (e.g. cricket's batting/bowling stats
+     * board). The shared LeaderboardTab delegates here when a sport provides one,
+     * otherwise it renders its generic wins/points table. Omit for sports the
+     * generic table already covers (badminton, table tennis, bowling).
+     */
+    leaderboardRenderer?: ComponentType<{ categoryId: string }>;
 }
 
 export interface PlayerTournamentTab {

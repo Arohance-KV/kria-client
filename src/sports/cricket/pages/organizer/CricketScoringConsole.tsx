@@ -113,6 +113,7 @@ export default function CricketScoringConsole() {
     const dispatch = useAppDispatch();
     const entry = useAppSelector(selectMatchEntry(matchId || ''));
     const [playersPerTeam, setPlayersPerTeam] = useState(11);
+    const [maxOversPerBowler, setMaxOversPerBowler] = useState<number | undefined>(undefined);
     const [openers, setOpeners] = useState<{ strikerId: string; nonStrikerId: string; bowlerId: string } | null>(null);
     const [scorecard, setScorecard] = useState<any>(null);
 
@@ -127,7 +128,10 @@ export default function CricketScoringConsole() {
     useEffect(() => {
         if (match?.categoryId) {
             cricketCategoryApi.getById(match.categoryId)
-                .then((c: any) => setPlayersPerTeam(c?.cricketConfig?.playersPerTeam ?? 11))
+                .then((c: any) => {
+                    setPlayersPerTeam(c?.cricketConfig?.playersPerTeam ?? 11);
+                    setMaxOversPerBowler(c?.cricketConfig?.maxOversPerBowler);
+                })
                 .catch(() => {});
         }
     }, [match?.categoryId]);
@@ -228,6 +232,7 @@ export default function CricketScoringConsole() {
                         initialStrikerId={openers?.strikerId}
                         initialNonStrikerId={openers?.nonStrikerId}
                         initialBowlerId={openers?.bowlerId}
+                        maxOversPerBowler={maxOversPerBowler}
                     />
                 </div>
             );

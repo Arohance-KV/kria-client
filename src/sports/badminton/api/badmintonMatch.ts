@@ -28,4 +28,16 @@ export const badmintonMatchApi = {
         });
         return extract(res);
     },
+
+    // Point-by-point live scoring for a bracket match (knockout counterpart of the
+    // team-league live endpoints). Same shape so BadmintonScoringConsole can drive both.
+    startLiveScoring: async (matchId: string) => {
+        const res = await API.post(`/sports/badminton/match/${matchId}/live/start`);
+        return extract(res);
+    },
+
+    recordLivePoint: async (matchId: string, body: { team: 1 | 2; delta: 1 | -1 }) => {
+        const res = await API.post(`/sports/badminton/match/${matchId}/live/point`, body);
+        return extract(res);
+    },
 };

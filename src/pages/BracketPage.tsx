@@ -29,19 +29,25 @@ function computeCardPositions(
     for (let ri = 1; ri < visible.length; ri++) {
         const prev = positions[ri - 1];
         const prevMatches = visible[ri - 1].matches;
-        positions[ri] = visible[ri].matches.map((match, ci) => {
+        const desired = visible[ri].matches.map((match) => {
             const sources = prevMatches
                 .map((m, prevCi) => ({ m, prevCi }))
                 .filter(({ m }) => m.nextMatchId === match._id);
-            if (sources.length > 0) {
-                const avgCenterY =
-                    sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
-                    sources.length;
-                return avgCenterY - CARD_H / 2;
-            }
-            // Fallback: evenly spaced (shouldn't occur in well-formed brackets)
-            return ci * S;
+            if (sources.length === 0) return null;
+            const avgCenterY =
+                sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
+                sources.length;
+            return avgCenterY - CARD_H / 2;
         });
+        // Hiding byes compacts earlier rounds; enforce a min gap so cards never overlap.
+        const out: number[] = [];
+        for (let ci = 0; ci < desired.length; ci++) {
+            let top = desired[ci];
+            if (top === null) top = ci === 0 ? 0 : out[ci - 1] + S;
+            if (ci > 0) top = Math.max(top, out[ci - 1] + CARD_H + CARD_GAP);
+            out[ci] = top;
+        }
+        positions[ri] = out;
     }
     return positions;
 }
@@ -185,19 +191,24 @@ const BracketGrid: React.FC<{
         <div className="pb-8">
             {/* Stage header labels */}
             <div className="flex mb-6">
-                {visible.map((round, ri) => (
-                    <React.Fragment key={round.name}>
-                        <div className="text-center" style={{ width: CARD_W }}>
-                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-                                {round.name}
-                            </p>
-                            <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
-                                {round.matches.length} match{round.matches.length !== 1 ? 'es' : ''}
-                            </p>
-                        </div>
-                        {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
-                    </React.Fragment>
-                ))}
+                {visible.map((round, ri) => {
+                    // True count — byes are hidden cards, so round.matches undercounts.
+                    const total = rounds[round.name]?.length ?? round.matches.length;
+                    const byes = total - round.matches.length;
+                    return (
+                        <React.Fragment key={round.name}>
+                            <div className="text-center" style={{ width: CARD_W }}>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                                    {round.name}
+                                </p>
+                                <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
+                                    {total} match{total !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
+                                </p>
+                            </div>
+                            {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
+                        </React.Fragment>
+                    );
+                })}
             </div>
 
             {/* Bracket body: absolutely-positioned cards + SVG connectors */}

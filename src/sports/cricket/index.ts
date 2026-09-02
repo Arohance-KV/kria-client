@@ -10,6 +10,7 @@ import CricketCategoryForm from './pages/organizer/CricketCategoryForm';
 import CricketScoreButton from './pages/organizer/CricketScoreButton';
 import CricketScoringConsole from './pages/organizer/CricketScoringConsole';
 import CricketLiveScoreboard from './pages/public/CricketLiveScoreboard';
+import CricketLeaderboard from './pages/public/CricketLeaderboard';
 import cricketLiveStateReducer from './store/cricketLiveStateSlice';
 
 sportRegistry.register({
@@ -18,6 +19,7 @@ sportRegistry.register({
     categoryForm: CricketCategoryForm,
     matchResultSection: CricketScoreButton,
     liveScoreboardRenderer: CricketLiveScoreboard,
+    leaderboardRenderer: CricketLeaderboard,
     reducer: { cricketLiveState: cricketLiveStateReducer },
     organizerRoutes: [
         React.createElement(Route, {

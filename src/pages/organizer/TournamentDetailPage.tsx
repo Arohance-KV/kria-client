@@ -329,6 +329,11 @@ const TournamentDetailPage = () => {
         })) || [];
 
     const isEditableSection = ['basic', 'schedule', 'location', 'settings'].includes(activeSection);
+    // Editing was previously locked to draft-only. Organizers legitimately need to fix
+    // basic info / schedule / venue / settings after opening registration too — allow it
+    // any time except once the tournament is finished. (The server still validates dates
+    // and blocks removing a sport that already has categories.)
+    const canEditTournament = !!currentTournament && !['completed', 'cancelled'].includes(currentTournament.status);
 
     const getStatusActions = () => {
         const s = currentTournament?.status;
@@ -370,7 +375,7 @@ const TournamentDetailPage = () => {
                     <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.bg} ${status.text} border ${status.border}`}>
                         {status.label}
                     </span>
-                    {isEditableSection && !isEditing && currentTournament?.status === 'draft' && (
+                    {isEditableSection && !isEditing && canEditTournament && (
                         <button onClick={() => setIsEditing(true)} className="px-4 py-1.5 rounded-full bg-white/8 hover:bg-white/15 text-white text-sm font-medium transition-all border border-white/10">
                             Edit
                         </button>

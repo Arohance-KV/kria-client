@@ -244,12 +244,15 @@ const PlayerTournamentDetailPage = () => {
                 <main className="w-full pt-16 flex-1 flex flex-col items-center">
 
                     {/* ── Hero Banner ── */}
-                    <div className="w-full relative h-[400px] border-b border-white/10">
+                    {/* Taller, responsive hero so wide banners are less cropped by object-cover.
+                        Lighter mid-gradient lets more of the image read through above the
+                        title/CTA, which still sit over the darkened lower band. */}
+                    <div className="w-full relative h-[440px] sm:h-[520px] lg:h-[600px] border-b border-white/10">
                         <div className="absolute inset-0 z-0">
                             {tournament.bannerImage
                                 ? <img src={tournament.bannerImage} alt={tournament.name} className="w-full h-full object-cover" />
                                 : <div className="w-full h-full bg-gradient-to-br from-[#1a1a1a] to-[#0a0a0a]" />}
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-[#111]/80 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-[#111]/60 to-transparent" />
                         </div>
                         <div className="max-w-7xl mx-auto w-full px-8 relative z-10 h-full flex flex-col justify-end pb-10">
                             <button onClick={() => navigate('/player/home')} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors w-fit mb-6">
@@ -285,8 +288,44 @@ const PlayerTournamentDetailPage = () => {
                     </div>
 
                     {/* ── Main Layout ── */}
-                    <div className="w-full max-w-7xl px-8 mt-10 mb-32 flex flex-col lg:flex-row gap-10">
-                        <div className="flex-1 flex flex-col gap-8">
+                    <div className="w-full max-w-7xl px-8 mt-10 mb-32 flex flex-col gap-10">
+                        {/* min-w-0 only on bracket tab: lets its inner overflow-x-auto scroll instead of
+                            the flex column expanding to the bracket's full width. Scoped so no other tab
+                            gains a horizontal scrollbar. */}
+                        <div className={`flex-1 flex flex-col gap-8 ${activeTab === 'bracket' ? 'min-w-0' : ''}`}>
+                            {/* Tournament info strip — relocated from the old sticky sidebar so it no
+                                longer squeezes the tab content (esp. the bracket). Persists across tabs. */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-4">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Calendar className="h-5 w-5 text-primary" /></div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Schedule</p>
+                                        <p className="text-white font-medium text-sm truncate">{new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-4">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><MapPin className="h-5 w-5 text-primary" /></div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Venue</p>
+                                        <p className="text-white font-medium text-sm truncate">{tournament.venue?.name}</p>
+                                        <p className="text-gray-400 text-xs truncate">{tournament.venue?.city}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-4">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Trophy className="h-5 w-5 text-primary" /></div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Registration</p>
+                                        {tournament.status === 'registration_open' ? (
+                                            <p className="text-emerald-400 font-medium text-sm truncate">Open until {new Date(tournament.registrationDeadline).toLocaleDateString()}</p>
+                                        ) : tournament.status === 'registration_closed' ? (
+                                            <p className="text-red-400 font-medium text-sm">Closed</p>
+                                        ) : (
+                                            <p className="text-gray-300 font-medium text-sm truncate">Opens {new Date(tournament.registrationDeadline).toLocaleDateString()}</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Tab Bar */}
                             <div className="flex gap-2 p-1.5 bg-white/5 border border-white/10 rounded-2xl w-fit overflow-x-auto max-w-full no-scrollbar">
                                 {TABS
@@ -390,52 +429,6 @@ const PlayerTournamentDetailPage = () => {
                                 <AwardsTab awards={tournament.awards || []} />
                             )}
                         </div>
-
-                        {/* ── Sidebar ── */}
-                        <aside className="w-full lg:w-[350px] flex flex-col gap-6 shrink-0">
-                            <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col gap-6 sticky top-24">
-                                <h3 className="font-oswald font-bold text-xl tracking-wide uppercase border-b border-white/10 pb-4">Tournament Info</h3>
-                                <div className="flex flex-col gap-5">
-                                    <div className="flex gap-4">
-                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                            <Calendar className="h-5 w-5 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Schedule</p>
-                                            <p className="text-white font-medium">
-                                                {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                            <MapPin className="h-5 w-5 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Venue</p>
-                                            <p className="text-white font-medium">{tournament.venue?.name}</p>
-                                            <p className="text-gray-400 text-sm mt-0.5">{tournament.venue?.city}</p>
-                                        </div>
-                                    </div>
-                                    <div className="h-px bg-white/10 w-full my-2" />
-                                    <div className="flex gap-4">
-                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                            <Trophy className="h-5 w-5 text-primary" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Registration</p>
-                                            {tournament.status === 'registration_open' ? (
-                                                <p className="text-emerald-400 font-medium">Open until {new Date(tournament.registrationDeadline).toLocaleDateString()}</p>
-                                            ) : tournament.status === 'registration_closed' ? (
-                                                <p className="text-red-400 font-medium">Closed</p>
-                                            ) : (
-                                                <p className="text-gray-300 font-medium">Opens {new Date(tournament.registrationDeadline).toLocaleDateString()}</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </aside>
                     </div>
                 </main>
 

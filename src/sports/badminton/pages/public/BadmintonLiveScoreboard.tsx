@@ -56,7 +56,10 @@ export default function BadmintonLiveScoreboard({ matchId }: { matchId: string }
 
     const t1 = match.player1?.name || match.teams?.team1Name || 'Team 1';
     const t2 = match.player2?.name || match.teams?.team2Name || 'Team 2';
-    const team1Id = match.player1?.teamId || match.teams?.team1Id;
+    // Per-game winnerId key matches what the backend stores: teamId for team-league
+    // sub-matches (they carry a tieId) and team brackets; registrationId for player knockout.
+    const isTeamKey = !!match.tieId || match.competitorType === 'team';
+    const team1Id = isTeamKey ? (match.player1?.teamId || match.teams?.team1Id) : match.player1?.registrationId;
     const games: any[] = match.gameScores || [];
     const open = [...games].reverse().find(g => !g.winnerId) || games[games.length - 1] || { gameNumber: 1, team1Score: 0, team2Score: 0 };
     const gamesT1 = games.filter(g => (g.winnerId?.toString?.() || g.winnerId) === team1Id).length;

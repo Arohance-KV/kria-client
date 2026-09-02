@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Loader2, Trophy, Swords, CheckCircle2, Shuffle, MousePointer2,
     RefreshCw, ChevronRight
@@ -60,7 +61,7 @@ function getC2(m: Match, ct: 'player' | 'team') {
 // BRACKET LAYOUT CONSTANTS & POSITION CALCULATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CARD_H = 170;  // taller than player view to fit Score button and prevent overlap
+const CARD_H = 215;  // fits header + 2 slots + Record Result button; score entry opens as a modal (not inline) so the card height never changes
 const CARD_W = 340;
 const CARD_GAP = 20;
 const CONN_W = 44;
@@ -73,18 +74,29 @@ function computeCardPositions(visible: { name: string; matches: Match[] }[]): nu
     for (let ri = 1; ri < visible.length; ri++) {
         const prev = positions[ri - 1];
         const prevMatches = visible[ri - 1].matches;
-        positions[ri] = visible[ri].matches.map((match, ci) => {
+        // Desired centre = midpoint of this match's VISIBLE sources; null when all its
+        // sources are hidden (both fed by byes) — filled sequentially in the pass below.
+        const desired = visible[ri].matches.map((match) => {
             const sources = prevMatches
                 .map((m, prevCi) => ({ m, prevCi }))
                 .filter(({ m }) => m.nextMatchId === match._id);
-            if (sources.length > 0) {
-                const avgCenterY =
-                    sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
-                    sources.length;
-                return avgCenterY - CARD_H / 2;
-            }
-            return ci * S;
+            if (sources.length === 0) return null;
+            const avgCenterY =
+                sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
+                sources.length;
+            return avgCenterY - CARD_H / 2;
         });
+        // Hiding byes compacts earlier rounds, so raw source-centres (and the index
+        // fallback) can land closer than a card's height and overlap. Walk top-down
+        // enforcing a minimum gap so cards in a round can never collide.
+        const out: number[] = [];
+        for (let ci = 0; ci < desired.length; ci++) {
+            let top = desired[ci];
+            if (top === null) top = ci === 0 ? 0 : out[ci - 1] + S;
+            if (ci > 0) top = Math.max(top, out[ci - 1] + CARD_H + CARD_GAP);
+            out[ci] = top;
+        }
+        positions[ri] = out;
     }
     return positions;
 }
@@ -317,17 +329,23 @@ const BracketKnockoutView: React.FC<{
             <div className="pb-4">
                 {/* Stage headers */}
                 <div className="flex mb-6">
-                    {visible.map((round, ri) => (
-                        <React.Fragment key={round.name}>
-                            <div className="text-center shrink-0" style={{ width: CARD_W }}>
-                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{round.name}</p>
-                                <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
-                                    {round.matches.length} match{round.matches.length !== 1 ? 'es' : ''}
-                                </p>
-                            </div>
-                            {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
-                        </React.Fragment>
-                    ))}
+                    {visible.map((round, ri) => {
+                        // Show the TRUE match count (byes are hidden cards, so round.matches
+                        // undercounts). Otherwise round 1 reads as fewer matches than round 2.
+                        const total = rounds[round.name]?.length ?? round.matches.length;
+                        const byes = total - round.matches.length;
+                        return (
+                            <React.Fragment key={round.name}>
+                                <div className="text-center shrink-0" style={{ width: CARD_W }}>
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{round.name}</p>
+                                    <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
+                                        {total} match{total !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
+                                    </p>
+                                </div>
+                                {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
 
                 {/* Bracket body */}
@@ -448,8 +466,9 @@ const BracketMatchCard: React.FC<{
     const c1 = getC1(match, competitorType);
     const c2 = getC2(match, competitorType);
     const isBye = match.status === 'walkover' && match.winReason === 'bye';
+    const isLive = match.status === 'in_progress';
     const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
-    const canSwap = swapMode && match.status !== 'completed';
+    const canSwap = swapMode && match.status !== 'completed' && !isLive;
 
     const isSlotSelected = (slot: 'player1' | 'player2') =>
         swapSelection?.matchId === match._id && swapSelection?.slot === slot;
@@ -465,8 +484,12 @@ const BracketMatchCard: React.FC<{
                 <div className="flex items-center gap-2">
                     {isBye ? (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400/70 uppercase">Auto-advanced</span>
+                    ) : isLive ? (
+                        <Link to={`/live/${match._id}`} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 uppercase">
+                            <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" /> Live
+                        </Link>
                     ) : isCompleted ? (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-400 uppercase">Done</span>
+                        <Link to={`/live/${match._id}`} className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 uppercase">Scorecard</Link>
                     ) : c1.isTBD || c2.isTBD ? (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/10 text-gray-500 uppercase">Pending</span>
                     ) : (

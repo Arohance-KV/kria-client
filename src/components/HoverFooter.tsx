@@ -69,7 +69,9 @@ function HoverFooter() {
     ];
 
     return (
-        <footer className="bg-[#0F0F11]/10 relative h-fit rounded-2xl md:rounded-3xl overflow-hidden m-4 md:m-8 border border-white/5 font-montserrat">
+        // isolate → own stacking context so the decorative z-50 "KRIA" watermark can't
+        // rise into the root layer and paint over modals/dialogs.
+        <footer className="isolate bg-[#0F0F11]/10 relative h-fit rounded-2xl md:rounded-3xl overflow-hidden m-4 md:m-8 border border-white/5 font-montserrat">
             <div className="max-w-7xl mx-auto px-5 py-10 md:p-14 z-40 relative">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-8 lg:gap-16 pb-10 md:pb-12">
                     {/* Brand section */}

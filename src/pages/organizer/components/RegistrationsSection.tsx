@@ -37,6 +37,11 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
     const [roleModalError, setRoleModalError] = useState('');
     const [unassigningId, setUnassigningId] = useState<string | null>(null);
 
+    // ── Filters (client-side — every field is already in the fetched data) ──
+    const [filters, setFilters] = useState({ search: '', status: '', categoryId: '', gender: '', skillLevel: '', teamId: '' });
+    const setF = (k: keyof typeof filters, v: string) => setFilters(prev => ({ ...prev, [k]: v }));
+    const clearFilters = () => setFilters({ search: '', status: '', categoryId: '', gender: '', skillLevel: '', teamId: '' });
+
     useEffect(() => {
         dispatch(fetchRegistrationsByTournament({ tournamentId }));
         dispatch(fetchTournamentCategories(tournamentId));
@@ -122,6 +127,23 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
         }
     };
 
+    const filteredRegistrations = (tournamentRegistrations as any[]).filter((reg) => {
+        if (filters.status && reg.status !== filters.status) return false;
+        if (filters.categoryId && reg.categoryId !== filters.categoryId) return false;
+        if (filters.gender && reg.profile?.gender !== filters.gender) return false;
+        if (filters.skillLevel && reg.profile?.skillLevel !== filters.skillLevel) return false;
+        if (filters.teamId === '__none__' && reg.teamId) return false;
+        if (filters.teamId && filters.teamId !== '__none__' && reg.teamId !== filters.teamId) return false;
+        if (filters.search) {
+            const q = filters.search.toLowerCase();
+            const name = `${reg.profile?.firstName || ''} ${reg.profile?.lastName || ''}`.toLowerCase();
+            if (!name.includes(q) && !(reg.profile?.phone || '').toLowerCase().includes(q)) return false;
+        }
+        return true;
+    });
+    const hasActiveFilters = Object.values(filters).some(Boolean);
+    const selCls = 'px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-white text-sm focus:outline-none focus:border-primary';
+
     return (
         <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
             <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-2">
@@ -135,12 +157,60 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                 </div>
             )}
 
+            {/* Filters */}
+            {tournamentRegistrations.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                    <input
+                        value={filters.search}
+                        onChange={e => setF('search', e.target.value)}
+                        placeholder="Search name or phone…"
+                        className={`${selCls} flex-1 min-w-[180px]`}
+                    />
+                    <select value={filters.status} onChange={e => setF('status', e.target.value)} className={`${selCls} capitalize`}>
+                        <option value="">All statuses</option>
+                        {['pending', 'approved', 'rejected', 'assigned', 'auctioned', 'withdrawn'].map(s => (
+                            <option key={s} value={s} className="bg-[#111] capitalize">{s}</option>
+                        ))}
+                    </select>
+                    <select value={filters.categoryId} onChange={e => setF('categoryId', e.target.value)} className={selCls}>
+                        <option value="">All categories</option>
+                        {categories?.map((c: any) => <option key={c._id} value={c._id} className="bg-[#111]">{c.name}</option>)}
+                    </select>
+                    <select value={filters.gender} onChange={e => setF('gender', e.target.value)} className={selCls}>
+                        <option value="">All genders</option>
+                        <option value="male" className="bg-[#111]">Male</option>
+                        <option value="female" className="bg-[#111]">Female</option>
+                    </select>
+                    <select value={filters.skillLevel} onChange={e => setF('skillLevel', e.target.value)} className={`${selCls} capitalize`}>
+                        <option value="">All skill levels</option>
+                        {['beginner', 'intermediate', 'advanced', 'professional'].map(s => (
+                            <option key={s} value={s} className="bg-[#111] capitalize">{s}</option>
+                        ))}
+                    </select>
+                    <select value={filters.teamId} onChange={e => setF('teamId', e.target.value)} className={selCls}>
+                        <option value="">All teams</option>
+                        <option value="__none__" className="bg-[#111]">Unassigned</option>
+                        {teams.map(t => <option key={t._id} value={t._id} className="bg-[#111]">{t.name}</option>)}
+                    </select>
+                    {hasActiveFilters && (
+                        <button onClick={clearFilters} className="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5 border border-white/10 transition-colors">Clear</button>
+                    )}
+                    <span className="text-xs text-gray-500 ml-auto whitespace-nowrap">{filteredRegistrations.length} of {tournamentRegistrations.length}</span>
+                </div>
+            )}
+
             {isLoading && tournamentRegistrations.length === 0 ? (
                 <div className="flex justify-center p-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
             ) : tournamentRegistrations.length === 0 ? (
                 <div className="text-center p-10 bg-black/20 rounded-2xl border border-white/5">
                     <ShieldAlert className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
                     <p className="text-gray-400">No applications received yet.</p>
+                </div>
+            ) : filteredRegistrations.length === 0 ? (
+                <div className="text-center p-10 bg-black/20 rounded-2xl border border-white/5">
+                    <ShieldAlert className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
+                    <p className="text-gray-400">No applications match your filters.</p>
+                    <button onClick={clearFilters} className="mt-3 text-primary text-sm font-medium hover:underline">Clear filters</button>
                 </div>
             ) : (
                 <div className="overflow-x-auto">
@@ -157,7 +227,7 @@ const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentI
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5 bg-black/20">
-                            {tournamentRegistrations.map((reg: any) => (
+                            {filteredRegistrations.map((reg: any) => (
                                 <tr key={reg._id} className="hover:bg-white/5 transition-colors">
                                     <td className="p-4">
                                         <p className="text-white font-medium capitalize">{reg.profile?.firstName} {reg.profile?.lastName}</p>

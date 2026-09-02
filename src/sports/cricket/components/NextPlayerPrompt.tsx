@@ -6,9 +6,13 @@ interface Props {
     title: string;
     candidates: PlayerSlot[];
     onSelect: (registrationId: string) => void;
+    /** registrationIds that cannot be picked (e.g. a bowler who has bowled their max overs). */
+    disabledIds?: Set<string>;
+    /** Optional small note shown under a candidate (e.g. "2/2 overs"). */
+    noteFor?: (registrationId: string) => string | undefined;
 }
 
-export default function NextPlayerPrompt({ title, candidates, onSelect }: Props) {
+export default function NextPlayerPrompt({ title, candidates, onSelect, disabledIds, noteFor }: Props) {
     const [selected, setSelected] = useState('');
 
     return (
@@ -30,22 +34,32 @@ export default function NextPlayerPrompt({ title, candidates, onSelect }: Props)
                     <p className="text-sm text-gray-500 text-center py-4">No eligible players available.</p>
                 ) : (
                     <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
-                        {candidates.map((p, i) => (
-                            <button
-                                key={p.registrationId}
-                                onClick={() => setSelected(p.registrationId)}
-                                className="px-3 py-3 rounded-xl text-sm text-left transition-all"
-                                style={{
-                                    background: selected === p.registrationId ? 'rgba(249,115,22,.15)' : 'rgba(255,255,255,.04)',
-                                    border:     `1.5px solid ${selected === p.registrationId ? 'rgba(249,115,22,.4)' : 'rgba(255,255,255,.07)'}`,
-                                    color:      selected === p.registrationId ? '#F97316' : '#d1d5db',
-                                    animationDelay: `${i * 0.03}s`,
-                                }}
-                            >
-                                <span className="text-[10px] text-gray-600 font-bold mr-1.5">{i + 1}</span>
-                                {p.name}
-                            </button>
-                        ))}
+                        {candidates.map((p, i) => {
+                            const disabled = disabledIds?.has(p.registrationId) ?? false;
+                            const isSel = selected === p.registrationId;
+                            const note = noteFor?.(p.registrationId);
+                            return (
+                                <button
+                                    key={p.registrationId}
+                                    disabled={disabled}
+                                    onClick={() => !disabled && setSelected(p.registrationId)}
+                                    title={disabled ? 'Bowling limit reached' : undefined}
+                                    className="px-3 py-3 rounded-xl text-sm text-left transition-all"
+                                    style={{
+                                        background: isSel ? 'rgba(249,115,22,.15)' : 'rgba(255,255,255,.04)',
+                                        border:     `1.5px solid ${isSel ? 'rgba(249,115,22,.4)' : 'rgba(255,255,255,.07)'}`,
+                                        color:      disabled ? '#6b7280' : isSel ? '#F97316' : '#d1d5db',
+                                        animationDelay: `${i * 0.03}s`,
+                                        opacity:    disabled ? 0.45 : 1,
+                                        cursor:     disabled ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    <span className="text-[10px] text-gray-600 font-bold mr-1.5">{i + 1}</span>
+                                    {p.name}
+                                    {note && <span className="block text-[10px] text-gray-500 mt-0.5">{note}</span>}
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
 

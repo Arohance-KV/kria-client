@@ -7,6 +7,10 @@ interface Props {
     onClose: () => void;
     onSaved: () => void;
     setError: (err: string | null) => void;
+    // Injectable so the same console drives team-league sub-matches (default) or plain
+    // bracket/knockout matches (pass badmintonMatchApi's live functions).
+    startLiveScoring?: (matchId: string) => Promise<any>;
+    recordLivePoint?: (matchId: string, body: { team: 1 | 2; delta: 1 | -1 }) => Promise<any>;
 }
 
 // Current game = last gameScores entry without a winnerId.
@@ -16,13 +20,20 @@ function currentGame(gameScores: any[]) {
     return open || gameScores[gameScores.length - 1];
 }
 
-export default function BadmintonScoringConsole({ match: initial, onClose, onSaved, setError }: Props) {
+export default function BadmintonScoringConsole({ match: initial, onClose, onSaved, setError, startLiveScoring, recordLivePoint }: Props) {
     const [match, setMatch] = useState<any>(initial);
     const [busy, setBusy] = useState(false);
     const [starting, setStarting] = useState(false);
 
-    const team1Id = match.player1?.teamId || match.teams?.team1Id;
-    const team2Id = match.player2?.teamId || match.teams?.team2Id;
+    const startApi = startLiveScoring || teamLeagueApi.startLiveScoring;
+    const pointApi = recordLivePoint || teamLeagueApi.recordLivePoint;
+
+    // Per-game winnerId key: teamId for team-league sub-matches (they have a tieId) and
+    // for team brackets; registrationId for player knockout matches — matching what the
+    // backend stores, so the games-won pips below stay accurate.
+    const isTeamKey = !!match.tieId || match.competitorType === 'team';
+    const team1Id = isTeamKey ? (match.player1?.teamId || match.teams?.team1Id) : match.player1?.registrationId;
+    const team2Id = isTeamKey ? (match.player2?.teamId || match.teams?.team2Id) : match.player2?.registrationId;
     const team1Name = match.player1?.name || match.teams?.team1Name || 'Team 1';
     const team2Name = match.player2?.name || match.teams?.team2Name || 'Team 2';
 
@@ -38,7 +49,7 @@ export default function BadmintonScoringConsole({ match: initial, onClose, onSav
             (async () => {
                 try {
                     setStarting(true);
-                    const updated = await teamLeagueApi.startLiveScoring(match._id);
+                    const updated = await startApi(match._id);
                     setMatch(updated);
                 } catch (e: any) {
                     setError(e.response?.data?.message || 'Failed to start live scoring');
@@ -55,7 +66,7 @@ export default function BadmintonScoringConsole({ match: initial, onClose, onSav
         setBusy(true);
         setError(null);
         try {
-            const updated = await teamLeagueApi.recordLivePoint(match._id, { team, delta });
+            const updated = await pointApi(match._id, { team, delta });
             setMatch(updated);
             if (updated.status === 'completed') onSaved();
         } catch (e: any) {
