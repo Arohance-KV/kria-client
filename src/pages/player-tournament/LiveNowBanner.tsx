@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import API from '@/api/axios';
-import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
 
 const extract = (res: any) => res.data?.data?.data || res.data?.data;
 
@@ -23,37 +22,48 @@ interface LiveMatch {
     player2?: { name?: string; teamId?: string };
     gameScores?: any[];
     status?: string;
+    /** A badminton team-league tie: a parent container, not a playable match. */
+    isTie?: boolean;
 }
 
-interface Props { tournamentId: string; sport?: string }
+interface Props { tournamentId: string; sports: string[] }
 
-export default function LiveNowBanner({ tournamentId, sport }: Props) {
+// Every sport that has a live scoreboard, and where its in-progress matches live.
+// The badminton endpoint returns ordinary knockout/league matches AND team-league
+// sub-matches; the old team-league-only call missed the former entirely.
+const SOURCES: Record<string, (tournamentId: string) => string> = {
+    cricket: id => `/sports/cricket/match/by-tournament/${id}`,
+    badminton: id => `/sports/badminton/match/by-tournament/${id}`,
+};
+
+const isLive = (m: LiveMatch) => m.status === 'in_progress' && !m.isTie;
+
+// A multisport tournament runs cricket and badminton side by side, so every sport
+// it hosts is queried and the live matches shown together.
+export default function LiveNowBanner({ tournamentId, sports }: Props) {
     const [matches, setMatches] = useState<LiveMatch[]>([]);
     const [loaded, setLoaded] = useState(false);
+    const key = sports.filter(s => s in SOURCES).join(',');
 
     useEffect(() => {
+        const wanted = key ? key.split(',') : [];
+        if (wanted.length === 0) { setLoaded(true); return; }
         let active = true;
         const load = async () => {
-            try {
-                let list: LiveMatch[] = [];
-                if (sport === 'cricket' || !sport) {
-                    const res = await API.get(`/sports/cricket/match/by-tournament/${tournamentId}`);
-                    list = (extract(res) || []).filter((m: any) => m.status === 'in_progress');
-                } else if (sport === 'badminton') {
-                    const res = await teamLeagueApi.getLiveSubMatches(tournamentId);
-                    list = (res || []).filter((m: any) => m.status === 'in_progress');
-                }
-                if (active) setMatches(list);
-            } catch {
-                if (active) setMatches([]);
-            } finally {
-                if (active) setLoaded(true);
-            }
+            // One sport failing must not hide the other's live matches.
+            const lists = await Promise.all(
+                wanted.map(s =>
+                    API.get(SOURCES[s](tournamentId))
+                        .then(res => ((extract(res) || []) as LiveMatch[]).filter(isLive))
+                        .catch(() => [] as LiveMatch[])
+                )
+            );
+            if (active) { setMatches(lists.flat()); setLoaded(true); }
         };
         load();
         const interval = setInterval(load, 30_000); // refresh every 30s for score updates
         return () => { active = false; clearInterval(interval); };
-    }, [tournamentId, sport]);
+    }, [tournamentId, key]);
 
     if (!loaded || matches.length === 0) return null;
 

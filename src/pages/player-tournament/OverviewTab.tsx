@@ -11,14 +11,15 @@ interface Props {
     myTeamAssignment: Registration | undefined;
     isTeamDataReady: boolean;
     tournamentId?: string;
-    sport?: string;
+    /** Every sport the tournament hosts — a multisport tournament has more than one. */
+    sports?: string[];
 }
 
-const OverviewTab: React.FC<Props> = ({ description, user, myTeam, myTeamAssignment, isTeamDataReady, tournamentId, sport }) => {
+const OverviewTab: React.FC<Props> = ({ description, user, myTeam, myTeamAssignment, isTeamDataReady, tournamentId, sports = [] }) => {
     return (
         <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            {tournamentId && <LiveNowBanner tournamentId={tournamentId} sport={sport} />}
+            {tournamentId && <LiveNowBanner tournamentId={tournamentId} sports={sports} />}
 
 
             {/* My Team Banner — shows skeleton while loading, full banner once data is ready */}

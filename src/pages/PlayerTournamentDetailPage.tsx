@@ -360,13 +360,9 @@ const PlayerTournamentDetailPage = () => {
                                     myTeamAssignment={myTeamAssignment}
                                     isTeamDataReady={isTeamDataReady}
                                     tournamentId={tournament._id}
-                                    // LiveNowBanner now supports both cricket and badminton team-league live
-                                    // scoring. Prefer cricket when the tournament hosts it (matches prior
-                                    // behavior), otherwise prefer badminton (which has live sub-matches to
-                                    // surface via team league), else fall back to whichever sport is first.
-                                    sport={tournamentSports.includes('cricket')
-                                        ? 'cricket'
-                                        : tournamentSports.includes('badminton') ? 'badminton' : tournamentSports[0]}
+                                    // Every sport the tournament hosts — picking one hid the other's
+                                    // live matches in a multisport tournament.
+                                    sports={tournamentSports}
                                 />
                             )}
                             {activeTab === 'categories' && (
