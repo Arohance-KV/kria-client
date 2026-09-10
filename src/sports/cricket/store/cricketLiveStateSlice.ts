@@ -65,11 +65,22 @@ export const recordBall = createAsyncThunk(
     },
 );
 
+// Rejects with the SERVER's message rather than letting createAsyncThunk
+// serialize the axios error, which discards `response.data.message` and leaves
+// callers with "Request failed with status code 400". The undo's refusals are
+// specific and actionable — "No balls to undo." for a match completed through
+// the manual result endpoint, or a bracket conflict — so they have to survive
+// the trip. Shaped as an object with `message` so existing callers reading
+// `e?.message` keep working and simply start seeing a better string.
 export const undoLastBall = createAsyncThunk(
     'cricketLive/undoLastBall',
-    async (matchId: string) => {
-        const result = await cricketMatchApi.undoLastBall(matchId);
-        return { matchId, result };
+    async (matchId: string, { rejectWithValue }) => {
+        try {
+            const result = await cricketMatchApi.undoLastBall(matchId);
+            return { matchId, result };
+        } catch (e) {
+            return rejectWithValue({ message: e?.response?.data?.message || e?.message || 'Failed to undo the last ball.' });
+        }
     },
 );
 
