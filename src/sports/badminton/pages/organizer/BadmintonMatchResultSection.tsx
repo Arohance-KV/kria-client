@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, CheckCircle2, X, Radio } from 'lucide-react';
+import { Loader2, CheckCircle2, X, Radio, RotateCcw } from 'lucide-react';
 import { badmintonMatchApi } from '@/sports/badminton/api/badmintonMatch';
 import BadmintonScoringConsole from './teamLeague/BadmintonScoringConsole';
 import type { MatchResultSectionProps } from '@/sports/_contracts/SportPlugin';
@@ -28,9 +28,53 @@ export default function BadmintonMatchResultSection({ match, competitorType, onR
         Array.from({ length: bestOf }, (_, i) => ({ gameNumber: i + 1, team1Score: 0, team2Score: 0 })),
     );
     const [saving, setSaving] = useState(false);
+    const [reopening, setReopening] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    if (!canScore) return null;
+    // Only a genuinely scored result can be corrected. The server accepts status
+    // 'completed' and nothing else, so a walkover — which `isCompleted` above also
+    // counts — must NOT offer the door, or the button would always fail with
+    // "nothing to reopen". A bye has no result to correct either.
+    const canReopen = match.status === 'completed';
+
+    const reopen = async () => {
+        const ok = window.confirm(
+            'Reopen this match for correction?\n\n'
+            + 'This clears the recorded result, removes the career stats it credited, '
+            + 'and un-advances the winner from the next round. You then rescore the '
+            + 'match normally.',
+        );
+        if (!ok) return;
+        setReopening(true);
+        setError(null);
+        try {
+            const out = await badmintonMatchApi.reopenMatch(match._id);
+            // A warning means the reopen SUCCEEDED but the bracket could not be
+            // cleared, leaving the organizer manual work. onRecorded() refetches and
+            // unmounts this branch, which would take an inline message with it — so
+            // this one has to block until it is acknowledged.
+            if (out?.bracketWarning) window.alert(out.bracketWarning);
+            onRecorded();
+        } catch (e) {
+            // The server's own message names which downstream match is blocking the
+            // correction. Never replace it with something generic.
+            setError(e.response?.data?.message || e.message || 'Failed to reopen match.');
+        } finally {
+            setReopening(false);
+        }
+    };
+
+    if (!canScore) {
+        if (!canReopen) return null;
+        return (
+            <div className="px-4 py-2 border-t border-white/5 flex flex-col items-end gap-2">
+                {error && <div className="w-full p-2 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-xs">{error}</div>}
+                <button onClick={reopen} disabled={reopening} className="flex items-center gap-1 px-3 py-1 rounded text-[11px] font-bold bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {reopening ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />} Correct Result
+                </button>
+            </div>
+        );
+    }
 
     const setScore = (idx: number, team: 'team1Score' | 'team2Score', val: number) =>
         setGames(prev => prev.map((g, i) => (i === idx ? { ...g, [team]: Math.max(0, val) } : g)));

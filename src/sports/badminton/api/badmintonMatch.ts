@@ -40,4 +40,17 @@ export const badmintonMatchApi = {
         const res = await API.post(`/sports/badminton/match/${matchId}/live/point`, body);
         return extract(res);
     },
+
+    // Undo a completed result so it can be rescored. The server unwinds the
+    // consequences (career-stat ledger rows, the advanced bracket winner, an
+    // auto-completed category) and reports what it actually undid, so the caller
+    // can tell the organizer rather than leaving them to guess.
+    //
+    // Deliberately does NOT catch: the server refuses a reopen when a downstream
+    // match has already started, and that message names the blocking match. It is
+    // the most actionable response this endpoint gives and must not be flattened.
+    reopenMatch: async (matchId: string) => {
+        const res = await API.post(`/sports/badminton/match/${matchId}/reopen`);
+        return extract(res);
+    },
 };
