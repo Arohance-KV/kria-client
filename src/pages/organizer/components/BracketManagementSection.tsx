@@ -57,6 +57,20 @@ function getC2(m: Match, ct: 'player' | 'team') {
     return { id: m.teams?.team2Id || '', name: m.teams?.team2Name || 'TBD', teamName: '', isTBD: m.teams?.team2Name === 'TBD' };
 }
 
+/**
+ * A slot holds no real competitor. 'TBD' is an unfilled slot; 'BYE' is the
+ * absence of an opponent. Neither can take part in a swap — the old check
+ * covered only 'TBD', which is why BYE slots offered a swap handle.
+ */
+function isPlaceholderSlot(c: { name: string; isTBD: boolean }) {
+    return c.isTBD || c.name === 'BYE';
+}
+
+/** Rounds after the first are filled by auto-advance, so their slots are derived. */
+function isSwappableRound(m: Match) {
+    return (m.roundNumber ?? 1) === 1;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // BRACKET LAYOUT CONSTANTS & POSITION CALCULATOR
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -247,7 +261,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                     {isSwapping ? (
                         <span className="text-cyan-300 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Swapping...</span>
                     ) : !swapSelection ? (
-                        <span className="text-cyan-300">Click a player slot in any round to select it, then click another slot <strong>in the same round</strong> to swap.</span>
+                        <span className="text-cyan-300">Click a slot in the <strong>first round</strong> to select it, then click another first-round slot to swap. Later rounds follow from the results.</span>
                     ) : (
                         <span className="text-cyan-300">
                             Selected: <strong className="text-cyan-100">{swapSelection.name}</strong> — now click another slot to swap.
@@ -330,16 +344,19 @@ const BracketKnockoutView: React.FC<{
                 {/* Stage headers */}
                 <div className="flex mb-6">
                     {visible.map((round, ri) => {
-                        // Show the TRUE match count (byes are hidden cards, so round.matches
-                        // undercounts). Otherwise round 1 reads as fewer matches than round 2.
-                        const total = rounds[round.name]?.length ?? round.matches.length;
-                        const byes = total - round.matches.length;
+                        // Counted from the data, not from what is currently rendered:
+                        // swap mode reveals the bye cards, which used to make the
+                        // bye tally collapse to zero. A bye is not a match, so the
+                        // two are reported separately instead of summed.
+                        const all = rounds[round.name] || [];
+                        const byes = all.filter(m => m.status === 'walkover' && m.winReason === 'bye').length;
+                        const playable = all.length - byes;
                         return (
                             <React.Fragment key={round.name}>
                                 <div className="text-center shrink-0" style={{ width: CARD_W }}>
                                     <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{round.name}</p>
                                     <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
-                                        {total} match{total !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
+                                        {playable} match{playable !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
                                     </p>
                                 </div>
                                 {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
@@ -468,7 +485,12 @@ const BracketMatchCard: React.FC<{
     const isBye = match.status === 'walkover' && match.winReason === 'bye';
     const isLive = match.status === 'in_progress';
     const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
-    const canSwap = swapMode && match.status !== 'completed' && !isLive;
+    // Only round one can be rearranged. A later round's names come from
+    // auto-advance, so swapping them contradicts the round that feeds them and
+    // gets silently overwritten the next time a result is recorded.
+    const canSwap = swapMode && match.status !== 'completed' && !isLive && isSwappableRound(match);
+    const c1Swappable = canSwap && !isPlaceholderSlot(c1);
+    const c2Swappable = canSwap && !isPlaceholderSlot(c2);
 
     const isSlotSelected = (slot: 'player1' | 'player2') =>
         swapSelection?.matchId === match._id && swapSelection?.slot === slot;
@@ -505,9 +527,9 @@ const BracketMatchCard: React.FC<{
                 isTBD={c1.isTBD}
                 score={match.result?.team1Total}
                 competitorType={competitorType}
-                canSwap={canSwap && !c1.isTBD}
+                canSwap={c1Swappable}
                 isSelected={isSlotSelected('player1')}
-                onClick={() => canSwap && !c1.isTBD && onSwapClick(match._id, 'player1', c1.name)}
+                onClick={() => c1Swappable && onSwapClick(match._id, 'player1', c1.name)}
             />
 
             <div className="flex items-center px-4">
@@ -523,9 +545,9 @@ const BracketMatchCard: React.FC<{
                 isTBD={c2.isTBD}
                 score={match.result?.team2Total}
                 competitorType={competitorType}
-                canSwap={canSwap && !c2.isTBD}
+                canSwap={c2Swappable}
                 isSelected={isSlotSelected('player2')}
-                onClick={() => canSwap && !c2.isTBD && onSwapClick(match._id, 'player2', c2.name)}
+                onClick={() => c2Swappable && onSwapClick(match._id, 'player2', c2.name)}
             />
 
             {/* Sport-specific result section */}
