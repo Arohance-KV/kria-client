@@ -116,3 +116,67 @@ describe('CricketMatchSummary — correcting a completed match', () => {
         await waitFor(() => expect(window.alert).toHaveBeenCalledWith(warn));
     });
 });
+
+// ── A tied knockout ─────────────────────────────────────────────────────────
+// The engine records a tie as no winner at all, which is right. The card then
+// read the winner name off a fallback string and announced "Winner won match
+// tied.", under a line claiming a winner had advanced when nothing had.
+const tiedMatch = {
+    _id: 'm2',
+    status: 'completed',
+    teams: { team1Id: 't1', team1Name: 'Konkan Titans', team2Id: 't2', team2Name: 'Deccan Dynamos' },
+    winnerId: undefined,
+    result: { marginOfVictory: 'match tied' },
+    inningsScores: [
+        { inningsNumber: 1, runs: 69, wickets: 3, overs: 7, balls: 0 },
+        { inningsNumber: 2, runs: 69, wickets: 1, overs: 7, balls: 0 },
+    ],
+};
+
+const renderTied = (match = tiedMatch) => {
+    const store = configureStore({ reducer: { cricketLiveState: cricketLiveStateReducer } });
+    render(
+        <Provider store={store}>
+            <CricketMatchSummary match={match} />
+        </Provider>,
+    );
+};
+
+describe('CricketMatchSummary — a tied match', () => {
+    it('calls it a tie instead of inventing a winner', () => {
+        renderTied();
+        expect(screen.getByText(/match tied/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Winner won/i)).not.toBeInTheDocument();
+    });
+
+    it('does not claim anyone advanced', () => {
+        renderTied();
+        expect(screen.queryByText(/advanced in the bracket automatically/i)).not.toBeInTheDocument();
+    });
+
+    it('offers both sides so the organizer can name who goes through', () => {
+        renderTied();
+        expect(screen.getByRole('button', { name: /Konkan Titans/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Deccan Dynamos/ })).toBeInTheDocument();
+    });
+
+    it('posts the chosen side to the tie-break endpoint', async () => {
+        let body: Record<string, unknown> | null = null;
+        server.use(http.post('https://api.kria.club/sports/cricket/match/m2/resolve-tie', async ({ request }) => {
+            body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ data: { data: {} } });
+        }));
+
+        renderTied();
+        await userEvent.click(screen.getByRole('button', { name: /Deccan Dynamos/ }));
+        await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+        await waitFor(() => expect(body).toEqual({ winnerTeamId: 't2' }));
+    });
+
+    it('leaves a decided match exactly as it was', () => {
+        renderTied(completedMatch);
+        expect(screen.getByText(/Alpha won by 3 wickets/i)).toBeInTheDocument();
+        expect(screen.getByText(/advanced in the bracket automatically/i)).toBeInTheDocument();
+    });
+});
