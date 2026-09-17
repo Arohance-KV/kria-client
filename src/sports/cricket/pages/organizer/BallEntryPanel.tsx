@@ -38,10 +38,18 @@ export default function BallEntryPanel({ matchId, match, live, scorecard, initia
     const [lastBall, setLastBall] = useState<string | null>(null);
 
     useEffect(() => {
-        if (live?.strikerId)        setStrikerId(live.strikerId);
-        if (live?.nonStrikerId)     setNonStrikerId(live.nonStrikerId);
+        // Mirror both ends, INCLUDING an end the server has cleared. The engine
+        // empties whichever end a dismissed batsman occupied, and that empty is
+        // the only signal saying which end needs filling. Guarding these on
+        // truthiness swallowed it, so the console went on posting the batsman
+        // who had just been dismissed and every further ball was refused.
+        // `live` itself being absent still leaves local state alone.
+        if (live) {
+            setStrikerId(live.strikerId || '');
+            setNonStrikerId(live.nonStrikerId || '');
+        }
         if (live?.currentBowlerId)  setBowlerId(live.currentBowlerId);
-    }, [live?.strikerId, live?.nonStrikerId, live?.currentBowlerId]);
+    }, [live, live?.strikerId, live?.nonStrikerId, live?.currentBowlerId]);
 
     useEffect(() => { if (live?.nextBatsmanNeeded) setAwaitingBatsman(true); },  [live?.nextBatsmanNeeded]);
     useEffect(() => { if (live?.nextBowlerNeeded)  setAwaitingBowler(true); },   [live?.nextBowlerNeeded]);
@@ -109,7 +117,16 @@ export default function BallEntryPanel({ matchId, match, live, scorecard, initia
             <NextPlayerPrompt
                 title="Select next batsman"
                 candidates={availableBatsmen}
-                onSelect={(id) => { setStrikerId(id); setAwaitingBatsman(false); }}
+                onSelect={(id) => {
+                    // Whichever end the server vacated. A non-striker run-out,
+                    // or any dismissal on the last ball of an over, leaves the
+                    // NON-striker end empty — sending the new batsman in as
+                    // striker there evicted the batsman who was not out.
+                    if (!strikerId) setStrikerId(id);
+                    else if (!nonStrikerId) setNonStrikerId(id);
+                    else setStrikerId(id);
+                    setAwaitingBatsman(false);
+                }}
             />
         );
     }
