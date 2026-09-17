@@ -3,6 +3,7 @@ import { Trophy, Loader2, RotateCcw } from 'lucide-react';
 import { useDispatch } from 'react-redux';
 import { undoLastBall } from '@/sports/cricket/store/cricketLiveStateSlice';
 import API from '@/api/axios';
+import { isDecidedFinal } from '@/lib/champion';
 
 interface Props {
     match: any;       // completed match (has inningsScores, winnerId, teams, result)
@@ -23,6 +24,9 @@ export default function CricketMatchSummary({ match }: Props) {
     // winner — so nothing advanced and the bracket is stuck. The card used to
     // print the fallback name and announce "Winner won match tied." under a
     // line claiming a winner had gone through.
+    // Winning the final wins the category. "Advanced in the bracket" is both
+    // wrong and meaningless there — there is no next round to advance into.
+    const champions = isDecidedFinal(match);
     const isTie = innings.length >= 2 && innings[0]?.runs === innings[1]?.runs;
     const unresolvedTie = isTie && !match?.winnerId;
     const [advancing, setAdvancing] = useState<string | null>(null);
@@ -80,9 +84,13 @@ export default function CricketMatchSummary({ match }: Props) {
     return (
         <div className="max-w-lg mx-auto bg-black/30 border border-emerald-500/30 rounded-2xl p-6 flex flex-col gap-4 text-center">
             <Trophy className="h-10 w-10 text-emerald-400 mx-auto" />
-            <h3 className="text-xl font-bold text-white">{isTie ? 'Match Tied' : 'Match Complete'}</h3>
+            <h3 className="text-xl font-bold text-white">
+                {champions ? 'Champions' : isTie ? 'Match Tied' : 'Match Complete'}
+            </h3>
             <p className="text-emerald-400 font-semibold">
-                {winnerName
+                {champions && winnerName
+                    ? `${winnerName} win the title${match?.result?.marginOfVictory ? `, ${match.result.marginOfVictory}` : ''}.`
+                    : winnerName
                     ? `${winnerName} won${match?.result?.marginOfVictory ? ` ${match.result.marginOfVictory}` : ''}.`
                     : isTie
                         ? `Both sides finished on ${innings[0]?.runs}.`
@@ -126,6 +134,8 @@ export default function CricketMatchSummary({ match }: Props) {
                         {resolving ? 'Recording…' : 'Confirm'}
                     </button>
                 </div>
+            ) : champions ? (
+                <p className="text-xs text-amber-400/80">This was the final — the category is decided.</p>
             ) : match?.winnerId ? (
                 <p className="text-xs text-gray-500">Winner has advanced in the bracket automatically.</p>
             ) : null}

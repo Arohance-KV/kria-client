@@ -133,7 +133,9 @@ const tiedMatch = {
     ],
 };
 
-const renderTied = (match = tiedMatch) => {
+// Fixtures are shaped ad hoc per case, and the component takes `match: any`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const renderTied = (match: any = tiedMatch) => {
     const store = configureStore({ reducer: { cricketLiveState: cricketLiveStateReducer } });
     render(
         <Provider store={store}>
@@ -178,5 +180,35 @@ describe('CricketMatchSummary — a tied match', () => {
         renderTied(completedMatch);
         expect(screen.getByText(/Alpha won by 3 wickets/i)).toBeInTheDocument();
         expect(screen.getByText(/advanced in the bracket automatically/i)).toBeInTheDocument();
+    });
+});
+
+// ── The final ───────────────────────────────────────────────────────────────
+const wonFinal = {
+    ...completedMatch,
+    _id: 'm3',
+    bracketRound: 'Final',
+    nextMatchId: undefined,
+};
+
+describe('CricketMatchSummary — winning the final', () => {
+    it('crowns the winner instead of saying they advanced', () => {
+        renderTied(wonFinal);
+        expect(screen.getByText(/champions/i)).toBeInTheDocument();
+        expect(screen.getByText(/Alpha/)).toBeInTheDocument();
+        // There is no next round to advance into.
+        expect(screen.queryByText(/advanced in the bracket automatically/i)).not.toBeInTheDocument();
+    });
+
+    it('still says "advanced" for a round that has one', () => {
+        renderTied({ ...completedMatch, bracketRound: 'Semi-Final', nextMatchId: 'f1' });
+        expect(screen.getByText(/advanced in the bracket automatically/i)).toBeInTheDocument();
+        expect(screen.queryByText(/champions/i)).not.toBeInTheDocument();
+    });
+
+    it('does not crown anyone when the final is still tied', () => {
+        renderTied({ ...tiedMatch, bracketRound: 'Final' });
+        expect(screen.queryByText(/champions/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/match tied/i)).toBeInTheDocument();
     });
 });

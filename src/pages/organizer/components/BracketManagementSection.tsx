@@ -7,6 +7,7 @@ import {
 import API from '../../../api/axios';
 import { sportRegistry } from '@/sports/registry';
 import TeamLeagueBracketView from '@/sports/badminton/pages/organizer/teamLeague/TeamLeagueBracketView';
+import { isDecidedFinal } from '@/lib/champion';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -485,6 +486,9 @@ const BracketMatchCard: React.FC<{
     const isBye = match.status === 'walkover' && match.winReason === 'bye';
     const isLive = match.status === 'in_progress';
     const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
+    // Winning the final wins the whole category, so that card says so instead
+    // of reading like any other completed match.
+    const champions = isDecidedFinal(match);
     // Only round one can be rearranged. A later round's names come from
     // auto-advance, so swapping them contradicts the round that feeds them and
     // gets silently overwritten the next time a result is recorded.
@@ -496,7 +500,7 @@ const BracketMatchCard: React.FC<{
         swapSelection?.matchId === match._id && swapSelection?.slot === slot;
 
     return (
-        <div className={`rounded-2xl border overflow-hidden transition-all ${isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
+        <div className={`rounded-2xl border overflow-hidden transition-all ${champions ? 'border-amber-400/50 bg-amber-400/[0.05]' : isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
                 <div className="flex items-center gap-2">
@@ -504,7 +508,9 @@ const BracketMatchCard: React.FC<{
                     {isBye && <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/15 text-amber-400 uppercase tracking-wider">BYE</span>}
                 </div>
                 <div className="flex items-center gap-2">
-                    {isBye ? (
+                    {champions ? (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-400/20 text-amber-300 uppercase tracking-wider">🏆 Champions</span>
+                    ) : isBye ? (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400/70 uppercase">Auto-advanced</span>
                     ) : isLive ? (
                         <Link to={`/live/${match._id}`} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 uppercase">
