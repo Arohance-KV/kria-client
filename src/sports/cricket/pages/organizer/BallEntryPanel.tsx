@@ -37,19 +37,28 @@ export default function BallEntryPanel({ matchId, match, live, scorecard, initia
     const [awaitingBowler,  setAwaitingBowler]  = useState(false);
     const [lastBall, setLastBall] = useState<string | null>(null);
 
+    // Adopt a name the server HAS. Never clear from here: an empty end on the
+    // server is the normal state while the organizer is still choosing — at an
+    // innings break, and between a wicket and its replacement — so copying the
+    // empty over local state erases the pick before it can be posted.
     useEffect(() => {
-        // Mirror both ends, INCLUDING an end the server has cleared. The engine
-        // empties whichever end a dismissed batsman occupied, and that empty is
-        // the only signal saying which end needs filling. Guarding these on
-        // truthiness swallowed it, so the console went on posting the batsman
-        // who had just been dismissed and every further ball was refused.
-        // `live` itself being absent still leaves local state alone.
-        if (live) {
-            setStrikerId(live.strikerId || '');
-            setNonStrikerId(live.nonStrikerId || '');
-        }
+        if (live?.strikerId)        setStrikerId(live.strikerId);
+        if (live?.nonStrikerId)     setNonStrikerId(live.nonStrikerId);
         if (live?.currentBowlerId)  setBowlerId(live.currentBowlerId);
-    }, [live, live?.strikerId, live?.nonStrikerId, live?.currentBowlerId]);
+    }, [live?.strikerId, live?.nonStrikerId, live?.currentBowlerId]);
+
+    // Clearing happens exactly once, on the edge where the engine asks for a
+    // replacement. The engine empties whichever end the dismissed batsman
+    // occupied, and that empty is the only signal saying which end to fill —
+    // without dropping our copy we would post the dismissed batsman straight
+    // back. Keyed on the flag alone so a later poll cannot re-clear an end the
+    // organizer has meanwhile filled.
+    useEffect(() => {
+        if (!live?.nextBatsmanNeeded) return;
+        if (!live.strikerId)    setStrikerId('');
+        if (!live.nonStrikerId) setNonStrikerId('');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [live?.nextBatsmanNeeded]);
 
     useEffect(() => { if (live?.nextBatsmanNeeded) setAwaitingBatsman(true); },  [live?.nextBatsmanNeeded]);
     useEffect(() => { if (live?.nextBowlerNeeded)  setAwaitingBowler(true); },   [live?.nextBowlerNeeded]);
