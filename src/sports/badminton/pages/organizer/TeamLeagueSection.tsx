@@ -91,6 +91,16 @@ export default function TeamLeagueSection({ tournamentId, categories }: Props) {
         }
     }, [selectedCategoryId, stageNumber, refreshGroups, refreshStandings, refreshStages]);
 
+    // Standings summarise results recorded elsewhere — the scoring console, a
+    // staff member's session — so the snapshot taken at page load goes stale
+    // without anything here knowing. Refetch on opening the tab, which is what
+    // OverallView already gets for free by owning its own fetch. Without this a
+    // finished group read '0/3 ties completed', and because the advance button
+    // is gated on that count, it stayed hidden.
+    useEffect(() => {
+        if (activeTab === 'standings') refreshStandings();
+    }, [activeTab, refreshStandings]);
+
     if (teamLeagueCategories.length === 0) {
         return (
             <section className="bg-white/5 border border-white/10 rounded-3xl p-8">
