@@ -8,6 +8,11 @@ import API from '../../../api/axios';
 import { sportRegistry } from '@/sports/registry';
 import TeamLeagueBracketView from '@/sports/badminton/pages/organizer/teamLeague/TeamLeagueBracketView';
 import { isDecidedFinal } from '@/lib/champion';
+import {
+    CARD_H, CARD_W, CONN_W, bracketHeight, computeCardPositions,
+    getC1, getC2, isHiddenBye, resolveSwapSlot,
+    type LayoutMatch, type LayoutRound, type Slot,
+} from '@/lib/bracketLayout';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -15,23 +20,12 @@ import { isDecidedFinal } from '@/lib/champion';
 
 interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string; sport?: string }
 
-interface Match {
-    _id: string;
-    bracketRound: string;
-    matchNumber: number;
-    roundNumber?: number;
+type Match = LayoutMatch & {
     positionInRound?: number;
     competitorType?: 'player' | 'team';
-    teams: { team1Id: string; team2Id: string; team1Name: string; team2Name: string };
-    player1?: { registrationId: string; name: string; teamId: string; teamName: string };
-    player2?: { registrationId: string; name: string; teamId: string; teamName: string };
-    status: string;
     winnerId?: string;
-    winReason?: string;
     result?: { team1Total?: number; team2Total?: number; marginOfVictory?: string };
-    nextMatchId?: string;
-    nextMatchSlot?: string;
-}
+};
 
 interface Props {
     tournamentId: string;
@@ -40,80 +34,13 @@ interface Props {
 }
 
 interface SwapSelection {
+    /** The first-round match and slot the swap is actually applied to. */
     matchId: string;
-    slot: 'player1' | 'player2';
+    slot: Slot;
+    /** The card the organizer clicked, which for a bye-fed competitor is a later round. */
+    clickedMatchId: string;
+    clickedSlot: Slot;
     name: string;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function getC1(m: Match, ct: 'player' | 'team') {
-    if (ct === 'player' && m.player1) return { id: m.player1.registrationId, name: m.player1.name, teamName: m.player1.teamName, isTBD: m.player1.registrationId === 'TBD' };
-    return { id: m.teams?.team1Id || '', name: m.teams?.team1Name || 'TBD', teamName: '', isTBD: m.teams?.team1Name === 'TBD' };
-}
-function getC2(m: Match, ct: 'player' | 'team') {
-    if (ct === 'player' && m.player2) return { id: m.player2.registrationId, name: m.player2.name, teamName: m.player2.teamName, isTBD: m.player2.registrationId === 'TBD' };
-    return { id: m.teams?.team2Id || '', name: m.teams?.team2Name || 'TBD', teamName: '', isTBD: m.teams?.team2Name === 'TBD' };
-}
-
-/**
- * A slot holds no real competitor. 'TBD' is an unfilled slot; 'BYE' is the
- * absence of an opponent. Neither can take part in a swap — the old check
- * covered only 'TBD', which is why BYE slots offered a swap handle.
- */
-function isPlaceholderSlot(c: { name: string; isTBD: boolean }) {
-    return c.isTBD || c.name === 'BYE';
-}
-
-/** Rounds after the first are filled by auto-advance, so their slots are derived. */
-function isSwappableRound(m: Match) {
-    return (m.roundNumber ?? 1) === 1;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BRACKET LAYOUT CONSTANTS & POSITION CALCULATOR
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const CARD_H = 215;  // fits header + 2 slots + Record Result button; score entry opens as a modal (not inline) so the card height never changes
-const CARD_W = 340;
-const CARD_GAP = 20;
-const CONN_W = 44;
-const S = CARD_H + CARD_GAP;
-
-function computeCardPositions(visible: { name: string; matches: Match[] }[]): number[][] {
-    if (visible.length === 0) return [];
-    const positions: number[][] = [];
-    positions[0] = visible[0].matches.map((_, ci) => ci * S);
-    for (let ri = 1; ri < visible.length; ri++) {
-        const prev = positions[ri - 1];
-        const prevMatches = visible[ri - 1].matches;
-        // Desired centre = midpoint of this match's VISIBLE sources; null when all its
-        // sources are hidden (both fed by byes) — filled sequentially in the pass below.
-        const desired = visible[ri].matches.map((match) => {
-            const sources = prevMatches
-                .map((m, prevCi) => ({ m, prevCi }))
-                .filter(({ m }) => m.nextMatchId === match._id);
-            if (sources.length === 0) return null;
-            const avgCenterY =
-                sources.reduce((sum, { prevCi }) => sum + prev[prevCi] + CARD_H / 2, 0) /
-                sources.length;
-            return avgCenterY - CARD_H / 2;
-        });
-        // Hiding byes compacts earlier rounds, so raw source-centres (and the index
-        // fallback) can land closer than a card's height and overlap. Walk top-down
-        // enforcing a minimum gap so cards in a round can never collide.
-        const out: number[] = [];
-        for (let ci = 0; ci < desired.length; ci++) {
-            let top = desired[ci];
-            if (top === null) top = ci === 0 ? 0 : out[ci - 1] + S;
-            if (ci > 0) top = Math.max(top, out[ci - 1] + CARD_H + CARD_GAP);
-            out[ci] = top;
-        }
-        positions[ri] = out;
-    }
-    return positions;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -183,16 +110,18 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
         } finally { setIsReshuffling(false); }
     };
 
-    const handleSwapClick = (matchId: string, slot: 'player1' | 'player2', name: string) => {
+    const handleSwapClick = (match: Match, slot: Slot, name: string) => {
         if (!swapMode) return;
+        // The clicked slot may be a later round showing a competitor who had a
+        // bye. The swap is applied to the first-round slot that really holds them.
+        const target = resolveSwapSlot(match, slot, matches, competitorType);
+        if (!target) return;
         if (!swapSelection) {
-            setSwapSelection({ matchId, slot, name });
+            setSwapSelection({ ...target, clickedMatchId: match._id, clickedSlot: slot, name });
+        } else if (swapSelection.matchId === target.matchId && swapSelection.slot === target.slot) {
+            setSwapSelection(null); // Deselect
         } else {
-            // Execute swap
-            if (swapSelection.matchId === matchId && swapSelection.slot === slot) {
-                setSwapSelection(null); return; // Deselect
-            }
-            executeSwap(swapSelection.matchId, swapSelection.slot, matchId, slot);
+            executeSwap(swapSelection.matchId, swapSelection.slot, target.matchId, target.slot);
         }
     };
 
@@ -262,7 +191,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                     {isSwapping ? (
                         <span className="text-cyan-300 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Swapping...</span>
                     ) : !swapSelection ? (
-                        <span className="text-cyan-300">Click a slot in the <strong>first round</strong> to select it, then click another first-round slot to swap. Later rounds follow from the results.</span>
+                        <span className="text-cyan-300">Click a highlighted name to pick it up, then click another to swap the two. Names that follow from a played result cannot be moved.</span>
                     ) : (
                         <span className="text-cyan-300">
                             Selected: <strong className="text-cyan-100">{swapSelection.name}</strong> — now click another slot to swap.
@@ -299,6 +228,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                     swapMode={swapMode}
                     swapSelection={swapSelection}
                     onSwapClick={handleSwapClick}
+                    allMatches={matches}
                     ResultSection={ResultSection}
                     onRecorded={fetchMatches}
                 />
@@ -317,41 +247,39 @@ const BracketKnockoutView: React.FC<{
     competitorType: 'player' | 'team';
     swapMode: boolean;
     swapSelection: SwapSelection | null;
-    onSwapClick: (matchId: string, slot: 'player1' | 'player2', name: string) => void;
+    onSwapClick: (match: Match, slot: Slot, name: string) => void;
+    allMatches: Match[];
     ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
     onRecorded: () => void;
-}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, ResultSection, onRecorded }) => {
+}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, allMatches, ResultSection, onRecorded }) => {
 
-    const visible = sortedRoundNames
+    // Byes stay in the layout — they hold the geometry every later card centres
+    // on — but they are never rendered, because a bye card only ever repeats the
+    // name already shown on the card it feeds.
+    const layout: LayoutRound[] = sortedRoundNames
         .map(name => ({
             name,
             matches: (rounds[name] || [])
-                .filter(m => swapMode ? true : !(m.status === 'walkover' && m.winReason === 'bye'))
+                .slice()
                 .sort((a, b) => (a.positionInRound ?? a.matchNumber) - (b.positionInRound ?? b.matchNumber)),
         }))
         .filter(r => r.matches.length > 0);
 
-    if (visible.length === 0) return null;
+    if (layout.length === 0) return null;
 
-    const cardPos = computeCardPositions(visible);
-    const bHeight = cardPos.reduce((maxH, rPos) => {
-        if (rPos.length === 0) return maxH;
-        return Math.max(maxH, Math.max(...rPos) + CARD_H);
-    }, 0);
+    const cardPos = computeCardPositions(layout);
+    const bHeight = bracketHeight(cardPos);
 
     return (
         <div className="overflow-x-auto no-scrollbar pb-4">
             <div className="pb-4">
                 {/* Stage headers */}
                 <div className="flex mb-6">
-                    {visible.map((round, ri) => {
-                        // Counted from the data, not from what is currently rendered:
-                        // swap mode reveals the bye cards, which used to make the
-                        // bye tally collapse to zero. A bye is not a match, so the
-                        // two are reported separately instead of summed.
-                        const all = rounds[round.name] || [];
-                        const byes = all.filter(m => m.status === 'walkover' && m.winReason === 'bye').length;
-                        const playable = all.length - byes;
+                    {layout.map((round, ri) => {
+                        // A bye is not a match, so the two are reported separately
+                        // rather than summed.
+                        const byes = round.matches.filter(isHiddenBye).length;
+                        const playable = round.matches.length - byes;
                         return (
                             <React.Fragment key={round.name}>
                                 <div className="text-center shrink-0" style={{ width: CARD_W }}>
@@ -360,7 +288,7 @@ const BracketKnockoutView: React.FC<{
                                         {playable} match{playable !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
                                     </p>
                                 </div>
-                                {ri < visible.length - 1 && <div style={{ width: CONN_W }} />}
+                                {ri < layout.length - 1 && <div style={{ width: CONN_W }} />}
                             </React.Fragment>
                         );
                     })}
@@ -368,17 +296,17 @@ const BracketKnockoutView: React.FC<{
 
                 {/* Bracket body */}
                 <div className="flex items-start">
-                    {visible.map((round, ri) => {
-                        const isLast = ri === visible.length - 1;
+                    {layout.map((round, ri) => {
+                        const isLast = ri === layout.length - 1;
                         return (
                             <React.Fragment key={round.name}>
                                 {/* Cards column */}
                                 <div className="relative shrink-0" style={{ width: CARD_W, height: bHeight }}>
-                                    {round.matches.map((match, ci) => (
+                                    {round.matches.filter(m => !isHiddenBye(m)).map(match => (
                                         <div
                                             key={match._id}
                                             className="absolute"
-                                            style={{ top: cardPos[ri][ci], left: 0, width: CARD_W, height: CARD_H }}
+                                            style={{ top: cardPos.get(match._id), left: 0, width: CARD_W, height: CARD_H }}
                                         >
                                             <BracketMatchCard
                                                 match={match}
@@ -386,6 +314,7 @@ const BracketKnockoutView: React.FC<{
                                                 swapMode={swapMode}
                                                 swapSelection={swapSelection}
                                                 onSwapClick={onSwapClick}
+                                                allMatches={allMatches}
                                                 ResultSection={ResultSection}
                                                 onRecorded={onRecorded}
                                             />
@@ -397,9 +326,8 @@ const BracketKnockoutView: React.FC<{
                                 {!isLast && (
                                     <ConnectorSvg
                                         currentMatches={round.matches}
-                                        nextMatches={visible[ri + 1].matches}
-                                        currentPositions={cardPos[ri]}
-                                        nextPositions={cardPos[ri + 1]}
+                                        nextMatches={layout[ri + 1].matches}
+                                        positions={cardPos}
                                         height={bHeight}
                                     />
                                 )}
@@ -419,50 +347,49 @@ const BracketKnockoutView: React.FC<{
 const ConnectorSvg: React.FC<{
     currentMatches: Match[];
     nextMatches: Match[];
-    currentPositions: number[];
-    nextPositions: number[];
+    positions: Map<string, number>;
     height: number;
-}> = ({ currentMatches, nextMatches, currentPositions, nextPositions, height }) => {
+}> = ({ currentMatches, nextMatches, positions, height }) => {
     const midX = CONN_W / 2;
-    const stroke = 'rgba(255,255,255,0.12)';
+    const stroke = 'rgba(255,255,255,0.14)';
     const sw = 1.5;
 
-    const groups = new Map<string, number[]>();
-    currentMatches.forEach((match, ci) => {
-        if (!match.nextMatchId) return;
+    const centre = (id: string) => (positions.get(id) ?? 0) + CARD_H / 2;
+
+    // A hidden bye has no card to draw a line out of, so its leg is skipped —
+    // but its sibling's leg still runs to the shared elbow, which sits on the
+    // next card's centre because the bye's reserved slot was counted there.
+    const groups = new Map<string, Match[]>();
+    currentMatches.forEach(match => {
+        if (!match.nextMatchId || isHiddenBye(match)) return;
         if (!groups.has(match.nextMatchId)) groups.set(match.nextMatchId, []);
-        groups.get(match.nextMatchId)!.push(ci);
+        groups.get(match.nextMatchId)!.push(match);
     });
 
     const paths: React.ReactNode[] = [];
-    groups.forEach((cis, nextMatchId) => {
-        const nextCi = nextMatches.findIndex(m => m._id === nextMatchId);
-        if (nextCi < 0) return;
-        const midY = nextPositions[nextCi] + CARD_H / 2;
-
-        if (cis.length === 1) {
-            const topY = currentPositions[cis[0]] + CARD_H / 2;
-            paths.push(
-                <path key={nextMatchId} d={`M 0 ${topY} H ${midX} V ${midY} H ${CONN_W}`}
-                    fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
-            );
-        } else if (cis.length >= 2) {
-            const sorted = [...cis].sort((a, b) => a - b);
-            const topY = currentPositions[sorted[0]] + CARD_H / 2;
-            const botY = currentPositions[sorted[sorted.length - 1]] + CARD_H / 2;
-            paths.push(
-                <g key={nextMatchId}>
-                    <path d={`M 0 ${topY} H ${midX} V ${botY} H 0`}
-                        fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
-                    <path d={`M ${midX} ${midY} H ${CONN_W}`}
-                        fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
-                </g>
-            );
-        }
+    groups.forEach((sources, nextMatchId) => {
+        if (!nextMatches.some(m => m._id === nextMatchId)) return;
+        const midY = centre(nextMatchId);
+        const ys = sources.map(m => centre(m._id)).sort((a, b) => a - b);
+        paths.push(
+            <g key={nextMatchId}>
+                {/* one stub per source, out to the shared spine */}
+                {ys.map(y => (
+                    <path key={y} d={`M 0 ${y} H ${midX}`} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+                ))}
+                {/* the spine, spanning the sources and the elbow it feeds */}
+                <path
+                    d={`M ${midX} ${Math.min(ys[0], midY)} V ${Math.max(ys[ys.length - 1], midY)}`}
+                    fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round"
+                />
+                <path d={`M ${midX} ${midY} H ${CONN_W}`} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+            </g>
+        );
     });
 
+    // The gutter clips: a path can never bleed sideways into a card.
     return (
-        <svg width={CONN_W} height={height} className="shrink-0" style={{ display: 'block', overflow: 'visible' }}>
+        <svg width={CONN_W} height={height} className="shrink-0" style={{ display: 'block' }}>
             {paths}
         </svg>
     );
@@ -477,27 +404,28 @@ const BracketMatchCard: React.FC<{
     competitorType: 'player' | 'team';
     swapMode: boolean;
     swapSelection: SwapSelection | null;
-    onSwapClick: (matchId: string, slot: 'player1' | 'player2', name: string) => void;
+    onSwapClick: (match: Match, slot: Slot, name: string) => void;
+    allMatches: Match[];
     ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
     onRecorded: () => void;
-}> = ({ match, competitorType, swapMode, swapSelection, onSwapClick, ResultSection, onRecorded }) => {
+}> = ({ match, competitorType, swapMode, swapSelection, onSwapClick, allMatches, ResultSection, onRecorded }) => {
     const c1 = getC1(match, competitorType);
     const c2 = getC2(match, competitorType);
-    const isBye = match.status === 'walkover' && match.winReason === 'bye';
+    const isBye = isHiddenBye(match);
     const isLive = match.status === 'in_progress';
     const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
     // Winning the final wins the whole category, so that card says so instead
     // of reading like any other completed match.
     const champions = isDecidedFinal(match);
-    // Only round one can be rearranged. A later round's names come from
-    // auto-advance, so swapping them contradicts the round that feeds them and
-    // gets silently overwritten the next time a result is recorded.
-    const canSwap = swapMode && match.status !== 'completed' && !isLive && isSwappableRound(match);
-    const c1Swappable = canSwap && !isPlaceholderSlot(c1);
-    const c2Swappable = canSwap && !isPlaceholderSlot(c2);
+    // A name is editable where it is shown. For a competitor who had a bye that
+    // is a later round than the slot the swap actually writes to, which
+    // resolveSwapSlot works out; a null means this name is not the organizer's
+    // to move.
+    const c1Swappable = swapMode && !!resolveSwapSlot(match, 'player1', allMatches, competitorType);
+    const c2Swappable = swapMode && !!resolveSwapSlot(match, 'player2', allMatches, competitorType);
 
-    const isSlotSelected = (slot: 'player1' | 'player2') =>
-        swapSelection?.matchId === match._id && swapSelection?.slot === slot;
+    const isSlotSelected = (slot: Slot) =>
+        swapSelection?.clickedMatchId === match._id && swapSelection?.clickedSlot === slot;
 
     return (
         <div className={`rounded-2xl border overflow-hidden transition-all ${champions ? 'border-amber-400/50 bg-amber-400/[0.05]' : isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
@@ -535,7 +463,7 @@ const BracketMatchCard: React.FC<{
                 competitorType={competitorType}
                 canSwap={c1Swappable}
                 isSelected={isSlotSelected('player1')}
-                onClick={() => c1Swappable && onSwapClick(match._id, 'player1', c1.name)}
+                onClick={() => c1Swappable && onSwapClick(match, 'player1', c1.name)}
             />
 
             <div className="flex items-center px-4">
@@ -553,7 +481,7 @@ const BracketMatchCard: React.FC<{
                 competitorType={competitorType}
                 canSwap={c2Swappable}
                 isSelected={isSlotSelected('player2')}
-                onClick={() => c2Swappable && onSwapClick(match._id, 'player2', c2.name)}
+                onClick={() => c2Swappable && onSwapClick(match, 'player2', c2.name)}
             />
 
             {/* Sport-specific result section */}
