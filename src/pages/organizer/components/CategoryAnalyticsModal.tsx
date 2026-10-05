@@ -3,6 +3,7 @@ import { X, Trophy, Loader2, Award, Star, Medal } from 'lucide-react';
 import API from '../../../api/axios';
 import { useAppDispatch } from '../../../store/hooks';
 import { fetchTournament } from '../../../store/slices/tournamentSlice';
+import { BADGES, BadgeArt } from './badges';
 
 interface Props {
     isOpen: boolean;
@@ -18,8 +19,10 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
     
     // Award State
     const [grantingToId, setGrantingToId] = useState<string | null>(null);
-    const [awardTitle, setAwardTitle] = useState('MVP');
+    const [awardBadge, setAwardBadge] = useState<string | null>(null);
+    const [awardTitle, setAwardTitle] = useState('');
     const [isGranting, setIsGranting] = useState(false);
+    const canGrant = !!awardBadge && awardTitle.trim().length > 0 && !isGranting;
 
     useEffect(() => {
         if (isOpen && category) {
@@ -64,7 +67,8 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
         try {
             setIsGranting(true);
             const payload = {
-                title: awardTitle || 'Special Award',
+                title: awardTitle.trim(),
+                badge: awardBadge,
                 playerId: entry.playerId || null,
                 teamId: entry.teamId || null,
                 categoryId: category._id,
@@ -214,28 +218,35 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
                                                 <td className="p-4 border-l border-white/10">
                                                     {grantingToId === entry._id ? (
                                                         <div className="flex flex-col gap-2 animate-in slide-in-from-right-2">
-                                                            {/* Free-text award name (type any title) with the common ones as suggestions. */}
+                                                            {/* Pick a badge; its name prefills the title, which stays editable. */}
+                                                            <div className="grid grid-cols-4 gap-1" role="group" aria-label="Badge">
+                                                                {BADGES.map((b) => (
+                                                                    <button
+                                                                        key={b.key}
+                                                                        type="button"
+                                                                        title={`${b.name} · ${b.tier}`}
+                                                                        aria-label={b.name}
+                                                                        aria-pressed={awardBadge === b.key}
+                                                                        onClick={() => { setAwardBadge(b.key); setAwardTitle(b.name); }}
+                                                                        className={`rounded p-0.5 border transition-colors ${awardBadge === b.key ? 'border-purple-400 bg-purple-500/20' : 'border-transparent hover:bg-white/10'}`}
+                                                                    >
+                                                                        <BadgeArt badge={b} size={36} />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
                                                             <input
-                                                                list="award-title-presets"
                                                                 value={awardTitle}
                                                                 onChange={(e) => setAwardTitle(e.target.value)}
-                                                                placeholder="Award name…"
+                                                                maxLength={60}
+                                                                placeholder="Pick a badge…"
+                                                                aria-label="Award title"
                                                                 className="h-8 rounded bg-black/50 border border-purple-500/50 text-xs text-white px-2 outline-none focus:border-purple-400"
                                                             />
-                                                            <datalist id="award-title-presets">
-                                                                <option value="MVP" />
-                                                                <option value="Player of the Tournament" />
-                                                                <option value="Best Batsman" />
-                                                                <option value="Best Bowler" />
-                                                                <option value="Best Attacker" />
-                                                                <option value="Best Defender" />
-                                                                <option value="Emerging Talent" />
-                                                            </datalist>
                                                             <div className="flex gap-2">
-                                                                <button 
+                                                                <button
                                                                     onClick={() => handleGrantAward(entry)}
-                                                                    disabled={isGranting}
-                                                                    className="flex-1 px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium rounded transition-colors flex items-center justify-center"
+                                                                    disabled={!canGrant}
+                                                                    className="flex-1 px-2 py-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:hover:bg-purple-600 text-white text-xs font-medium rounded transition-colors flex items-center justify-center"
                                                                 >
                                                                     {isGranting ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm'}
                                                                 </button>
@@ -249,7 +260,7 @@ export default function CategoryAnalyticsModal({ isOpen, onClose, category, tour
                                                         </div>
                                                     ) : (
                                                         <button 
-                                                            onClick={() => setGrantingToId(entry._id)}
+                                                            onClick={() => { setGrantingToId(entry._id); setAwardBadge(null); setAwardTitle(''); }}
                                                             className="flex items-center gap-2 w-full justify-center px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-lg text-sm font-medium transition-all group-hover:border-purple-500/40"
                                                         >
                                                             <Medal className="h-4 w-4" /> Grant Award
