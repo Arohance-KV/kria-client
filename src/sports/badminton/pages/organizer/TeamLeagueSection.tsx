@@ -1,8 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, Users, Swords, Trophy, BarChart3, LayoutDashboard } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { fetchTournamentTeams } from '@/store/slices/teamSlice';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
+import { CategoryTabs, EmptyState, Notice, PageHead, PANEL, SegTabs, categoryMeta } from '@/pages/organizer/ui';
+import { BTN_GHOST, BTN_SM } from '@/pages/organizer/shared';
+import { cn } from '@/lib/utils';
 import GroupConfigPanel from './teamLeague/GroupConfigPanel';
 import TieManagementPanel from './teamLeague/TieManagementPanel';
 import GroupStandingsTable from './teamLeague/GroupStandingsTable';
@@ -15,233 +18,168 @@ interface Props {
     categories: CategoryInfo[];
 }
 
-type Tab = 'groups' | 'ties' | 'standings' | 'overview';
+type View = 'groups' | 'ties' | 'standings' | 'overview';
+
+const VIEWS: { key: View; label: string }[] = [
+    { key: 'groups', label: 'Groups' },
+    { key: 'ties', label: 'Ties' },
+    { key: 'standings', label: 'Standings' },
+    { key: 'overview', label: 'Overview' },
+];
 
 export default function TeamLeagueSection({ tournamentId, categories }: Props) {
     const dispatch = useAppDispatch();
     const { teams } = useAppSelector(state => state.team);
 
-    const teamLeagueCategories = categories.filter(c => c.bracketType === 'team_league');
-    const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<Tab>('groups');
-    const [groups, setGroups] = useState<any[]>([]);
-    const [standings, setStandings] = useState<any[]>([]);
+    const leagueCategories = categories.filter(c => c.bracketType === 'team_league');
+    const [categoryId, setCategoryId] = useState('');
+    const [view, setView] = useState<View>('groups');
     const [stageNumber, setStageNumber] = useState(1);
-    const [availableStages, setAvailableStages] = useState<number[]>([1]);
-    const [loading, setLoading] = useState(false);
+    const [stages, setStages] = useState<number[]>([1]);
+    // null = not loaded yet for this category/stage; panels show their own spinner.
+    const [groups, setGroups] = useState<any[] | null>(null);
+    const [standings, setStandings] = useState<any[] | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const selectedCategory = teamLeagueCategories.find(c => c._id === selectedCategoryId);
+    const category = leagueCategories.find(c => c._id === categoryId) ?? leagueCategories[0];
+    const catId = category?._id ?? '';
 
     useEffect(() => {
         dispatch(fetchTournamentTeams(tournamentId));
     }, [tournamentId, dispatch]);
 
-    useEffect(() => {
-        if (teamLeagueCategories.length > 0 && !selectedCategoryId) {
-            setSelectedCategoryId(teamLeagueCategories[0]._id);
-        }
-    }, [teamLeagueCategories, selectedCategoryId]);
-
     const refreshGroups = useCallback(async () => {
-        if (!selectedCategoryId) return;
-        setLoading(true);
-        setError(null);
+        if (!catId) return;
         try {
-            const data = await teamLeagueApi.getGroups(selectedCategoryId, stageNumber);
+            const data = await teamLeagueApi.getGroups(catId, stageNumber);
             setGroups(Array.isArray(data) ? data : []);
         } catch (e: any) {
             setError(e.response?.data?.message || e.message || 'Failed to load groups');
             setGroups([]);
-        } finally {
-            setLoading(false);
         }
-    }, [selectedCategoryId, stageNumber]);
+    }, [catId, stageNumber]);
 
     const refreshStandings = useCallback(async () => {
-        if (!selectedCategoryId) return;
+        if (!catId) return;
         try {
-            const data = await teamLeagueApi.getGroupStandings(selectedCategoryId, stageNumber);
+            const data = await teamLeagueApi.getGroupStandings(catId, stageNumber);
             setStandings(Array.isArray(data) ? data : []);
         } catch {
             setStandings([]);
         }
-    }, [selectedCategoryId, stageNumber]);
+    }, [catId, stageNumber]);
 
     // Derive which stages actually exist (a stage only appears once it has groups —
     // e.g. Stage 2 shows up only after teams have been advanced into it).
     const refreshStages = useCallback(async () => {
-        if (!selectedCategoryId) { setAvailableStages([1]); return; }
+        if (!catId) { setStages([1]); return; }
         try {
-            const overview = await teamLeagueApi.getOverview(selectedCategoryId);
-            const stages: number[] = (overview?.stages || [])
+            const overview = await teamLeagueApi.getOverview(catId);
+            const found: number[] = (overview?.stages || [])
                 .map((s: any) => s.stageNumber)
                 .filter((n: any) => typeof n === 'number');
-            setAvailableStages(stages.length > 0 ? Array.from(new Set(stages)).sort((a, b) => a - b) : [1]);
+            setStages(found.length > 0 ? Array.from(new Set(found)).sort((a, b) => a - b) : [1]);
         } catch {
-            setAvailableStages([1]);
+            setStages([1]);
         }
-    }, [selectedCategoryId]);
+    }, [catId]);
 
+    // Only a category or stage switch blanks the data. Later refreshes (after a tie is
+    // created, a result lands…) keep the panels mounted with their current data.
     useEffect(() => {
-        if (selectedCategoryId) {
-            refreshGroups();
-            refreshStandings();
-            refreshStages();
-        }
-    }, [selectedCategoryId, stageNumber, refreshGroups, refreshStandings, refreshStages]);
+        if (!catId) return;
+        setGroups(null);
+        setStandings(null);
+        refreshGroups();
+        refreshStandings();
+        refreshStages();
+    }, [catId, stageNumber, refreshGroups, refreshStandings, refreshStages]);
 
     // Standings summarise results recorded elsewhere — the scoring console, a
     // staff member's session — so the snapshot taken at page load goes stale
-    // without anything here knowing. Refetch on opening the tab, which is what
+    // without anything here knowing. Refetch on opening the view, which is what
     // OverallView already gets for free by owning its own fetch. Without this a
-    // finished group read '0/3 ties completed', and because the advance button
-    // is gated on that count, it stayed hidden.
+    // finished group read '0 of 3 ties played', and because advancing is gated
+    // on that count, it stayed unavailable.
     useEffect(() => {
-        if (activeTab === 'standings') refreshStandings();
-    }, [activeTab, refreshStandings]);
+        if (view === 'standings') refreshStandings();
+    }, [view, refreshStandings]);
 
-    if (teamLeagueCategories.length === 0) {
+    if (!category) {
         return (
-            <section className="bg-white/5 border border-white/10 rounded-3xl p-8">
-                <div className="text-center p-8">
-                    <Users className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
-                    <p className="text-gray-400 font-medium">No team league categories found.</p>
-                    <p className="text-sm text-gray-500 mt-1">Create a category with "Team League" bracket type first.</p>
+            <div className="space-y-6">
+                <PageHead title="Team league" desc="Groups, ties, lineups and standings." />
+                <div className={PANEL}>
+                    <EmptyState title="No team league categories" text="Create a category with the Team league format first." />
                 </div>
-            </section>
+            </div>
         );
     }
 
-    const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
-        { key: 'groups', label: 'Groups', icon: Users },
-        { key: 'ties', label: 'Ties & Matches', icon: Swords },
-        { key: 'standings', label: 'Standings', icon: BarChart3 },
-        { key: 'overview', label: 'Overview', icon: LayoutDashboard },
-    ];
+    const switchView = (v: View) => { setView(v); setError(null); };
+    const tieCounts: Record<string, number> = Object.fromEntries((standings ?? []).map(s => [s.group?._id, s.totalTies]));
 
     return (
-        <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                        <Trophy className="h-5 w-5" />
-                    </div>
-                    <h2 className="text-2xl font-oswald font-bold text-white tracking-wide">Team League</h2>
-                </div>
+        <div className="space-y-6">
+            <PageHead title="Team league" desc={`Groups, ties, lineups and standings for ${category.name}.`} />
 
-                {/* Category selector */}
-                {teamLeagueCategories.length > 1 && (
-                    <select
-                        value={selectedCategoryId}
-                        onChange={(e) => { setSelectedCategoryId(e.target.value); setStageNumber(1); }}
-                        className="flex h-10 rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white"
-                    >
-                        {teamLeagueCategories.map(c => (
-                            <option key={c._id} value={c._id}>{c.name}</option>
-                        ))}
-                    </select>
-                )}
-            </div>
-
-            {/* Stage selector — only stages that exist for this category */}
-            <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-400">Stage:</span>
-                {availableStages.map(s => (
-                    <button
-                        key={s}
-                        onClick={() => setStageNumber(s)}
-                        className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                            stageNumber === s
-                                ? 'bg-primary text-white'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
-                    >
-                        Stage {s}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tabs */}
-            <div className="flex gap-1 bg-black/30 rounded-xl p-1">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg flex-1 justify-center transition-colors ${
-                            activeTab === tab.key
-                                ? 'bg-primary/20 text-primary'
-                                : 'text-gray-400 hover:text-white hover:bg-white/5'
-                        }`}
-                    >
-                        <tab.icon className="h-4 w-4" />
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Error */}
-            {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                    {error}
-                </div>
+            {leagueCategories.length > 1 && (
+                <CategoryTabs
+                    categories={leagueCategories.map(c => ({ _id: c._id, name: c.name, meta: categoryMeta(undefined, c.status) }))}
+                    value={catId}
+                    onChange={id => { setCategoryId(id); setStageNumber(1); setError(null); }}
+                />
             )}
 
-            {/* Loading */}
-            {loading ? (
-                <div className="flex items-center justify-center p-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
+                <SegTabs label="Team league view" items={VIEWS} value={view} onChange={switchView} />
+                <div className="flex items-center gap-2">
+                    {view === 'standings' && (
+                        <button type="button" aria-label="Refresh" title="Refresh standings" onClick={refreshStandings}
+                            className={cn(BTN_GHOST, BTN_SM, 'w-8 px-0')}>
+                            <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                    <SegTabs label="Stage" items={stages.map(s => ({ key: String(s), label: `Stage ${s}` }))}
+                        value={String(stageNumber)} onChange={k => { setStageNumber(Number(k)); setError(null); }} />
                 </div>
-            ) : (
-                <>
-                    {activeTab === 'groups' && (
-                        <GroupConfigPanel
-                            categoryId={selectedCategoryId}
-                            categoryStatus={selectedCategory?.status || ''}
-                            groups={groups}
-                            teams={teams}
-                            onRefresh={refreshGroups}
-                            setError={setError}
-                        />
-                    )}
-                    {activeTab === 'ties' && (
-                        <TieManagementPanel
-                            categoryId={selectedCategoryId}
-                            groups={groups}
-                            teams={teams}
-                            categoryConfig={selectedCategory?.teamLeagueConfig}
-                            onRefresh={() => { refreshGroups(); refreshStandings(); }}
-                            setError={setError}
-                        />
-                    )}
-                    {activeTab === 'standings' && (
-                        <GroupStandingsTable
-                            categoryId={selectedCategoryId}
-                            stageNumber={stageNumber}
-                            standings={standings}
-                            groups={groups}
-                            topNPerGroup={selectedCategory?.teamLeagueConfig?.topNPerGroup || 1}
-                            onRefresh={refreshStandings}
-                            onAdvanced={() => {
-                                refreshStages();
-                                setStageNumber(stageNumber + 1);
-                                setActiveTab('ties');
-                                refreshGroups();
-                                refreshStandings();
-                            }}
-                            setError={setError}
-                        />
-                    )}
-                    {activeTab === 'overview' && (
-                        <OverallView
-                            categoryId={selectedCategoryId}
-                            teams={teams}
-                            setError={setError}
-                        />
-                    )}
-                </>
+            </div>
+
+            {error && <Notice tone="red" icon={AlertCircle}><span role="alert">{error}</span></Notice>}
+
+            {view === 'groups' && (
+                <GroupConfigPanel
+                    categoryId={catId}
+                    categoryStatus={category.status}
+                    stageNumber={stageNumber}
+                    groups={groups}
+                    teams={teams}
+                    onRefresh={() => { refreshGroups(); refreshStandings(); }}
+                    setError={setError}
+                />
             )}
-        </section>
+            {view === 'ties' && (
+                <TieManagementPanel
+                    categoryId={catId}
+                    groups={groups}
+                    teams={teams}
+                    tieCounts={tieCounts}
+                    categoryConfig={category.teamLeagueConfig}
+                    onRefresh={refreshStandings}
+                    setError={setError}
+                />
+            )}
+            {view === 'standings' && (
+                <GroupStandingsTable
+                    categoryId={catId}
+                    stageNumber={stageNumber}
+                    standings={standings}
+                    teams={teams}
+                    topNPerGroup={category.teamLeagueConfig?.topNPerGroup || 1}
+                    onAdvanced={() => { setError(null); setStageNumber(stageNumber + 1); setView('ties'); }}
+                />
+            )}
+            {view === 'overview' && <OverallView categoryId={catId} teams={teams} setError={setError} />}
+        </div>
     );
 }

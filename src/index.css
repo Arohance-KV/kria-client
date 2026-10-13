@@ -9,6 +9,16 @@
   --color-secondary: #000000;
   --font-oswald: 'Oswald', sans-serif;
   --font-montserrat: 'Montserrat', sans-serif;
+  --font-ui: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Organizer app shell — surfaces, hairlines and text tiers */
+  --color-canvas: #0A0A0B;
+  --color-panel: #111113;
+  --color-raised: #18181B;
+  --color-line: #232327;
+  --color-fg: #F4F2EE;
+  --color-fg-muted: #A1A1A8;
+  --color-fg-subtle: #80808A;
 }
 
 @font-face {

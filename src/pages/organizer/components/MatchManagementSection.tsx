@@ -1,27 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { Loader2, Trophy, Swords, CheckCircle2 } from 'lucide-react';
-import API from '../../../api/axios';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, CircleAlert, ExternalLink, Lock, Network } from 'lucide-react';
 import { sportRegistry } from '@/sports/registry';
+import { getC1, getC2, isHiddenBye } from '@/lib/bracketLayout';
+import { cn } from '@/lib/utils';
+import { useAppSelector } from '@/store/hooks';
+import { BTN_GHOST, BTN_SECONDARY, ToneBadge } from '../shared';
+import { CategoryTabs, COLHEAD, EmptyState, Notice, PageHead, PANEL, ROW, SegTabs, Spinner, Toolbar, categoryMeta, useSectionNav } from '../ui';
+import {
+    ScoreboardLink, errorMessage, fetchCategoryMatches, gamesText, isDone, matchStatus, sortedRounds,
+    type BracketMatch, type CompetitorType, type MatchesPayload, type ResultSlot,
+} from './BracketManagementSection';
 
 interface CategoryInfo { _id: string; name: string; status: string; sport?: string }
-
-interface Match {
-    _id: string;
-    bracketRound: string;
-    matchNumber: number;
-    roundNumber?: number;
-    competitorType?: 'player' | 'team';
-    teams: { team1Id: string; team2Id: string; team1Name: string; team2Name: string };
-    player1?: { registrationId: string; name: string; teamId: string; teamName: string };
-    player2?: { registrationId: string; name: string; teamId: string; teamName: string };
-    status: string;
-    winnerId?: string;
-    winReason?: string;
-    result?: { team1Total?: number; team2Total?: number; marginOfVictory?: string };
-    gameScores?: { gameNumber: number; team1Score: number; team2Score: number; winnerId?: string }[];
-    matchConfig?: { bestOf?: number; pointsToWin?: number };
-    schedule?: { date?: string; time?: string; court?: string };
-}
 
 interface Props {
     tournamentId: string;
@@ -29,224 +19,211 @@ interface Props {
     categories: CategoryInfo[];
 }
 
-// Helper: get competitor info from a match
-function getC1(match: Match) {
-    if (match.competitorType === 'player' && match.player1) {
-        return { id: match.player1.registrationId, name: match.player1.name, teamName: match.player1.teamName, isTBD: match.player1.registrationId === 'TBD' };
-    }
-    return { id: match.teams.team1Id, name: match.teams.team1Name, teamName: '', isTBD: match.teams.team1Name === 'TBD' };
-}
+type Filter = 'all' | 'upcoming' | 'live' | 'completed';
 
-function getC2(match: Match) {
-    if (match.competitorType === 'player' && match.player2) {
-        return { id: match.player2.registrationId, name: match.player2.name, teamName: match.player2.teamName, isTBD: match.player2.registrationId === 'TBD' };
-    }
-    return { id: match.teams.team2Id, name: match.teams.team2Name, teamName: '', isTBD: match.teams.team2Name === 'TBD' };
-}
+const ELIGIBLE = ['auction', 'bracket_configured', 'ongoing', 'completed'];
+const FILTER_OF: Record<string, Filter> = { scheduled: 'upcoming', in_progress: 'live', completed: 'completed', walkover: 'completed' };
+const FILTER_LABEL: Record<Filter, string> = { all: 'All', upcoming: 'Upcoming', live: 'Live', completed: 'Completed' };
 
-const MatchManagementSection: React.FC<Props> = ({ tournamentId, sports, categories }) => {
-    const [selectedCat, setSelectedCat] = useState<string>('');
-    const [matches, setMatches] = useState<Match[]>([]);
-    const [rounds, setRounds] = useState<Record<string, Match[]>>({});
-    const [competitorType, setCompetitorType] = useState<'player' | 'team'>('player');
-    const [isLoading, setIsLoading] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+// Match no. | players | games | status | actions — stacked below sm, two columns until xl.
+const COLS = 'grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,12rem)_6.5rem_17rem]';
 
-    const eligibleCategories = categories.filter(c =>
-        ['auction', 'bracket_configured', 'ongoing', 'completed'].includes(c.status)
-    );
+const EMPTY: MatchesPayload = { matches: [], rounds: {}, competitorType: 'player' };
 
+const MatchManagementSection: React.FC<Props> = ({ sports, categories }) => {
+    const goTo = useSectionNav();
+    // The host passes no bracketType here; the same store it reads categories from has it.
+    const bracketTypes = useAppSelector(s => s.registration.categories);
+    const bracketTypeOf = (id: string) => bracketTypes.find(c => c._id === id)?.bracketType;
+    // Team-league matches are ties, scored from Team league.
+    const eligible = categories.filter(c => ELIGIBLE.includes(c.status) && bracketTypeOf(c._id) !== 'team_league');
+
+    const [selectedCat, setSelectedCat] = useState('');
+    const [filter, setFilter] = useState<Filter>('all');
+    const [data, setData] = useState<MatchesPayload>(EMPTY);
+    const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    // Categories can arrive after mount, and the selected one can stop being eligible.
     useEffect(() => {
-        if (eligibleCategories.length > 0 && !selectedCat) {
-            setSelectedCat(eligibleCategories[0]._id);
-        }
-    }, [eligibleCategories.length]);
+        if (eligible.some(c => c._id === selectedCat)) return;
+        setSelectedCat(eligible[0]?._id ?? '');
+    }, [eligible, selectedCat]);
 
-    const fetchMatches = async () => {
-        if (!selectedCat) return;
-        setIsLoading(true);
-        setError(null);
+    const category = categories.find(c => c._id === selectedCat);
+    const ResultSection = sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
+
+    const current = useRef(selectedCat);
+    current.current = selectedCat;
+
+    const load = useCallback(async (quiet = false) => {
+        const cat = selectedCat;
+        if (!cat) return;
+        if (!quiet) { setLoading(true); setData(EMPTY); }
         try {
-            const res = await API.get(`/matches/categories/${selectedCat}`);
-            const payload = res.data?.data?.data || res.data?.data || {};
-            setMatches(payload.matches || []);
-            setRounds(payload.rounds || {});
-            setCompetitorType(payload.competitorType || 'player');
-        } catch {
-            setMatches([]);
-            setRounds({});
+            const next = await fetchCategoryMatches(cat);
+            if (current.current !== cat) return;
+            setData(next);
+            setLoadError(null);
+        } catch (err) {
+            if (current.current === cat) setLoadError(errorMessage(err, 'Could not load matches.'));
         } finally {
-            setIsLoading(false);
+            if (current.current === cat && !quiet) setLoading(false);
         }
-    };
+    }, [selectedCat]);
 
-    useEffect(() => { fetchMatches(); }, [selectedCat]);
+    useEffect(() => { setLoadError(null); setLoading(false); setFilter('all'); load(); }, [load]);
 
-    const handleGenerateBracket = async () => {
-        if (!selectedCat) return;
-        setIsGenerating(true);
-        setError(null);
-        try {
-            await API.post(`/matches/generate/${selectedCat}`);
-            await API.post(`/categories/${selectedCat}/configure-bracket`).catch(() => { });
-            await fetchMatches();
-        } catch (err: any) {
-            setError(err.response?.data?.data?.message || err.response?.data?.message || 'Failed to generate bracket');
-        } finally {
-            setIsGenerating(false);
+    const refresh = useCallback(() => load(true), [load]);
+
+    const { matches, rounds, competitorType } = data;
+    const visible = matches.filter(m => !isHiddenBye(m));
+    const count = (f: Filter) => visible.filter(m => f === 'all' || FILTER_OF[m.status] === f).length;
+    const shown = (m: BracketMatch) => filter === 'all' || FILTER_OF[m.status] === filter;
+    const groups = sortedRounds(rounds)
+        .map(name => [name, (rounds[name] || []).filter(m => !isHiddenBye(m) && shown(m))] as const)
+        .filter(([, ms]) => ms.length > 0);
+    const hasGames = matches.some(m => m.gameScores?.length);
+    const hasResults = matches.some(m => m.status === 'completed');
+    const config = matches[0]?.matchConfig;
+    const configText = [config?.bestOf && `Best of ${config.bestOf}`, config?.pointsToWin && `${config.pointsToWin} points`].filter(Boolean).join(' · ');
+
+    const toBrackets = <button type="button" onClick={() => goTo('brackets')} className={BTN_SECONDARY}>Open Brackets</button>;
+
+    const body = () => {
+        if (loading) return <Spinner label="Loading matches" />;
+        if (loadError && !matches.length) {
+            return (
+                <div className="p-4">
+                    <div role="alert"><Notice tone="red" icon={CircleAlert}>Couldn't load matches. {loadError}</Notice></div>
+                    <button type="button" onClick={() => load()} className={cn(BTN_SECONDARY, 'mt-3')}>Try again</button>
+                </div>
+            );
         }
-    };
-
-    if (eligibleCategories.length === 0) return null;
-
-    const selectedCategory = categories.find(c => c._id === selectedCat);
-    const hasBracket = matches.length > 0;
-    const hasScoringStarted = matches.some(m => m.status === 'completed');
-    const canGenerate = selectedCategory && selectedCategory.status === 'auction' && !hasScoringStarted;
-    // Use the selected category's own sport for its plugin; fall back to the
-    // tournament's first sport only when no category is selected (empty state).
-    const ResultSection = sportRegistry.get(selectedCategory?.sport || sports[0])?.matchResultSection;
-
-    return (
-        <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-2">
-                <div className="p-2 bg-primary/10 rounded-lg text-primary"><Trophy className="h-5 w-5" /></div>
-                <h2 className="text-2xl font-oswald font-bold tracking-wide">Match Management</h2>
-            </div>
-
-            <div className="flex items-center gap-4 flex-wrap">
-                <select
-                    value={selectedCat}
-                    onChange={(e) => setSelectedCat(e.target.value)}
-                    className="px-4 py-2.5 rounded-xl bg-black/30 border border-white/10 text-white text-sm focus:outline-none focus:border-primary transition-colors"
-                >
-                    {eligibleCategories.map(c => (
-                        <option key={c._id} value={c._id} className="bg-[#111]">{c.name} ({c.status})</option>
-                    ))}
-                </select>
-
-                {canGenerate && (
-                    <button
-                        onClick={handleGenerateBracket}
-                        disabled={isGenerating}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl transition-all disabled:opacity-50"
-                    >
-                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
-                        Generate Bracket
-                    </button>
-                )}
-
-                {selectedCategory?.status === 'auction' && hasScoringStarted && (
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/70 text-sm font-medium">
-                        <Swords className="h-4 w-4 opacity-50" />
-                        Scoring in progress — bracket locked
+        if (!visible.length) return <EmptyState title="No fixtures yet" text="Generate the bracket in Brackets." action={toBrackets} />;
+        return (
+            <>
+                <Toolbar>
+                    <SegTabs<Filter>
+                        label="Match status"
+                        value={filter}
+                        onChange={setFilter}
+                        items={(Object.keys(FILTER_LABEL) as Filter[]).map(k => ({ key: k, label: FILTER_LABEL[k], count: count(k) }))}
+                    />
+                    {hasResults ? (
+                        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-subtle">
+                            <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: results are in
+                        </span>
+                    ) : configText && <span className="text-[12.5px] text-fg-subtle">{configText}</span>}
+                </Toolbar>
+                {loadError && <div role="alert" className="p-3"><Notice tone="red" icon={CircleAlert}>Couldn't refresh matches. {loadError}</Notice></div>}
+                <div className={cn(COLHEAD, 'hidden xl:grid', COLS)}>
+                    <span>Match</span><span>Players</span><span>{hasGames ? 'Games' : 'Result'}</span><span>Status</span><span className="sr-only">Actions</span>
+                </div>
+                {groups.length === 0 ? (
+                    <EmptyState title={`No ${FILTER_LABEL[filter].toLowerCase()} matches`} text="Pick another status to see the rest." />
+                ) : (
+                    <div className="divide-y divide-line">
+                        {groups.map(([round, ms]) => (
+                            <section key={round} aria-label={round}>
+                                <h3 className="border-b border-line bg-white/[0.015] px-4 py-2.5 text-xs font-medium text-fg-subtle sm:px-5">{round}</h3>
+                                <ul className="divide-y divide-line">
+                                    {ms.map(m => (
+                                        <MatchRow key={m._id} match={m} competitorType={competitorType} ResultSection={ResultSection} onRecorded={refresh} />
+                                    ))}
+                                </ul>
+                            </section>
+                        ))}
                     </div>
                 )}
-            </div>
+            </>
+        );
+    };
 
-            {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl">{error}</div>
-            )}
-
-            {isLoading ? (
-                <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-            ) : !hasBracket ? (
-                <div className="bg-black/20 border border-white/5 rounded-2xl p-8 text-center text-gray-500 flex flex-col items-center gap-3">
-                    <Trophy className="h-10 w-10 opacity-30" />
-                    <p>No bracket generated for this category yet.</p>
-                    {canGenerate && <p className="text-sm text-gray-600">Click "Generate Bracket" above to create the match fixtures.</p>}
-                </div>
+    return (
+        <div className="flex flex-col gap-5">
+            <PageHead
+                title="Matches"
+                desc="Every fixture with its result. Score matches live or enter the final result."
+                actions={<button type="button" onClick={() => goTo('brackets')} className={BTN_GHOST}><Network aria-hidden className="h-4 w-4" />View bracket</button>}
+            />
+            {eligible.length === 0 ? (
+                <section className={PANEL}>
+                    <EmptyState title="No fixtures yet" text="Generate the bracket in Brackets. Team league ties are scored in Team league." action={toBrackets} />
+                </section>
             ) : (
-                <div className="flex flex-col gap-6">
-                    {Object.entries(rounds)
-                        .sort((a, b) => {
-                            const aRN = (a[1] as Match[])?.[0]?.roundNumber || 0;
-                            const bRN = (b[1] as Match[])?.[0]?.roundNumber || 0;
-                            return aRN - bRN;
-                        })
-                        .map(([roundName, roundMatches]) => {
-                            // Filter out bye matches
-                            const visible = (roundMatches as Match[]).filter(m => !(m.status === 'walkover' && m.winReason === 'bye'));
-                            if (visible.length === 0) return null;
-                            return (
-                                <div key={roundName} className="flex flex-col gap-3">
-                                    <h4 className="text-sm font-bold uppercase tracking-widest text-primary border-b border-white/5 pb-2">{roundName}</h4>
-                                    {visible.map((match: Match) => (
-                                        <OrganizerMatchCard
-                                            key={match._id}
-                                            match={match}
-                                            competitorType={competitorType}
-                                            ResultSection={ResultSection}
-                                            onRecorded={fetchMatches}
-                                        />
-                                    ))}
-                                </div>
-                            );
-                        })}
-                </div>
+                <>
+                    <CategoryTabs
+                        categories={eligible.map(c => ({ _id: c._id, name: c.name, meta: categoryMeta(bracketTypeOf(c._id), c.status) }))}
+                        value={selectedCat}
+                        onChange={setSelectedCat}
+                    />
+                    <section className={PANEL} aria-label="Matches">{body()}</section>
+                </>
             )}
-        </section>
+        </div>
     );
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ORGANIZER MATCH CARD
+// MATCH ROW
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const OrganizerMatchCard: React.FC<{
-    match: Match;
-    competitorType: 'player' | 'team';
-    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
-    onRecorded: () => void;
-}> = ({ match, competitorType, ResultSection, onRecorded }) => {
-    const c1 = getC1(match);
-    const c2 = getC2(match);
-    const isTBD = c1.isTBD || c2.isTBD;
-    const isCompleted = match.status === 'completed' || match.status === 'walkover';
+const MatchRow = ({ match, competitorType, ResultSection, onRecorded }: {
+    match: BracketMatch; competitorType: CompetitorType; ResultSection?: ResultSlot; onRecorded: () => void;
+}) => {
+    const c1 = getC1(match, competitorType);
+    const c2 = getC2(match, competitorType);
+    const waiting = c1.isTBD || c2.isTBD;
+    const done = isDone(match);
+    const status = matchStatus(match, waiting);
+    // Badminton reports game scores; cricket only a margin ("Won by 23 runs").
+    const games = gamesText(match) || (done ? match.result?.marginOfVictory ?? '' : '');
+    const badge = <ToneBadge label={status.label} tone={status.tone} live={status.live} />;
+
+    const side = (c: typeof c1, score?: number) => {
+        const win = done && !!match.winnerId && match.winnerId === c.id;
+        return (
+            <div className="min-w-0">
+                <p className="flex min-w-0 items-center gap-2 text-sm">
+                    <span className={cn('truncate', c.isTBD ? 'italic text-fg-subtle' : win ? 'font-semibold text-fg' : 'text-fg-muted')}>
+                        {c.isTBD ? 'To be decided' : c.name}
+                    </span>
+                    {score != null && <span className="text-xs tabular-nums text-fg-subtle">{score}</span>}
+                    {win && <><Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-emerald-400" /><span className="sr-only">(winner)</span></>}
+                </p>
+                {competitorType === 'player' && c.teamName && !c.isTBD && <p className="truncate text-xs text-fg-subtle">{c.teamName}</p>}
+            </div>
+        );
+    };
 
     return (
-        <div className={`rounded-2xl border overflow-hidden transition-all ${isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.03]' : 'border-white/10 bg-black/20'}`}>
-            {/* Match header */}
-            <div className="flex flex-col px-5 py-3">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-500 font-medium">#{match.matchNumber}</span>
-                        <div className="flex items-center gap-2">
-                            <div className="flex flex-col">
-                                <span className={`font-semibold text-sm ${isCompleted && match.winnerId === c1.id ? 'text-emerald-400' : isTBD ? 'text-gray-600' : 'text-white'}`}>
-                                    {c1.name}
-                                </span>
-                                {competitorType === 'player' && c1.teamName && !c1.isTBD && (
-                                    <span className="text-[10px] text-primary/60">{c1.teamName}</span>
-                                )}
-                            </div>
-                            <span className="text-[10px] text-gray-600 font-bold">vs</span>
-                            <div className="flex flex-col">
-                                <span className={`font-semibold text-sm ${isCompleted && match.winnerId === c2.id ? 'text-emerald-400' : isTBD ? 'text-gray-600' : 'text-white'}`}>
-                                    {c2.name}
-                                </span>
-                                {competitorType === 'player' && c2.teamName && !c2.isTBD && (
-                                    <span className="text-[10px] text-primary/60">{c2.teamName}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {isCompleted && (
-                            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                                <CheckCircle2 className="h-3 w-3" /> Done
-                            </span>
-                        )}
-                        {isCompleted && match.result && (
-                            <span className="text-sm font-bold text-gray-300">{match.result.team1Total} - {match.result.team2Total}</span>
-                        )}
-                    </div>
+        <li className={cn(ROW, COLS)}>
+            <span className="hidden text-[13.5px] tabular-nums text-fg-muted xl:block">Match {match.matchNumber}</span>
+            <div className="grid min-w-0 gap-1">
+                {side(c1, match.result?.team1Total)}
+                {side(c2, match.result?.team2Total)}
+                <div className="mt-1 flex flex-wrap items-center gap-2 xl:hidden">
+                    <span className="text-xs text-fg-subtle">Match {match.matchNumber}</span>
+                    {badge}
+                    {games && <span className="text-[12.5px] tabular-nums text-fg-subtle">{games}</span>}
                 </div>
             </div>
-
-            {ResultSection && <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />}
-        </div>
+            <span className="hidden truncate text-[12.5px] tabular-nums text-fg-subtle xl:block">{games || '—'}</span>
+            <span className="hidden xl:block">{badge}</span>
+            {/* A confirm or error from the scoring slot takes the row's full width. */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:justify-end has-[[role=alert]]:col-span-full has-[[role=alertdialog]]:col-span-full">
+                {waiting
+                    ? <span className="text-[12.5px] text-fg-subtle">Waiting for players</span>
+                    : ResultSection && <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />}
+                {!waiting && (
+                    <ScoreboardLink matchId={match._id} label="Open live scoreboard"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-muted hover:bg-white/[0.05] hover:text-fg">
+                        <ExternalLink aria-hidden className="h-4 w-4" />
+                    </ScoreboardLink>
+                )}
+            </div>
+        </li>
     );
 };
 

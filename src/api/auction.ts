@@ -1,22 +1,36 @@
 import API from './axios';
-import { AuctionStatus, Player, Team } from '../types';
+import { AuctionPreAssigned, AuctionSoldLog, AuctionStatus, Player, Team } from '../types';
+
+/** GET /status payload. The socket's `auction:update` event carries the same shape. */
+export interface AuctionState {
+    auction: AuctionStatus & {
+        /** Players after the current one in this round's queue. Unsold players wait for the next round. */
+        remainingCount: number;
+        lastSoldResult?: AuctionStatus['lastSoldResult'] & { teamId?: string };
+    };
+    currentPlayer: Player | null;
+    /** The next 10 players in queue order. */
+    upcoming?: { registrationId: string; playerName: string; playerPhoto?: string | null; basePrice: number; skillLevel?: string | null; queueIndex: number }[];
+    teams: Team[];
+    category?: { _id: string; name: string } | null;
+    tournament?: { _id: string; name: string } | null;
+}
+
+export interface SoldLog {
+    logs: (AuctionSoldLog & { playerPhoto?: string | null })[];
+    preAssigned: AuctionPreAssigned[];
+}
 
 export const auctionApi = {
     // Public polling endpoints
     getStatus: async (tournamentId: string, categoryId: string) => {
         const res = await API.get(`/auction/${tournamentId}/${categoryId}/status`);
-        return res.data?.data?.data as {
-            auction: AuctionStatus;
-            currentPlayer: Player | null;
-            teams: Team[];
-            category?: { _id: string; name: string } | null;
-            tournament?: { _id: string; name: string } | null;
-        };
+        return res.data?.data?.data as AuctionState;
     },
 
     getSoldLog: async (tournamentId: string, categoryId: string) => {
         const res = await API.get(`/auction/${tournamentId}/${categoryId}/sold-log`);
-        return res.data?.data?.data;
+        return res.data?.data?.data as SoldLog;
     },
 
     // Protected organizer actions
@@ -32,8 +46,11 @@ export const auctionApi = {
     startTieBreaker: (tournamentId: string, categoryId: string) =>
         API.post('/auction/start-tie-breaker', { tournamentId, categoryId }),
 
-    triggerSpinWheel: (tournamentId: string, categoryId: string) =>
-        API.post('/auction/trigger-spin', { tournamentId, categoryId }),
+    /** The server picks the winner; resolves to their team ID. */
+    triggerSpinWheel: async (tournamentId: string, categoryId: string) => {
+        const res = await API.post('/auction/trigger-spin', { tournamentId, categoryId });
+        return res.data?.data?.data?.winnerId as string;
+    },
 
     resolveHardLimit: (tournamentId: string, categoryId: string, winnerTeamId: string) =>
         API.post('/auction/resolve-hard-limit', { tournamentId, categoryId, winnerTeamId }),
@@ -41,8 +58,10 @@ export const auctionApi = {
     next: (tournamentId: string, categoryId: string) =>
         API.post('/auction/next', { tournamentId, categoryId }),
 
-    distribute: (tournamentId: string, categoryId: string) =>
-        API.post('/auction/distribute', { tournamentId, categoryId }),
+    distribute: async (tournamentId: string, categoryId: string) => {
+        const res = await API.post('/auction/distribute', { tournamentId, categoryId });
+        return res.data?.data?.data as { assigned: number; teams: number };
+    },
 
     skip: (tournamentId: string, categoryId: string) =>
         API.post('/auction/skip', { tournamentId, categoryId }),

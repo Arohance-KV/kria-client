@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-const isDevelopment = import.meta.env.MODE === 'development';
-const baseURL = isDevelopment ? 'http://localhost:4010' : 'https://api.kria.club';
+const baseURL = 'https://api.kria.club';
 
 const API = axios.create({
     baseURL,

@@ -266,7 +266,10 @@ const tournamentSlice = createSlice({
             state.isLoading = false;
             const updated = action.payload;
             if (updated && updated._id) {
-                state.currentTournament = updated;
+                // Status/update responses omit the computed counts; keep the ones from the last fetch.
+                state.currentTournament = state.currentTournament?._id === updated._id
+                    ? { ...state.currentTournament, ...updated }
+                    : updated;
                 state.myTournaments = state.myTournaments.map(t =>
                     t._id === updated._id ? updated : t
                 );

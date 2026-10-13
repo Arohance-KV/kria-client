@@ -1,156 +1,139 @@
-import React, { useState } from 'react';
-import { Trophy, Loader2, RotateCcw } from 'lucide-react';
-import { useDispatch } from 'react-redux';
-import { undoLastBall } from '@/sports/cricket/store/cricketLiveStateSlice';
-import API from '@/api/axios';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAppDispatch } from '@/store/hooks';
+import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, ToneBadge } from '@/pages/organizer/shared';
+import { CHOICE, ConfirmBar, Field, Notice, PANEL, TeamLogo } from '@/pages/organizer/ui';
+import { fetchMatchAndLive, resolveTie, undoLastBall } from '@/sports/cricket/store/cricketLiveStateSlice';
 import { isDecidedFinal } from '@/lib/champion';
+import { sidesOf, teamName } from './LiveScoreboardPanel';
 
 interface Props {
     match: any;       // completed match (has inningsScores, winnerId, teams, result)
 }
 
 export default function CricketMatchSummary({ match }: Props) {
-    const dispatch = useDispatch<any>();
-    const [undoing, setUndoing] = useState(false);
+    const dispatch = useAppDispatch();
+    const matchId = String(match?._id);
+    const [confirm, setConfirm] = useState(false);
+    const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [bracketWarning, setBracketWarning] = useState<string | null>(null);
+    const [advancing, setAdvancing] = useState('');
 
-    const team1 = { id: match?.teams?.team1Id, name: match?.teams?.team1Name || 'Team 1' };
-    const team2 = { id: match?.teams?.team2Id, name: match?.teams?.team2Name || 'Team 2' };
-    const winnerName = String(match?.winnerId) === String(team1.id) ? team1.name
-        : String(match?.winnerId) === String(team2.id) ? team2.name : null;
-    const innings = match?.inningsScores || [];
+    const team1 = { id: String(match?.teams?.team1Id), name: match?.teams?.team1Name || 'Team 1' };
+    const team2 = { id: String(match?.teams?.team2Id), name: match?.teams?.team2Name || 'Team 2' };
+    const winnerName = match?.winnerId ? teamName(match, match.winnerId) : null;
+    const margin = match?.result?.marginOfVictory;
+    const innings: any[] = match?.inningsScores || [];
+    const firstBat = sidesOf(match, null);
 
     // A knockout cannot end level, but the engine records a tie honestly as no
-    // winner — so nothing advanced and the bracket is stuck. The card used to
-    // print the fallback name and announce "Winner won match tied." under a
-    // line claiming a winner had gone through.
-    // Winning the final wins the category. "Advanced in the bracket" is both
-    // wrong and meaningless there — there is no next round to advance into.
+    // winner — so nothing advanced and the bracket is stuck until the organizer
+    // names who went through. Winning the final wins the category: "advanced in
+    // the bracket" is meaningless there, there is no next round.
     const champions = isDecidedFinal(match);
     const isTie = innings.length >= 2 && innings[0]?.runs === innings[1]?.runs;
     const unresolvedTie = isTie && !match?.winnerId;
-    const [advancing, setAdvancing] = useState<string | null>(null);
-    const [resolving, setResolving] = useState(false);
 
-    const resolveTie = async () => {
+    const title = isTie ? 'Match tied'
+        : winnerName ? `${winnerName} ${champions ? 'win the title,' : 'won'}${margin ? ` ${margin}` : ''}`
+            : 'No winner was recorded';
+    const sub = isTie ? `Both sides finished on ${innings[0]?.runs}.`
+        : champions ? 'This was the final, so the category is decided.'
+            : winnerName ? `${winnerName} advanced in the bracket automatically.` : null;
+
+    const recordAdvance = async () => {
         if (!advancing) return;
-        setResolving(true);
-        setError(null);
-        try {
-            await API.post(`/sports/cricket/match/${match._id}/resolve-tie`, { winnerTeamId: advancing });
-            window.location.reload();
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : 'Could not record who advanced.';
-            setError(msg);
-            setResolving(false);
-        }
+        setBusy(true); setError(null);
+        try { await dispatch(resolveTie({ matchId, winnerTeamId: advancing })).unwrap(); }
+        catch (e: any) { setError(e?.message || 'Could not record who advanced.'); }
+        finally { setBusy(false); }
     };
 
     // Correcting a completed cricket match means undoing its final delivery. The
     // server's undo already unwinds the whole completion — the career-stat ledger
-    // rows, the per-player cricket stats, the cached career profiles and the
-    // winner advanced into the next round — so there is no separate reopen
-    // endpoint to call. This is only the door to it, which the console had never
-    // opened because a completed match renders this read-only summary instead of
-    // the ball-entry panel that owns the Undo button.
+    // rows, the per-player stats, the cached career profiles and the winner
+    // advanced into the next round. Re-reading the match then reopens scoring at
+    // that ball; a bracket warning holds the organizer here until they've read it.
+    const reopen = () => dispatch(fetchMatchAndLive(matchId));
     const correct = async () => {
-        const ok = window.confirm(
-            'Correct this result?\n\n'
-            + 'This undoes the final delivery, un-completes the match, removes the '
-            + 'career stats it credited, and un-advances the winner from the next '
-            + 'round. You are returned to that ball to score it again.\n\n'
-            + 'If the mistake was earlier than the last ball, undo again from the '
-            + 'scoring panel.',
-        );
-        if (!ok) return;
-        setUndoing(true);
-        setError(null);
+        setBusy(true); setError(null);
         try {
-            const out = await dispatch(undoLastBall(String(match?._id))).unwrap();
-            // The undo succeeded but the bracket still lists the undone winner, so
-            // the organizer has manual work to do. Blocking, because a successful
-            // undo swaps this whole phase out for the ball-entry panel and would
-            // take an inline message with it.
-            if (out?.result?.bracketWarning) window.alert(out.result.bracketWarning);
-        } catch (e) {
+            const out = await dispatch(undoLastBall(matchId)).unwrap();
+            setConfirm(false);
+            if (out?.result?.bracketWarning) setBracketWarning(out.result.bracketWarning);
+            else reopen();
+        } catch (e: any) {
             // 'No balls to undo.' is the realistic refusal — a match completed
             // through the manual result endpoint has no deliveries. Say which.
-            setError(e?.response?.data?.message || e?.message || 'Failed to correct the result.');
-        } finally {
-            setUndoing(false);
-        }
+            setError(e?.message || 'Failed to correct the result.');
+            setConfirm(false);
+        } finally { setBusy(false); }
     };
 
     return (
-        <div className="max-w-lg mx-auto bg-black/30 border border-emerald-500/30 rounded-2xl p-6 flex flex-col gap-4 text-center">
-            <Trophy className="h-10 w-10 text-emerald-400 mx-auto" />
-            <h3 className="text-xl font-bold text-white">
-                {champions ? 'Champions' : isTie ? 'Match Tied' : 'Match Complete'}
-            </h3>
-            <p className="text-emerald-400 font-semibold">
-                {champions && winnerName
-                    ? `${winnerName} win the title${match?.result?.marginOfVictory ? `, ${match.result.marginOfVictory}` : ''}.`
-                    : winnerName
-                    ? `${winnerName} won${match?.result?.marginOfVictory ? ` ${match.result.marginOfVictory}` : ''}.`
-                    : isTie
-                        ? `Both sides finished on ${innings[0]?.runs}.`
-                        : 'No winner was recorded.'}
-            </p>
-            <div className="flex flex-col gap-2">
-                {innings.map((inn: any, i: number) => (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-gray-200">
-                        Innings {inn.inningsNumber}: {inn.runs}/{inn.wickets} ({inn.overs}{inn.balls ? `.${inn.balls}` : ''} ov)
+        <section className={cn(PANEL, 'mx-auto max-w-2xl overflow-hidden')}>
+            <div className="p-5 sm:p-6">
+                <ToneBadge label={champions ? 'Champions' : isTie ? 'Tied' : 'Completed'} tone={isTie && !champions ? 'amber' : 'green'} />
+                <h1 className="mt-3 text-xl font-semibold">{title}</h1>
+                {sub && <p className="mt-1 text-[13px] text-fg-muted">{sub}</p>}
+
+                {innings.length > 0 && (
+                    <ul className="mt-5 divide-y divide-line rounded-[10px] ring-1 ring-inset ring-line">
+                        {innings.map((inn, i) => {
+                            const name = teamName(match, inn.battingTeamId ?? (inn.inningsNumber === 2 ? firstBat.bowling : firstBat.batting));
+                            return (
+                                <li key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
+                                    <TeamLogo size="sm" name={name} />
+                                    <span className="min-w-0 flex-1 truncate">{name}<span className="text-fg-subtle"> · {inn.inningsNumber === 2 ? '2nd' : '1st'} innings</span></span>
+                                    <span className="font-semibold tabular-nums">{inn.runs}/{inn.wickets}</span>
+                                    <span className="w-14 text-right text-xs tabular-nums text-fg-subtle">{inn.overs}.{inn.balls ?? 0} ov</span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+
+                {unresolvedTie && (
+                    <div className="mt-5 grid gap-3">
+                        <Field label="Who went through?" help="However it was settled: bowl-out, boundary count or anything else. The match stays a tie in every player's record.">
+                            <div role="radiogroup" aria-label="Team that advances" className="grid gap-2 sm:grid-cols-2">
+                                {[team1, team2].map(t => (
+                                    <label key={t.id} className={cn(CHOICE, 'items-center')}>
+                                        <input type="radio" name="tie" className="sr-only" checked={advancing === t.id} disabled={busy} onChange={() => setAdvancing(t.id)} />
+                                        <TeamLogo size="sm" name={t.name} />
+                                        <span className="text-sm font-medium">{t.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </Field>
+                        <div>
+                            <button type="button" disabled={!advancing || busy} onClick={recordAdvance} className={BTN_PRIMARY}>Record who advanced</button>
+                        </div>
                     </div>
-                ))}
+                )}
+                {isTie && winnerName && <Notice tone="blue" icon={CircleCheck} className="mt-5">{winnerName} went through.</Notice>}
+
+                {error && <Notice tone="red" icon={CircleAlert} className="mt-5">{error}</Notice>}
+                {bracketWarning && (
+                    <Notice tone="amber" icon={TriangleAlert} className="mt-5">
+                        <p>{bracketWarning}</p>
+                        <button type="button" onClick={reopen} className={cn(BTN_SECONDARY, BTN_SM, 'mt-2')}>Continue scoring</button>
+                    </Notice>
+                )}
             </div>
-            {unresolvedTie ? (
-                <div className="flex flex-col gap-3">
-                    <p className="text-xs text-gray-400">
-                        Nobody has advanced. Name the side that went through — bowl-out, boundary count,
-                        however it was settled. The match stays a tie in every player&apos;s record.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                        {[team1, team2].map((t) => (
-                            <button
-                                key={String(t.id)}
-                                onClick={() => setAdvancing(String(t.id))}
-                                disabled={resolving}
-                                className="px-3 py-3 rounded-xl text-sm font-semibold transition-all"
-                                style={{
-                                    background: advancing === String(t.id) ? 'rgba(249,115,22,.15)' : 'rgba(255,255,255,.04)',
-                                    border: `1.5px solid ${advancing === String(t.id) ? 'rgba(249,115,22,.4)' : 'rgba(255,255,255,.07)'}`,
-                                    color: advancing === String(t.id) ? '#F97316' : '#d1d5db',
-                                }}
-                            >
-                                {t.name}
-                            </button>
-                        ))}
-                    </div>
-                    <button
-                        onClick={resolveTie}
-                        disabled={!advancing || resolving}
-                        className="w-full py-3 rounded-xl font-bold text-sm bg-primary text-white disabled:opacity-40"
-                    >
-                        {resolving ? 'Recording…' : 'Confirm'}
-                    </button>
+            {bracketWarning ? null : confirm ? (
+                <ConfirmBar danger busy={busy} confirmLabel="Correct result" cancelLabel="Keep result"
+                    onCancel={() => setConfirm(false)} onConfirm={correct}
+                    message="Undo the final ball? The match reopens at that delivery, the career stats it credited are removed, and the winner comes back out of the next round." />
+            ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
+                    <button type="button" onClick={() => setConfirm(true)} className={cn(BTN_DANGER, BTN_SM)}>Correct result</button>
+                    <Link to={`/organizer/tournament/${match?.tournamentId}?section=matches`} className={cn(BTN_SECONDARY, BTN_SM)}>Back to matches</Link>
                 </div>
-            ) : champions ? (
-                <p className="text-xs text-amber-400/80">This was the final — the category is decided.</p>
-            ) : match?.winnerId ? (
-                <p className="text-xs text-gray-500">Winner has advanced in the bracket automatically.</p>
-            ) : null}
-
-            {error && <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-xs">{error}</div>}
-
-            <div className="pt-2 border-t border-white/5 flex justify-center">
-                <button
-                    onClick={correct}
-                    disabled={undoing}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-bold bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                    {undoing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />} Correct Result
-                </button>
-            </div>
-        </div>
+            )}
+        </section>
     );
 }

@@ -1,26 +1,41 @@
-import React, { useState } from 'react';
-import { Loader2, Save, X, Plus, Trash2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { FormEvent, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { useAppDispatch } from '@/store/hooks';
 import { createCategory, updateCategory } from '@/store/slices/categorySlice';
-import CategoryCommonFields, { CommonFieldsValue } from '@/components/CategoryCommonFields';
+import CategoryCommonFields, {
+    CategoryFormFooter, CommonFieldsErrors, CommonFieldsValue, focusFirstInvalid, FormatChoice, notInt, num, validateCommonFields,
+} from '@/components/CategoryCommonFields';
+import { cn } from '@/lib/utils';
+import { BTN_GHOST, BTN_SM, FOCUS } from '@/pages/organizer/shared';
+import { Field, FormGroup, INPUT, Segmented } from '@/pages/organizer/ui';
 import type { CategoryFormProps } from '@/sports/_contracts/SportPlugin';
+
+type N = number | '';
+interface Slot { slotNumber: number; matchType: string; label: string }
 
 interface BadmintonFormState extends CommonFieldsValue {
     matchType: string;
-    matchFormat: { bestOf: number; pointsPerGame: number; tieBreakPoints: number | '' };
+    matchFormat: { bestOf: number; pointsPerGame: N; tieBreakPoints: N };
     bracketType: string;
-    hybridConfig: { leagueSize: number; topN: number };
+    hybridConfig: { leagueSize: N; topN: N };
     teamLeagueConfig: {
-        subTeamSlots: { slotNumber: number; matchType: string; label: string }[];
-        numberOfGroups: number;
-        topNPerGroup: number;
-        pointsForWin: number;
-        pointsForLoss: number;
-        pointsForDraw: number;
+        subTeamSlots: Slot[];
+        numberOfGroups: N;
+        topNPerGroup: N;
+        pointsForWin: N;
+        pointsForLoss: N;
+        pointsForDraw: N;
     };
 }
+
+const SLOT_TYPES = [
+    { value: 'singles', label: 'Singles' },
+    { value: 'doubles', label: 'Doubles' },
+    { value: 'mixed_doubles', label: 'Mixed doubles' },
+];
+const defaultLabel = (matchType: string, n: number) => `${SLOT_TYPES.find(t => t.value === matchType)?.label ?? 'Singles'} ${n}`;
+// A label is still "ours" if it's empty or looks like "<Type> n"; anything else the organizer typed.
+const isDefaultLabel = (label: string) => !label.trim() || /^(singles|doubles|mixed doubles) \d+$/i.test(label.trim());
 
 const initialState: BadmintonFormState = {
     name: '', description: '', gender: 'male',
@@ -47,7 +62,8 @@ function fromCategory(c: any): BadmintonFormState {
         bracketType: c.bracketType || 'knockout',
         hybridConfig: { leagueSize: c.hybridConfig?.leagueSize || 4, topN: c.hybridConfig?.topN || 2 },
         teamLeagueConfig: {
-            subTeamSlots: c.teamLeagueConfig?.subTeamSlots || [{ slotNumber: 1, matchType: 'singles', label: 'Singles 1' }],
+            subTeamSlots: (c.teamLeagueConfig?.subTeamSlots?.length ? c.teamLeagueConfig.subTeamSlots : [{ slotNumber: 1, matchType: 'singles', label: 'Singles 1' }])
+                .map((s: Slot) => ({ ...s, label: s.label ?? '' })),
             numberOfGroups: c.teamLeagueConfig?.numberOfGroups || 2,
             topNPerGroup: c.teamLeagueConfig?.topNPerGroup || 1,
             pointsForWin: c.teamLeagueConfig?.pointsForWin ?? 2,
@@ -57,13 +73,42 @@ function fromCategory(c: any): BadmintonFormState {
     };
 }
 
+type Errors = CommonFieldsErrors & Partial<Record<'pointsPerGame' | 'leagueSize' | 'topN' | 'numberOfGroups' | 'topNPerGroup' | 'points', string>>;
+
+function validate(f: BadmintonFormState): Errors {
+    const e: Errors = validateCommonFields(f);
+    if (notInt(f.matchFormat.pointsPerGame, 1)) e.pointsPerGame = 'Enter at least 1 point per game.';
+    if (f.bracketType === 'hybrid') {
+        if (notInt(f.hybridConfig.leagueSize, 2)) e.leagueSize = 'Groups need at least 2 entries.';
+        if (notInt(f.hybridConfig.topN, 1)) e.topN = 'At least 1 must qualify from each group.';
+    }
+    if (f.bracketType === 'team_league') {
+        const t = f.teamLeagueConfig;
+        if (notInt(t.numberOfGroups, 1)) e.numberOfGroups = 'Enter at least 1 group.';
+        if (notInt(t.topNPerGroup, 1)) e.topNPerGroup = 'At least 1 team must qualify.';
+        if ([t.pointsForWin, t.pointsForDraw, t.pointsForLoss].some(v => notInt(v, 0))) e.points = 'Enter points as whole numbers, 0 or more.';
+    }
+    return e;
+}
+
 export default function BadmintonCategoryForm({ tournamentId, category, onSuccess, onCancel, sport }: CategoryFormProps) {
     const dispatch = useAppDispatch();
-    const { isLoading } = useAppSelector(state => state.category);
     const isEdit = !!category;
     const [formData, setFormData] = useState<BadmintonFormState>(category ? fromCategory(category) : initialState);
+    const [tried, setTried] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const formRef = useRef<HTMLFormElement>(null);
+    const errors: Errors = tried ? validate(formData) : {};
+    const tl = formData.bracketType === 'team_league';
 
     const setField = (patch: Partial<BadmintonFormState>) => setFormData(prev => ({ ...prev, ...patch }));
+    const setFormat = (patch: Partial<BadmintonFormState['matchFormat']>) => setFormData(prev => ({ ...prev, matchFormat: { ...prev.matchFormat, ...patch } }));
+    const setHybrid = (patch: Partial<BadmintonFormState['hybridConfig']>) => setFormData(prev => ({ ...prev, hybridConfig: { ...prev.hybridConfig, ...patch } }));
+    const setLeague = (patch: Partial<BadmintonFormState['teamLeagueConfig']>) =>
+        setFormData(prev => ({ ...prev, teamLeagueConfig: { ...prev.teamLeagueConfig, ...patch } }));
+    const slots = formData.teamLeagueConfig.subTeamSlots;
+    const setSlot = (idx: number, patch: Partial<Slot>) => setLeague({ subTeamSlots: slots.map((s, i) => (i === idx ? { ...s, ...patch } : s)) });
 
     const buildPayload = () => {
         const p: any = JSON.parse(JSON.stringify(formData));
@@ -73,196 +118,124 @@ export default function BadmintonCategoryForm({ tournamentId, category, onSucces
         if (p.bracketType !== 'hybrid') delete p.hybridConfig;
         if (p.bracketType !== 'team_league') delete p.teamLeagueConfig;
         if (!p.isPaidRegistration) p.registrationFee = 0;
-        else if (p.registrationFee === '') delete p.registrationFee;
         if (p.maxRegistrations === '' || p.maxRegistrations === null) delete p.maxRegistrations;
         return p;
     };
 
-    const handleSubmit = async () => {
-        if (!formData.name || !formData.ageGroup.label) return;
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        setTried(true);
+        if (Object.keys(validate(formData)).length) { focusFirstInvalid(formRef.current); return; }
+        setSaving(true);
+        setError(null);
         const payload = buildPayload();
         const result = isEdit
-            ? await dispatch(updateCategory({ id: (category as any)._id, data: payload }))
+            ? await dispatch(updateCategory({ id: (category as { _id: string })._id, data: payload }))
             : await dispatch(createCategory({ tournamentId, data: { ...payload, ...(sport ? { sport } : {}) } }));
-        const ok = isEdit ? updateCategory.fulfilled.match(result) : createCategory.fulfilled.match(result);
-        if (ok) onSuccess();
+        if (updateCategory.fulfilled.match(result) || createCategory.fulfilled.match(result)) { onSuccess(); return; }
+        setError((result.payload as string) || 'Couldn’t save this category. Try again.');
+        setSaving(false);
     };
 
+    const numInput = (id: string, value: N, onChange: (v: N) => void, min: number, invalid?: string, label?: string) => (
+        <input id={id} type="number" min={min} className={INPUT} aria-invalid={!!invalid} aria-label={label}
+            value={value} onChange={e => onChange(num(e.target.value))} />
+    );
+
     return (
-        <div className="bg-black/40 border border-white/10 rounded-2xl p-6 mb-4 animate-in fade-in slide-in-from-top-4">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white">{isEdit ? 'Edit Category' : 'Create New Category'}</h3>
-                <button onClick={onCancel} className="text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
-            </div>
+        <form ref={formRef} onSubmit={handleSubmit} noValidate className="grid gap-5">
+            <CategoryCommonFields value={formData} errors={errors} onChange={patch => setField(patch as Partial<BadmintonFormState>)} />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
-                <CategoryCommonFields
-                    value={formData}
-                    onChange={(patch) => setField(patch as Partial<BadmintonFormState>)}
-                />
-
-                {/* Match Settings */}
-                <div className="space-y-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-                    <h4 className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">
-                        {formData.bracketType === 'team_league' ? 'Sub-Match Settings' : 'Match Settings'}
-                    </h4>
-                    {formData.bracketType === 'team_league' && (
-                        <p className="text-xs text-gray-500 -mt-1">Applies to every sub-match within a tie (each slot uses its own match type defined below).</p>
+            <FormGroup title={tl ? 'Sub-match settings' : 'Match settings'}
+                description={tl ? 'Applies to every sub-match in a tie. Each slot sets its own match type below.' : undefined}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    {!tl && (
+                        <Field label="Match type">
+                            <Segmented name="bd-match-type" label="Match type" value={formData.matchType} onChange={matchType => setField({ matchType })}
+                                options={[{ value: 'singles', label: 'Singles' }, { value: 'doubles', label: 'Doubles' }]} />
+                        </Field>
                     )}
-                    <div className="grid grid-cols-2 gap-4">
-                        {formData.bracketType !== 'team_league' && (
-                        <div className="space-y-2 col-span-2">
-                            <Label className="text-gray-400">Match Type *</Label>
-                            <select value={formData.matchType} onChange={(e) => setField({ matchType: e.target.value })} className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white">
-                                <option value="singles">Singles</option>
-                                <option value="doubles">Doubles</option>
-                            </select>
-                        </div>
-                        )}
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Best Of</Label>
-                            <select value={formData.matchFormat.bestOf} onChange={(e) => setField({ matchFormat: { ...formData.matchFormat, bestOf: Number(e.target.value) } })} className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white">
-                                <option value={1}>1</option>
-                                <option value={3}>3</option>
-                                <option value={5}>5</option>
-                            </select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Points Per Game</Label>
-                            <Input type="number" min="1" value={formData.matchFormat.pointsPerGame} onChange={(e) => setField({ matchFormat: { ...formData.matchFormat, pointsPerGame: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                    </div>
+                    <Field label="Best of">
+                        <Segmented name="bd-best-of" label="Best of" value={formData.matchFormat.bestOf} onChange={bestOf => setFormat({ bestOf })}
+                            options={[{ value: 1, label: '1 game' }, { value: 3, label: '3 games' }, { value: 5, label: '5 games' }]} />
+                    </Field>
+                    <Field id="bd-points" label="Points per game" error={errors.pointsPerGame}>
+                        {numInput('bd-points', formData.matchFormat.pointsPerGame, pointsPerGame => setFormat({ pointsPerGame }), 1, errors.pointsPerGame)}
+                    </Field>
                 </div>
+            </FormGroup>
 
-                {/* Bracket Settings */}
-                <div className="space-y-4 md:col-span-2 p-4 bg-white/5 border border-white/10 rounded-xl">
-                    <h4 className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">Bracket Settings</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Bracket Type *</Label>
-                            <select value={formData.bracketType} onChange={(e) => setField({ bracketType: e.target.value })} className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white">
-                                <option value="knockout">Knockout</option>
-                                <option value="league">League</option>
-                                <option value="hybrid">Hybrid (Group + Knockout)</option>
-                                <option value="team_league">Team League</option>
-                            </select>
+            <FormGroup title="Format">
+                <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })}
+                    formats={['knockout', 'league', 'hybrid', 'team_league']} />
+
+                {formData.bracketType === 'hybrid' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <Field id="bd-group-size" label="Group size" help="Entries in each group." error={errors.leagueSize}>
+                            {numInput('bd-group-size', formData.hybridConfig.leagueSize, leagueSize => setHybrid({ leagueSize }), 2, errors.leagueSize)}
+                        </Field>
+                        <Field id="bd-top-n" label="Qualify from each group" error={errors.topN}>
+                            {numInput('bd-top-n', formData.hybridConfig.topN, topN => setHybrid({ topN }), 1, errors.topN)}
+                        </Field>
+                    </div>
+                )}
+
+                {tl && (
+                    <>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <Field id="bd-groups" label="Groups" error={errors.numberOfGroups}>
+                                {numInput('bd-groups', formData.teamLeagueConfig.numberOfGroups, numberOfGroups => setLeague({ numberOfGroups }), 1, errors.numberOfGroups)}
+                            </Field>
+                            <Field id="bd-qualify" label="Qualify per group" error={errors.topNPerGroup}>
+                                {numInput('bd-qualify', formData.teamLeagueConfig.topNPerGroup, topNPerGroup => setLeague({ topNPerGroup }), 1, errors.topNPerGroup)}
+                            </Field>
+                            <Field label="Points: win / draw / loss" error={errors.points}>
+                                <div className="flex gap-1.5">
+                                    {numInput('bd-pts-win', formData.teamLeagueConfig.pointsForWin, pointsForWin => setLeague({ pointsForWin }), 0, errors.points, 'Points for a win')}
+                                    {numInput('bd-pts-draw', formData.teamLeagueConfig.pointsForDraw, pointsForDraw => setLeague({ pointsForDraw }), 0, errors.points, 'Points for a draw')}
+                                    {numInput('bd-pts-loss', formData.teamLeagueConfig.pointsForLoss, pointsForLoss => setLeague({ pointsForLoss }), 0, errors.points, 'Points for a loss')}
+                                </div>
+                            </Field>
                         </div>
 
-                        {formData.bracketType === 'hybrid' && (
-                            <>
-                                <div className="space-y-2 animate-in fade-in">
-                                    <Label className="text-gray-400">Group Size</Label>
-                                    <Input type="number" min="2" value={formData.hybridConfig.leagueSize} onChange={(e) => setField({ hybridConfig: { ...formData.hybridConfig, leagueSize: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                                <div className="space-y-2 animate-in fade-in">
-                                    <Label className="text-gray-400">Qualifiers Per Group (Top N)</Label>
-                                    <Input type="number" min="1" value={formData.hybridConfig.topN} onChange={(e) => setField({ hybridConfig: { ...formData.hybridConfig, topN: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                            </>
-                        )}
-                    </div>
-
-                    {formData.bracketType === 'team_league' && (
-                        <div className="mt-4 space-y-4 animate-in fade-in">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Number of Groups</Label>
-                                    <Input type="number" min="1" value={formData.teamLeagueConfig.numberOfGroups} onChange={(e) => setField({ teamLeagueConfig: { ...formData.teamLeagueConfig, numberOfGroups: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Top N Per Group</Label>
-                                    <Input type="number" min="1" value={formData.teamLeagueConfig.topNPerGroup} onChange={(e) => setField({ teamLeagueConfig: { ...formData.teamLeagueConfig, topNPerGroup: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
+                        <div className="grid gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-[13px] font-medium text-fg-muted">Sub-matches in each tie</span>
+                                <button type="button" className={cn(BTN_GHOST, BTN_SM)}
+                                    onClick={() => setLeague({ subTeamSlots: [...slots, { slotNumber: slots.length + 1, matchType: 'singles', label: defaultLabel('singles', slots.length + 1) }] })}>
+                                    <Plus aria-hidden className="h-3.5 w-3.5" />Add slot
+                                </button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Points for Win</Label>
-                                    <Input type="number" min="0" value={formData.teamLeagueConfig.pointsForWin} onChange={(e) => setField({ teamLeagueConfig: { ...formData.teamLeagueConfig, pointsForWin: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Points for Loss</Label>
-                                    <Input type="number" min="0" value={formData.teamLeagueConfig.pointsForLoss} onChange={(e) => setField({ teamLeagueConfig: { ...formData.teamLeagueConfig, pointsForLoss: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Points for Draw</Label>
-                                    <Input type="number" min="0" value={formData.teamLeagueConfig.pointsForDraw} onChange={(e) => setField({ teamLeagueConfig: { ...formData.teamLeagueConfig, pointsForDraw: e.target.value === '' ? ('' as any) : Number(e.target.value) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-gray-400">Sub-Team Slots (Match Template)</Label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const slots = [...formData.teamLeagueConfig.subTeamSlots];
-                                            slots.push({ slotNumber: slots.length + 1, matchType: 'singles', label: `Singles ${slots.length + 1}` });
-                                            setFormData(prev => ({ ...prev, teamLeagueConfig: { ...prev.teamLeagueConfig, subTeamSlots: slots } }));
-                                        }}
-                                        className="flex items-center gap-1 px-3 py-1 text-xs bg-primary/20 text-primary hover:bg-primary/30 rounded-full"
-                                    >
-                                        <Plus className="h-3 w-3" /> Add Slot
-                                    </button>
-                                </div>
-                                {formData.teamLeagueConfig.subTeamSlots.map((slot: any, idx: number) => (
-                                    <div key={idx} className="flex items-center gap-3 p-3 bg-black/30 rounded-lg border border-white/5">
-                                        <span className="text-xs text-gray-500 font-mono w-6">#{slot.slotNumber}</span>
-                                        <select
-                                            value={slot.matchType}
-                                            onChange={(e) => {
-                                                const slots = [...formData.teamLeagueConfig.subTeamSlots];
-                                                const mt = e.target.value;
-                                                const defaultLabel = mt === 'singles' ? `Singles ${idx + 1}` : mt === 'doubles' ? `Doubles ${idx + 1}` : `Mixed Doubles ${idx + 1}`;
-                                                slots[idx] = { ...slots[idx], matchType: mt, label: defaultLabel };
-                                                setFormData(prev => ({ ...prev, teamLeagueConfig: { ...prev.teamLeagueConfig, subTeamSlots: slots } }));
-                                            }}
-                                            className="flex h-9 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-sm text-white flex-1"
-                                        >
-                                            <option value="singles">Singles</option>
-                                            <option value="doubles">Doubles</option>
-                                            <option value="mixed_doubles">Mixed Doubles</option>
+                            <ul className="grid gap-2">
+                                {slots.map((slot, idx) => (
+                                    <li key={idx} className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-2">
+                                        <span className="text-xs tabular-nums text-fg-subtle">#{slot.slotNumber}</span>
+                                        <select aria-label={`Slot ${idx + 1} type`} className={INPUT} value={slot.matchType}
+                                            onChange={e => setSlot(idx, {
+                                                matchType: e.target.value,
+                                                // Only replace labels we generated; keep anything the organizer typed.
+                                                ...(isDefaultLabel(slot.label) ? { label: defaultLabel(e.target.value, idx + 1) } : {}),
+                                            })}>
+                                            {SLOT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                         </select>
-                                        <Input
-                                            value={slot.label}
-                                            onChange={(e) => {
-                                                const slots = [...formData.teamLeagueConfig.subTeamSlots];
-                                                slots[idx] = { ...slots[idx], label: e.target.value };
-                                                setFormData(prev => ({ ...prev, teamLeagueConfig: { ...prev.teamLeagueConfig, subTeamSlots: slots } }));
-                                            }}
-                                            placeholder="Label"
-                                            className="bg-black/50 border-white/10 text-white flex-1 h-9"
-                                        />
-                                        {formData.teamLeagueConfig.subTeamSlots.length > 1 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const slots = formData.teamLeagueConfig.subTeamSlots.filter((_: any, i: number) => i !== idx).map((s: any, i: number) => ({ ...s, slotNumber: i + 1 }));
-                                                    setFormData(prev => ({ ...prev, teamLeagueConfig: { ...prev.teamLeagueConfig, subTeamSlots: slots } }));
-                                                }}
-                                                className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
+                                        <input aria-label={`Slot ${idx + 1} label`} className={INPUT} placeholder="Label" value={slot.label}
+                                            onChange={e => setSlot(idx, { label: e.target.value })} />
+                                        {slots.length > 1 ? (
+                                            <button type="button" aria-label={`Remove slot ${idx + 1}`}
+                                                onClick={() => setLeague({ subTeamSlots: slots.filter((_, i) => i !== idx).map((s, i) => ({ ...s, slotNumber: i + 1 })) })}
+                                                className={cn('flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted hover:bg-white/[0.05] hover:text-red-300', FOCUS)}>
+                                                <X aria-hidden className="h-4 w-4" />
                                             </button>
-                                        )}
-                                    </div>
+                                        ) : <span />}
+                                    </li>
                                 ))}
-                            </div>
+                            </ul>
                         </div>
-                    )}
-                </div>
-            </div>
+                    </>
+                )}
+            </FormGroup>
 
-            <div className="flex justify-end mt-6 gap-3 pt-4 border-t border-white/10">
-                <button onClick={onCancel} className="px-5 py-2 rounded-full border border-white/10 text-white font-medium hover:bg-white/5 transition-colors">Cancel</button>
-                <button
-                    onClick={handleSubmit}
-                    disabled={isLoading || !formData.name || !formData.ageGroup.label}
-                    className="flex items-center gap-2 px-6 py-2 rounded-full bg-primary hover:bg-primary/90 text-white font-medium disabled:opacity-50"
-                >
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {isEdit ? 'Save Changes' : 'Create Category'}
-                </button>
-            </div>
-        </div>
+            <CategoryFormFooter isEdit={isEdit} saving={saving} error={error} invalid={Object.keys(errors).length > 0} onCancel={onCancel} />
+        </form>
     );
 }

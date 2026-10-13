@@ -1,151 +1,146 @@
-import React, { useState } from 'react';
-import { Loader2, Save, X, Trophy } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Fragment, useState } from 'react';
+import { AlertTriangle, Loader2, Plus, Trophy, X } from 'lucide-react';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
+import { CHOICE, Dialog, INPUT, Notice } from '@/pages/organizer/ui';
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM } from '@/pages/organizer/shared';
+import { cn } from '@/lib/utils';
 
 interface Props {
     match: any;
     onClose: () => void;
     onSaved: () => void;
-    setError: (err: string | null) => void;
 }
 
-export default function SubMatchResultModal({ match, onClose, onSaved, setError }: Props) {
-    const [winnerId, setWinnerId] = useState('');
-    const [gameScores, setGameScores] = useState<{ gameNumber: number; team1Score: number; team2Score: number }[]>(
-        [{ gameNumber: 1, team1Score: 0, team2Score: 0 }]
-    );
-    const [saving, setSaving] = useState(false);
+type Game = { a: string; b: string };
 
+const num = (v: string) => (v.trim() === '' ? null : Number(v));
+
+/** Reads the entered games: unplayed (blank) games are skipped; a played game needs two whole, unequal scores. */
+export function readGames(games: Game[]) {
+    const played = games.map((g, i) => ({ n: i + 1, a: num(g.a), b: num(g.b) })).filter(g => g.a !== null || g.b !== null);
+    const bad = played.find(g => g.a === null || g.b === null || !Number.isInteger(g.a) || !Number.isInteger(g.b) || g.a < 0 || g.b < 0 || g.a === g.b);
+    const problem = !bad ? null
+        : bad.a === null || bad.b === null ? `Game ${bad.n} needs both scores.`
+        : bad.a === bad.b ? `Game ${bad.n} can't end level.`
+        : `Game ${bad.n} needs whole numbers of 0 or more.`;
+    const won1 = played.filter(g => g.a > g.b).length;
+    const won2 = played.filter(g => g.b > g.a).length;
+    return { played, problem, won1, won2, leader: problem || won1 === won2 ? 0 : won1 > won2 ? 1 : 2 };
+}
+
+export default function SubMatchResultModal({ match, onClose, onSaved }: Props) {
     // For sub-matches, player1.teamId is the clean team ObjectId (player1.registrationId
     // is unreliable for doubles — it's stored as "id1,id2" joined by comma).
-    const team1Id = match.teams?.team1Id || match.player1?.teamId;
-    const team2Id = match.teams?.team2Id || match.player2?.teamId;
-    const team1Name = match.player1?.name || match.teams?.team1Name || 'Team 1';
-    const team2Name = match.player2?.name || match.teams?.team2Name || 'Team 2';
+    const sides = [
+        { id: match.player1?.teamId || match.teams?.team1Id, name: match.player1?.teamName || match.teams?.team1Name || 'Team 1', players: match.player1?.name },
+        { id: match.player2?.teamId || match.teams?.team2Id, name: match.player2?.teamName || match.teams?.team2Name || 'Team 2', players: match.player2?.name },
+    ];
 
-    const addGame = () => {
-        setGameScores(prev => [...prev, { gameNumber: prev.length + 1, team1Score: 0, team2Score: 0 }]);
-    };
+    // One blank row per game of the format; unplayed games stay blank.
+    const [games, setGames] = useState<Game[]>(() =>
+        Array.from({ length: Math.max(1, match.matchConfig?.bestOf ?? 3) }, () => ({ a: '', b: '' })));
+    const [picked, setPicked] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
-    const removeGame = (idx: number) => {
-        if (gameScores.length <= 1) return;
-        setGameScores(prev => prev.filter((_, i) => i !== idx).map((g, i) => ({ ...g, gameNumber: i + 1 })));
-    };
+    const { played, problem, won1, won2, leader } = readGames(games);
+    const fromScores = leader ? sides[leader - 1] : null;
+    const winnerId = picked ?? fromScores?.id ?? null;
+    const winner = sides.find(s => s.id === winnerId);
+    const contradicts = !!picked && !!fromScores && picked !== fromScores.id;
 
-    const updateScore = (idx: number, field: 'team1Score' | 'team2Score', value: number) => {
-        setGameScores(prev => prev.map((g, i) => i === idx ? { ...g, [field]: value } : g));
-    };
+    const setScore = (i: number, key: keyof Game, v: string) => setGames(gs => gs.map((g, j) => (j === i ? { ...g, [key]: v } : g)));
 
-    const handleSave = async () => {
-        if (!winnerId) {
-            setError('Please select a winner.');
-            return;
-        }
+    const save = async () => {
+        if (problem || !winnerId) return;
         setSaving(true);
         setError(null);
         try {
             await teamLeagueApi.recordSubMatchResult(match._id, {
                 winnerId,
-                gameScores,
+                gameScores: played.map((g, i) => ({
+                    gameNumber: i + 1, team1Score: g.a, team2Score: g.b, winnerId: g.a > g.b ? sides[0].id : sides[1].id,
+                })),
             });
             onSaved();
             onClose();
         } catch (e: any) {
             setError(e.response?.data?.message || 'Failed to record result');
-        } finally {
             setSaving(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                        <Trophy className="h-5 w-5 text-primary" />
-                        <h3 className="text-lg font-bold text-white">Record Result</h3>
-                    </div>
-                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
-                </div>
-
-                <div className="space-y-4">
-                    {/* Winner selection */}
-                    <div className="space-y-2">
-                        <Label className="text-gray-400">Winner</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                            <button
-                                onClick={() => setWinnerId(team1Id)}
-                                className={`p-3 rounded-lg text-sm font-medium border transition-colors ${
-                                    winnerId === team1Id
-                                        ? 'bg-primary/20 text-primary border-primary/50'
-                                        : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
-                                }`}
-                            >
-                                {team1Name}
-                            </button>
-                            <button
-                                onClick={() => setWinnerId(team2Id)}
-                                className={`p-3 rounded-lg text-sm font-medium border transition-colors ${
-                                    winnerId === team2Id
-                                        ? 'bg-primary/20 text-primary border-primary/50'
-                                        : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
-                                }`}
-                            >
-                                {team2Name}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Game scores */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-gray-400">Game Scores</Label>
-                            <button onClick={addGame} className="text-xs text-primary hover:text-primary/80">+ Add Game</button>
-                        </div>
-                        {gameScores.map((game, idx) => (
-                            <div key={idx} className="flex items-center gap-2 p-2 bg-black/40 rounded-lg">
-                                <span className="text-xs text-gray-500 w-8">G{game.gameNumber}</span>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    value={game.team1Score}
-                                    onChange={(e) => updateScore(idx, 'team1Score', Number(e.target.value))}
-                                    className="bg-black/50 border-white/10 text-white h-8 text-sm text-center w-16"
-                                />
-                                <span className="text-gray-600 text-xs">-</span>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    value={game.team2Score}
-                                    onChange={(e) => updateScore(idx, 'team2Score', Number(e.target.value))}
-                                    className="bg-black/50 border-white/10 text-white h-8 text-sm text-center w-16"
-                                />
-                                {gameScores.length > 1 && (
-                                    <button onClick={() => removeGame(idx)} className="p-1 text-red-400 hover:text-red-500">
-                                        <X className="h-3 w-3" />
-                                    </button>
-                                )}
-                            </div>
+        <Dialog title="Enter result" onClose={onClose}
+            description={[match.slotLabel, sides[0].players && sides[1].players && `${sides[0].players} vs ${sides[1].players}`].filter(Boolean).join(' · ') || undefined}
+            footer={<>
+                {error && <p role="alert" className="mr-auto min-w-0 text-[13px] text-red-300">{error}</p>}
+                <button type="button" onClick={onClose} className={BTN_SECONDARY}>Cancel</button>
+                <button type="button" onClick={save} disabled={saving || !!problem || !winnerId} className={BTN_PRIMARY}>
+                    {saving && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}Save result
+                </button>
+            </>}>
+            <div className="grid gap-5">
+                <div className="grid gap-2">
+                    <div role="group" aria-label="Game scores" className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-x-2.5 gap-y-2 text-[13px]">
+                        <span />
+                        {sides.map((s, i) => <span key={i} title={s.name} className="truncate text-center text-xs font-medium text-fg-muted">{s.name}</span>)}
+                        <span />
+                        {games.map((g, i) => (
+                            <Fragment key={i}>
+                                <span className="text-fg-subtle">Game {i + 1}</span>
+                                {(['a', 'b'] as const).map((k, side) => (
+                                    <input key={k} type="number" min={0} inputMode="numeric" aria-label={`Game ${i + 1}, ${sides[side].name}`}
+                                        value={g[k]} onChange={e => setScore(i, k, e.target.value)} className={cn(INPUT, 'px-1.5 text-center tabular-nums')} />
+                                ))}
+                                <button type="button" aria-label={`Remove game ${i + 1}`} disabled={games.length === 1}
+                                    onClick={() => setGames(gs => gs.filter((_, j) => j !== i))} className={cn(BTN_GHOST, BTN_SM, 'w-8 px-0')}>
+                                    <X aria-hidden className="h-3.5 w-3.5" />
+                                </button>
+                            </Fragment>
                         ))}
                     </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-                        <button onClick={onClose} className="px-4 py-2 rounded-full border border-white/10 text-white text-sm hover:bg-white/5">
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving || !winnerId}
-                            className="flex items-center gap-2 px-5 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-                        >
-                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            Save Result
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p aria-live="polite" className={cn('text-xs', problem ? 'text-amber-300' : 'text-fg-subtle')}>
+                            {problem ?? 'Leave unplayed games empty.'}
+                        </p>
+                        <button type="button" onClick={() => setGames(gs => [...gs, { a: '', b: '' }])} className={cn(BTN_GHOST, BTN_SM)}>
+                            <Plus aria-hidden className="h-3.5 w-3.5" />Add game
                         </button>
                     </div>
                 </div>
+
+                <fieldset className="grid gap-2">
+                    <legend className="mb-2 text-[13px] font-medium text-fg-muted">Winner</legend>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {sides.map((s, i) => (
+                            <label key={i} className={CHOICE}>
+                                <input type="radio" name="sub-match-winner" className="mt-0.5 accent-primary"
+                                    checked={!!winnerId && winnerId === s.id} onChange={() => setPicked(s.id)} />
+                                <span className="min-w-0">
+                                    <span className="block truncate text-sm font-medium text-fg">{s.name}</span>
+                                    {s.players && <span className="mt-0.5 block truncate text-[13px] text-fg-muted">{s.players}</span>}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
+
+                {contradicts ? (
+                    <Notice tone="amber" icon={AlertTriangle}>
+                        The scores say {fromScores!.name} won {Math.max(won1, won2)}–{Math.min(won1, won2)}. Saving records {winner?.name} as the winner.
+                        <button type="button" onClick={() => setPicked(null)} className="ml-1 font-medium underline underline-offset-2 hover:text-amber-200">
+                            Use the scores
+                        </button>
+                    </Notice>
+                ) : winner ? (
+                    <Notice tone="neutral" icon={Trophy}>
+                        <b className="font-medium text-fg">{winner.name}</b> {fromScores ? `wins ${Math.max(won1, won2)}–${Math.min(won1, won2)}.` : 'wins.'}
+                    </Notice>
+                ) : !problem && (
+                    <p className="text-[13px] text-fg-subtle">Enter the game scores, or choose the winner.</p>
+                )}
             </div>
-        </div>
+        </Dialog>
     );
 }

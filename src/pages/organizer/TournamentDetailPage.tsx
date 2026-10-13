@@ -1,191 +1,240 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { differenceInCalendarDays, format } from 'date-fns';
 import {
-    ArrowLeft, Save, Trash2, MapPin, Calendar, Users, DollarSign, Settings, Image as ImageIcon,
-    Loader2, AlertCircle, CheckCircle, Play, XCircle, DoorOpen, Lock, Gavel,
-    LayoutDashboard, ListTree, Trophy, UserCog, Swords, Target, Menu, X,
-    Shield, Sliders, UserCheck, Megaphone,
+    AlertCircle, ArrowLeft, ArrowRight, Calendar, Check, FileText, Gavel, LayoutDashboard, LifeBuoy, ListTree,
+    Loader2, Lock, LucideIcon, MapPin, Megaphone, Menu, Network, Settings, Shield, Swords, Trophy, UserCheck,
+    Users, Wallet,
 } from 'lucide-react';
-import HoverFooter from '@/components/HoverFooter';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { logout } from '../../store/slices/authSlice';
 import {
     fetchTournament, updateTournament, deleteTournament,
     openRegistration, closeRegistration, startAuction,
     startTournament, completeTournament, cancelTournament,
-    clearCurrentTournament,
+    clearCurrentTournament, Tournament,
 } from '../../store/slices/tournamentSlice';
-import { fetchTournamentCategories } from '../../store/slices/registrationSlice';
+import { Category, fetchTournamentCategories } from '../../store/slices/registrationSlice';
 import TeamsSection from './components/TeamsSection';
 import StaffSection from './components/StaffSection';
 import CategoriesSection from './components/CategoriesSection';
-import AnnouncementsPanel from '@/components/AnnouncementsPanel';
+import AnnouncementsSection from './components/AnnouncementsSection';
 import RegistrationsSection from './components/RegistrationsSection';
 import AuctionSection from './components/AuctionSection';
 import MatchManagementSection from './components/MatchManagementSection';
 import BracketManagementSection from './components/BracketManagementSection';
 import PaymentsSection from './components/PaymentsSection';
 import { sportRegistry } from '@/sports/registry';
+import { getAppLenis } from '@/context/LenisContext';
+import { cn } from '@/lib/utils';
+import {
+    AccountMenu, Brand, BTN_DANGER, BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, formatRange, inDays, inr,
+    sportLabel, sportsOf, statusOf, StatusBadge, TONE,
+} from './shared';
+import { Field, FormSection, Notice, PageHead, SectionNavContext } from './ui';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type GroupKey = 'dashboard' | 'info' | 'players' | 'teams' | 'compete' | 'admin' | 'danger';
+// ─── Navigation ───────────────────────────────────────────────────────────────
 
 type SectionKey =
-    | 'overview'
-    | 'announcements'
-    | 'basic'
-    | 'schedule'
-    | 'location'
-    | 'settings'
-    | 'categories'
-    | 'registrations'
-    | 'payments'
-    | 'teams'
-    | 'auction'
-    | 'brackets'
-    | 'matches'
-    | 'team_league'
-    | 'staff'
-    | 'danger';
+    | 'overview' | 'details' | 'announcements'
+    | 'categories' | 'registrations' | 'payments'
+    | 'teams' | 'auction'
+    | 'brackets' | 'matches' | 'team_league'
+    | 'staff' | 'settings';
 
-interface NavItem {
-    key: SectionKey;
-    label: string;
-    icon: React.ElementType;
-    condition?: (status: string) => boolean;
-}
-
-interface NavGroup {
-    key: GroupKey;
-    icon: React.ElementType;
-    label: string;
-    items: NavItem[];
-    danger?: boolean;
-    condition?: (status: string) => boolean;
-}
-
-const NAV_GROUPS: NavGroup[] = [
-    {
-        key: 'dashboard',
-        icon: LayoutDashboard,
-        label: 'OVERVIEW',
-        items: [
-            { key: 'overview', label: 'Dashboard', icon: LayoutDashboard },
-            { key: 'announcements', label: 'Announcements', icon: Megaphone },
-        ],
-    },
-    {
-        key: 'info',
-        icon: Sliders,
-        label: 'TOURNAMENT',
-        items: [
-            { key: 'basic', label: 'Basic Info', icon: ImageIcon },
-            { key: 'schedule', label: 'Schedule', icon: Calendar },
-            { key: 'location', label: 'Location', icon: MapPin },
-            { key: 'settings', label: 'Rules & Settings', icon: Settings },
-        ],
-    },
-    {
-        key: 'players',
-        icon: Users,
-        label: 'PLAYERS',
-        items: [
-            { key: 'categories', label: 'Categories', icon: ListTree },
-            { key: 'registrations', label: 'Registrations', icon: UserCheck },
-            { key: 'payments', label: 'Payments', icon: DollarSign },
-        ],
-    },
-    {
-        key: 'teams',
-        icon: Shield,
-        label: 'TEAMS',
-        items: [
-            { key: 'teams', label: 'Manage Teams', icon: Users },
-            { key: 'auction', label: 'Auction', icon: Gavel, condition: (s) => !['draft', 'cancelled', 'completed'].includes(s) },
-        ],
-    },
-    {
-        key: 'compete',
-        icon: Swords,
-        label: 'COMPETITION',
-        condition: (s) => !['draft', 'cancelled'].includes(s),
-        items: [
-            { key: 'brackets', label: 'Brackets', icon: Target },
-            { key: 'matches', label: 'Matches', icon: Swords },
-            { key: 'team_league', label: 'Team League', icon: Trophy },
-        ],
-    },
-    {
-        key: 'admin',
-        icon: UserCog,
-        label: 'MANAGEMENT',
-        items: [
-            { key: 'staff', label: 'Staff', icon: Trophy },
-        ],
-    },
-    {
-        key: 'danger',
-        icon: Trash2,
-        label: 'DANGER ZONE',
-        danger: true,
-        condition: (s) => !['completed', 'cancelled'].includes(s),
-        items: [
-            { key: 'danger', label: 'Delete Tournament', icon: Trash2 },
-        ],
-    },
-];
-
-const statusColors: Record<string, { bg: string; text: string; border: string; label: string }> = {
-    draft: { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' },
-    registration_open: { bg: 'bg-green-500/10', text: 'text-green-500', border: 'border-green-500/30', label: 'Registration Open' },
-    registration_closed: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', border: 'border-yellow-500/30', label: 'Registration Closed' },
-    auction_in_progress: { bg: 'bg-blue-500/10', text: 'text-blue-500', border: 'border-blue-500/30', label: 'Auction In Progress' },
-    ongoing: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30', label: 'Ongoing' },
-    completed: { bg: 'bg-emerald-500/10', text: 'text-emerald-500', border: 'border-emerald-500/30', label: 'Completed' },
-    cancelled: { bg: 'bg-red-500/10', text: 'text-red-500', border: 'border-red-500/30', label: 'Cancelled' },
+const SECTIONS: Record<SectionKey, { label: string; icon: LucideIcon }> = {
+    overview: { label: 'Overview', icon: LayoutDashboard },
+    details: { label: 'Details', icon: FileText },
+    announcements: { label: 'Announcements', icon: Megaphone },
+    categories: { label: 'Categories', icon: ListTree },
+    registrations: { label: 'Registrations', icon: UserCheck },
+    payments: { label: 'Payments', icon: Wallet },
+    teams: { label: 'Teams', icon: Shield },
+    auction: { label: 'Auction', icon: Gavel },
+    brackets: { label: 'Brackets', icon: Network },
+    matches: { label: 'Matches', icon: Swords },
+    team_league: { label: 'Team league', icon: Trophy },
+    staff: { label: 'Staff', icon: Users },
+    settings: { label: 'Settings', icon: Settings },
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
+const GROUPS: { label: string; items: SectionKey[] }[] = [
+    { label: 'Tournament', items: ['overview', 'details', 'announcements'] },
+    { label: 'Players', items: ['categories', 'registrations', 'payments'] },
+    { label: 'Teams', items: ['teams', 'auction'] },
+    { label: 'Competition', items: ['brackets', 'matches', 'team_league'] },
+    { label: 'Manage', items: ['staff', 'settings'] },
+];
+
+// Sections from before the redesign, so old links and bookmarks still land somewhere sensible.
+const LEGACY_SECTIONS: Record<string, SectionKey> = { basic: 'details', schedule: 'details', location: 'details', danger: 'settings' };
+const toSection = (s: string | null): SectionKey =>
+    !s ? 'overview' : LEGACY_SECTIONS[s] ?? (s in SECTIONS ? (s as SectionKey) : 'overview');
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+const STAGES = ['draft', 'registration_open', 'registration_closed', 'auction_in_progress', 'ongoing', 'completed'];
+const STAGE_LABELS = ['Draft', 'Registration open', 'Registration closed', 'Auction', 'In progress', 'Completed'];
+
+// One forward step per status: the same transitions the old Quick Actions offered.
+const NEXT: Record<string, { label: string; text: string; thunk: typeof openRegistration }> = {
+    draft: { label: 'Open registration', thunk: openRegistration, text: 'Players can find this tournament and register. You can keep editing details afterwards.' },
+    registration_open: { label: 'Close registration', thunk: closeRegistration, text: 'New registrations stop. Entries you already have are kept.' },
+    registration_closed: { label: 'Start auction', thunk: startAuction, text: 'Opens the player auction so teams can be built.' },
+    auction_in_progress: { label: 'Start tournament', thunk: startTournament, text: 'Moves the tournament to In progress so you can run brackets and matches.' },
+    ongoing: { label: 'Complete tournament', thunk: completeTournament, text: 'Marks the tournament as finished. Details become read-only.' },
+};
+
+const READ_ONLY_STATUSES = ['completed', 'cancelled'];
+
+// ─── Formatting ───────────────────────────────────────────────────────────────
+
+const FORMAT: Record<string, string> = {
+    knockout: 'Knockout', round_robin: 'Round robin', group_knockout: 'Groups + knockout',
+    league: 'League', hybrid: 'Hybrid', team_league: 'Team league',
+};
+const GENDER: Record<string, string> = { Male: 'Men', Female: 'Women', Mixed: 'Mixed', Any: 'Open' };
+
+const until = (d: string) => differenceInCalendarDays(new Date(d), new Date());
+const relative = (n: number) => (n >= 0 ? inDays(n) : n === -1 ? 'yesterday' : `${-n} days ago`);
+
+const eligibility = (c: Category) => {
+    const age = c.minAge && c.maxAge ? `${c.minAge}–${c.maxAge}` : c.maxAge ? `U-${c.maxAge}` : c.minAge ? `${c.minAge}+` : '';
+    return [GENDER[c.gender] ?? c.gender, age].filter(Boolean).join(' · ');
+};
+const feeOf = (c: Category) => (c.isPaidRegistration && c.registrationFee > 0 ? inr(c.registrationFee) : 'Free');
+
+/** The next date that matters at this stage of the tournament. */
+const keyDate = (t: Tournament): { label: string; value: string; sub: string; urgent: boolean } => {
+    const short = (d: string) => format(new Date(d), 'd MMM');
+    switch (t.status) {
+        case 'draft':
+        case 'registration_open': {
+            const n = until(t.registrationDeadline);
+            return { label: 'Registration deadline', value: short(t.registrationDeadline), sub: relative(n), urgent: t.status === 'registration_open' && n <= 3 };
+        }
+        case 'ongoing':
+            return { label: 'Ends', value: short(t.endDate), sub: relative(until(t.endDate)), urgent: false };
+        case 'completed':
+            return { label: 'Ended', value: short(t.endDate), sub: '', urgent: false };
+        case 'cancelled':
+            return { label: 'Was due to start', value: short(t.startDate), sub: '', urgent: false };
+        default:
+            return { label: 'Starts', value: short(t.startDate), sub: relative(until(t.startDate)), urgent: false };
+    }
+};
+
+// ─── Form model ───────────────────────────────────────────────────────────────
+
+type Form = {
+    name: string; description: string; sports: string[]; bannerImage: string;
+    startDate: string; endDate: string; registrationDeadline: string;
+    venue: { name: string; address: string; city: string };
+    settings: { maxTeams: number; defaultBudget: number; auctionType: string; allowLateRegistration: boolean };
+};
+
+const day = (d?: string) => (d ? d.split('T')[0] : '');
+
+const toForm = (t: Tournament): Form => {
+    const sports = sportsOf(t);
+    return {
+        name: t.name || '',
+        description: t.description || '',
+        sports: sports.length ? sports : ['badminton'],
+        bannerImage: t.bannerImage || '',
+        startDate: day(t.startDate),
+        endDate: day(t.endDate),
+        registrationDeadline: day(t.registrationDeadline),
+        venue: { name: t.venue?.name || '', address: t.venue?.address || '', city: t.venue?.city || '' },
+        settings: {
+            maxTeams: t.settings?.maxTeams || 8,
+            defaultBudget: t.settings?.defaultBudget || 100000,
+            auctionType: t.settings?.auctionType || 'manual',
+            allowLateRegistration: t.settings?.allowLateRegistration || false,
+        },
+    };
+};
+
+// ─── Small pieces ─────────────────────────────────────────────────────────────
+
+const INPUT = cn(
+    'h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm text-fg [color-scheme:dark] transition-colors',
+    'placeholder:text-fg-subtle hover:border-white/15 focus:border-white/20 disabled:cursor-not-allowed disabled:opacity-60', FOCUS,
+);
+const CHOICE = cn(
+    'flex cursor-pointer gap-2.5 rounded-lg bg-panel p-3 ring-1 ring-inset ring-line transition-colors',
+    'has-[input:checked]:bg-primary/[0.06] has-[input:checked]:ring-primary/55 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-60',
+);
+
+const Confirm = ({ question, yes, no = 'Not yet', onYes, onNo, busy, danger }: {
+    question: string; yes: string; no?: string; onYes: () => void; onNo: () => void; busy: boolean; danger?: boolean;
+}) => (
+    <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[13px] text-fg-muted">{question}</span>
+        <button type="button" autoFocus onClick={onNo} disabled={busy} className={cn(BTN_SECONDARY, BTN_SM)}>{no}</button>
+        <button type="button" onClick={onYes} disabled={busy} className={cn(danger ? BTN_DANGER_SOLID : BTN_PRIMARY, BTN_SM)}>
+            {busy && <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />}{yes}
+        </button>
+    </div>
+);
+
+const FactSection = ({ title, onEdit, children }: { title: string; onEdit?: () => void; children: ReactNode }) => (
+    <div className="py-3 [&+&]:border-t [&+&]:border-line">
+        <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-medium text-fg-subtle">{title}</h3>
+            {onEdit && <button type="button" onClick={onEdit} className={cn('rounded text-[13px] text-fg-muted hover:text-fg', FOCUS)}>Edit</button>}
+        </div>
+        {children}
+    </div>
+);
+
+const Fact = ({ term, children }: { term: string; children: ReactNode }) => (
+    <div className="flex justify-between gap-4 text-[13px]">
+        <dt className="text-fg-muted">{term}</dt>
+        <dd className="text-right tabular-nums text-fg">{children}</dd>
+    </div>
+);
+
+// Category table columns once there is room (1400px+): name · format · fee · max · status
+const CAT_COLS = 'min-[1400px]:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_4.5rem_9.5rem]';
+
 // ═════════════════════════════════════════════════════════════════════════════
 
 const TournamentDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const dispatch = useAppDispatch();
-    const { currentTournament, isLoading, error } = useAppSelector((state) => state.tournament);
+    const { currentTournament: t, error } = useAppSelector((state) => state.tournament);
     const { categories } = useAppSelector((state) => state.registration);
     const { user } = useAppSelector((state) => state.auth);
     const isStaff = user?.role === 'staff';
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const initialSection = (searchParams.get('section') as SectionKey) || 'overview';
-    const groupForSection = (s: SectionKey): GroupKey =>
-        NAV_GROUPS.find(g => g.items.some(i => i.key === s))?.key ?? 'dashboard';
+    const [activeSection, setActiveSection] = useState<SectionKey>(() => toSection(searchParams.get('section')));
+    const [navOpen, setNavOpen] = useState(false);
+    // Until the first requests settle, missing data means "loading", not "not found" / "no categories".
+    const [fetched, setFetched] = useState(false);
+    const [catsLoaded, setCatsLoaded] = useState(false);
+    const [form, setForm] = useState<Form | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [justSaved, setJustSaved] = useState(false);
+    const [confirming, setConfirming] = useState<'advance' | 'cancel' | 'delete' | null>(null);
+    const [busy, setBusy] = useState(false);
 
-    const [activeGroup, setActiveGroup] = useState<GroupKey>(groupForSection(initialSection));
-    const [activeSection, setActiveSection] = useState<SectionKey>(initialSection);
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [formData, setFormData] = useState({
-        name: '', description: '', sports: ['badminton'] as string[], bannerImage: '',
-        startDate: '', endDate: '', registrationDeadline: '',
-        venue: { name: '', address: '', city: '' },
-        settings: { maxTeams: 8, defaultBudget: 100000, auctionType: 'manual', allowLateRegistration: false },
-    });
+    const load = () => {
+        if (!id) return;
+        setFetched(false);
+        setCatsLoaded(false);
+        dispatch(fetchTournament(id)).finally(() => setFetched(true));
+        dispatch(fetchTournamentCategories(id)).finally(() => setCatsLoaded(true));
+    };
 
     useEffect(() => {
-        if (id) {
-            dispatch(fetchTournament(id));
-            dispatch(fetchTournamentCategories(id));
-        }
+        load();
         return () => { dispatch(clearCurrentTournament()); };
     }, [id, dispatch]);
 
-    // Keep the active section in the URL so a refresh restores the same tab.
+    // Keep the active section in the URL so a refresh restores it.
     useEffect(() => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
@@ -194,653 +243,596 @@ const TournamentDetailPage = () => {
         }, { replace: true });
     }, [activeSection]);
 
-    useEffect(() => {
-        if (currentTournament) {
-            const initialSports = currentTournament.sports?.length
-                ? currentTournament.sports
-                : [currentTournament.sport].filter(Boolean);
-            setFormData({
-                name: currentTournament.name || '',
-                description: currentTournament.description || '',
-                sports: initialSports.length ? initialSports : ['badminton'],
-                bannerImage: currentTournament.bannerImage || '',
-                startDate: currentTournament.startDate ? currentTournament.startDate.split('T')[0] : '',
-                endDate: currentTournament.endDate ? currentTournament.endDate.split('T')[0] : '',
-                registrationDeadline: currentTournament.registrationDeadline ? currentTournament.registrationDeadline.split('T')[0] : '',
-                venue: {
-                    name: currentTournament.venue?.name || '',
-                    address: currentTournament.venue?.address || '',
-                    city: currentTournament.venue?.city || '',
-                },
-                settings: {
-                    maxTeams: currentTournament.settings?.maxTeams || 8,
-                    defaultBudget: currentTournament.settings?.defaultBudget || 100000,
-                    auctionType: currentTournament.settings?.auctionType || 'manual',
-                    allowLateRegistration: currentTournament.settings?.allowLateRegistration || false,
-                },
-            });
-        }
-    }, [currentTournament]);
+    // Reset the form whenever the saved tournament changes (load, save, status change).
+    useEffect(() => { setForm(t ? toForm(t) : null); }, [t]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        if (name.startsWith('venue.')) {
-            const field = name.split('.')[1];
-            setFormData(prev => ({ ...prev, venue: { ...prev.venue, [field]: value } }));
-        } else if (name.startsWith('settings.')) {
-            const field = name.split('.')[1];
-            let parsed: any = value;
-            if (type === 'number') parsed = Number(value);
-            if (type === 'checkbox') parsed = (e.target as HTMLInputElement).checked;
-            setFormData(prev => ({ ...prev, settings: { ...prev.settings, [field]: parsed } }));
-        } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
-        }
+    useEffect(() => {
+        if (!justSaved) return;
+        const timer = setTimeout(() => setJustSaved(false), 2500);
+        return () => clearTimeout(timer);
+    }, [justSaved]);
+
+    useEffect(() => {
+        if (!navOpen) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [navOpen]);
+
+    const handleLogout = () => { dispatch(logout()); navigate('/login'); };
+
+    if (!t) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-canvas px-4 font-ui text-fg">
+                {!fetched ? (
+                    <Loader2 aria-label="Loading tournament" className="h-6 w-6 animate-spin text-fg-subtle" />
+                ) : (
+                    <div role="alert" className="max-w-sm text-center">
+                        <AlertCircle aria-hidden className="mx-auto mb-3 h-5 w-5 text-red-400" />
+                        <p className="text-sm font-medium">Couldn't open this tournament</p>
+                        <p className="mt-1 text-sm text-fg-muted">{error ?? 'It may have been deleted.'}</p>
+                        <div className="mt-5 flex justify-center gap-2">
+                            <button type="button" onClick={load} className={BTN_SECONDARY}>Try again</button>
+                            <Link to="/organizer/home" className={BTN_PRIMARY}>All tournaments</Link>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ─── Derived state ───────────────────────────────────────────────────────
+
+    const status = t.status || 'draft';
+    const readOnly = READ_ONLY_STATUSES.includes(status);
+    const tournamentSports = sportsOf(t);
+    // team_league is a badminton bracket type — resolve its plugin from the badminton
+    // sport when the tournament hosts it, else fall back to the tournament's first sport.
+    const teamLeagueSportKey = tournamentSports.find(s => s === 'badminton') || tournamentSports[0];
+    const teamLeagueSection = (teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined)
+        ?.organizerTournamentSections?.find(s => s.key === 'team_league');
+    const leagueCategories = categories.map(c => ({
+        _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig,
+    }));
+
+    // Same visibility rules as before. Staff may edit an assigned tournament but not
+    // manage staff, delete or cancel it, or view payments.
+    const isVisible = (key: SectionKey) => {
+        if (key === 'auction') return !['draft', 'cancelled', 'completed'].includes(status);
+        if (key === 'brackets' || key === 'matches') return !['draft', 'cancelled'].includes(status);
+        if (key === 'team_league') return !['draft', 'cancelled'].includes(status) && !!teamLeagueSection?.visible(leagueCategories);
+        if (isStaff && (key === 'payments' || key === 'staff')) return false;
+        return true;
+    };
+    const section = isVisible(activeSection) ? activeSection : 'overview';
+
+    const goTo = (key: SectionKey) => {
+        setActiveSection(key);
+        setNavOpen(false);
+        setConfirming(null);
+        const lenis = getAppLenis();
+        if (lenis) lenis.scrollTo(0, { immediate: true });
+        else window.scrollTo(0, 0);
     };
 
-    const handleSave = async () => {
-        if (!id) return;
-        if (formData.sports.length === 0) {
-            alert('Please select at least one sport.');
-            return;
-        }
-        const result = await dispatch(updateTournament({ id, data: formData }));
-        if (updateTournament.fulfilled.match(result)) setIsEditing(false);
+    const dirty = !!form && JSON.stringify(form) !== JSON.stringify(toForm(t));
+    const formValid = !!form && form.sports.length > 0;
+
+    const runAction = async (thunk: typeof openRegistration) => {
+        setBusy(true);
+        await dispatch(thunk(t._id));
+        setBusy(false);
+        setConfirming(null);
     };
 
     const handleDelete = async () => {
-        if (!id) return;
-        const result = await dispatch(deleteTournament(id));
+        setBusy(true);
+        const result = await dispatch(deleteTournament(t._id));
+        setBusy(false);
         if (deleteTournament.fulfilled.match(result)) navigate('/organizer/home');
+        else setConfirming(null);
     };
 
-    const handleStatusAction = async (action: any) => {
-        if (!id) return;
-        await dispatch(action(id));
+    const handleSave = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!form || !dirty || !formValid || readOnly) return;
+        setSaving(true);
+        const result = await dispatch(updateTournament({ id: t._id, data: form }));
+        setSaving(false);
+        if (updateTournament.fulfilled.match(result)) setJustSaved(true);
     };
 
-    const handleGroupClick = (group: NavGroup) => {
-        setActiveGroup(group.key);
-        // Always auto-navigate to the first visible item in the group
-        const visible = group.items.filter(i => !i.condition || i.condition(tournamentStatus));
-        if (visible.length > 0) setActiveSection(visible[0].key);
-        setSidebarOpen(false);
-        setIsEditing(false);
-    };
+    const setField = (patch: Partial<Form>) => setForm(f => f && { ...f, ...patch });
+    const setVenue = (patch: Partial<Form['venue']>) => setForm(f => f && { ...f, venue: { ...f.venue, ...patch } });
+    const setSettings = (patch: Partial<Form['settings']>) => setForm(f => f && { ...f, settings: { ...f.settings, ...patch } });
 
-    const handleSectionClick = (section: SectionKey) => {
-        setActiveSection(section);
-        setSidebarOpen(false);
-        setIsEditing(false);
-    };
+    // ─── Layout ──────────────────────────────────────────────────────────────
 
-    // ─── Loading / Not Found ─────────────────────────────────────────────────
-
-    if (isLoading && !currentTournament) {
-        return (
-            <div className="min-h-screen bg-[#111] flex items-center justify-center">
-                <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            </div>
-        );
-    }
-
-    if (!currentTournament && !isLoading) {
-        return (
-            <div className="min-h-screen bg-[#111] flex flex-col items-center justify-center text-white gap-4">
-                <AlertCircle className="h-12 w-12 text-red-500" />
-                <p className="text-lg">Tournament not found</p>
-                <button onClick={() => navigate('/organizer/home')} className="px-6 py-2 bg-primary rounded-full text-white font-medium">
-                    Go Back
-                </button>
-            </div>
-        );
-    }
-
-    const tournamentStatus = currentTournament?.status || 'draft';
-    const status = statusColors[tournamentStatus] || statusColors.draft;
-
-    const tournamentSports: string[] = currentTournament
-        ? (currentTournament.sports?.length ? currentTournament.sports : [currentTournament.sport].filter(Boolean))
-        : [];
-    // team_league is a badminton bracket type — resolve its plugin from the badminton
-    // sport when the tournament hosts it, else fall back to the tournament's first sport.
-    const teamLeagueSportKey = tournamentSports.find((s: string) => s === 'badminton') || tournamentSports[0];
-
-    // Staff may edit an assigned tournament but not manage staff, delete it, or view payments.
-    const staffHiddenGroups: GroupKey[] = ['admin', 'danger'];
-    const staffHiddenSections: SectionKey[] = ['payments'];
-
-    const visibleGroups = NAV_GROUPS
-        .filter(g => !g.condition || g.condition(tournamentStatus))
-        .filter(g => !isStaff || !staffHiddenGroups.includes(g.key));
-    const activeGroupData = visibleGroups.find(g => g.key === activeGroup) || visibleGroups[0];
-    const visibleItems = (activeGroupData?.items
-        .filter(i => !i.condition || i.condition(tournamentStatus))
-        .filter(i => !isStaff || !staffHiddenSections.includes(i.key))
-        .filter(item => {
-            if (item.key !== 'team_league') return true;
-            const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;
-            const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
-            if (!section) return false;
-            return section.visible(categories.map(c => ({
-                _id: c._id, name: c.name, status: c.status,
-                bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig,
-            })));
-        })) || [];
-
-    const isEditableSection = ['basic', 'schedule', 'location', 'settings'].includes(activeSection);
-    // Editing was previously locked to draft-only. Organizers legitimately need to fix
-    // basic info / schedule / venue / settings after opening registration too — allow it
-    // any time except once the tournament is finished. (The server still validates dates
-    // and blocks removing a sport that already has categories.)
-    const canEditTournament = !!currentTournament && !['completed', 'cancelled'].includes(currentTournament.status);
-
-    const getStatusActions = () => {
-        const s = currentTournament?.status;
-        const actions: { label: string; icon: any; action: any; color: string }[] = [];
-        if (s === 'draft') actions.push({ label: 'Open Registration', icon: DoorOpen, action: openRegistration, color: 'bg-green-600 hover:bg-green-700' });
-        if (s === 'registration_open') actions.push({ label: 'Close Registration', icon: Lock, action: closeRegistration, color: 'bg-yellow-600 hover:bg-yellow-700' });
-        if (s === 'registration_closed') actions.push({ label: 'Start Auction', icon: Gavel, action: startAuction, color: 'bg-blue-600 hover:bg-blue-700' });
-        if (s === 'auction_in_progress') actions.push({ label: 'Start Tournament', icon: Play, action: startTournament, color: 'bg-primary hover:bg-primary/90' });
-        if (s === 'ongoing') actions.push({ label: 'Complete Tournament', icon: CheckCircle, action: completeTournament, color: 'bg-emerald-600 hover:bg-emerald-700' });
-        if (s && !['completed', 'cancelled'].includes(s)) actions.push({ label: 'Cancel Tournament', icon: XCircle, action: cancelTournament, color: 'bg-red-600 hover:bg-red-700' });
-        return actions;
-    };
+    const s = statusOf(status);
+    const ownSection = section === 'overview' || section === 'details' || section === 'settings';
 
     return (
-        <div className="min-h-screen bg-[#111] text-white font-montserrat flex flex-col">
-
-            {/* ─── Top Header ───────────────────────────────────────────────── */}
-            <header className="w-full flex items-center justify-between px-5 py-3.5 bg-[#0d0d0d] border-b border-white/5 sticky top-0 z-30">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className="lg:hidden p-2 rounded-lg hover:bg-white/5 transition-colors"
-                    >
-                        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-                    </button>
-                    <button
-                        onClick={() => navigate('/organizer/home')}
-                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-medium"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        <span className="hidden sm:inline">Back</span>
-                    </button>
-                    <div className="hidden sm:block h-5 w-px bg-white/10" />
-                    <h1 className="hidden sm:block text-sm font-semibold text-white truncate max-w-[260px]">
-                        {currentTournament?.name}
-                    </h1>
-                </div>
-                <div className="flex items-center gap-2.5">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.bg} ${status.text} border ${status.border}`}>
-                        {status.label}
-                    </span>
-                    {isEditableSection && !isEditing && canEditTournament && (
-                        <button onClick={() => setIsEditing(true)} className="px-4 py-1.5 rounded-full bg-white/8 hover:bg-white/15 text-white text-sm font-medium transition-all border border-white/10">
-                            Edit
-                        </button>
-                    )}
-                    {isEditing && (
-                        <>
-                            <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 rounded-full bg-white/8 hover:bg-white/15 text-white text-sm border border-white/10">Cancel</button>
-                            <button onClick={handleSave} disabled={isLoading} className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary hover:bg-primary/90 text-white text-sm font-medium disabled:opacity-50">
-                                {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
-                            </button>
-                        </>
-                    )}
-                </div>
-            </header>
-
-            {error && (
-                <div className="px-5 pt-3">
-                    <div className="flex items-center gap-3 p-3 bg-red-900/20 border border-red-900/50 rounded-xl text-red-200 text-sm">
-                        <AlertCircle className="h-4 w-4 flex-shrink-0" /> <span>{error}</span>
-                    </div>
-                </div>
+        <div className="min-h-screen bg-canvas font-ui text-fg antialiased">
+            {navOpen && (
+                <button type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)}
+                    className="fixed inset-0 z-30 bg-black/60 md:hidden" />
             )}
 
-            {/* ─── Body ─────────────────────────────────────────────────────── */}
-            <div className="flex flex-1 min-h-0">
+            <aside className={cn(
+                'fixed inset-y-0 left-0 z-40 w-72 flex-col border-r border-line bg-canvas shadow-2xl md:flex md:w-16 md:shadow-none lg:w-60',
+                navOpen ? 'flex' : 'hidden',
+            )}>
+                <div className="flex h-14 shrink-0 items-center border-b border-line px-5 md:justify-center md:px-0 lg:justify-start lg:px-5">
+                    <Brand className="md:[&>span]:hidden lg:[&>span]:inline" />
+                </div>
 
-                {/* Mobile overlay */}
-                {sidebarOpen && (
-                    <div className="fixed inset-0 bg-black/70 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />
-                )}
-
-                {/* ── DUAL-TIER SIDEBAR ──────────────────────────────────────── */}
-                <div className={`
-                    fixed lg:sticky top-[57px] left-0 z-20
-                    flex h-[calc(100vh-57px)] flex-shrink-0
-                    transition-transform duration-300 ease-in-out
-                    ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-                `}>
-                    {/* Tier 1 — Icon Rail */}
-                    <div className="w-[56px] bg-[#0d0d0d] border-r border-white/5 flex flex-col items-center py-3 gap-1 overflow-y-auto">
-                        {visibleGroups.map((group) => {
-                            const Icon = group.icon;
-                            const isActive = activeGroup === group.key;
-                            return (
-                                <button
-                                    key={group.key}
-                                    onClick={() => handleGroupClick(group)}
-                                    title={group.label}
-                                    className={`
-                                        w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 relative
-                                        ${group.danger
-                                            ? isActive
-                                                ? 'bg-red-500/20 text-red-400'
-                                                : 'text-red-500/40 hover:bg-red-500/10 hover:text-red-400'
-                                            : isActive
-                                                ? 'bg-primary/20 text-primary'
-                                                : 'text-gray-600 hover:bg-white/6 hover:text-gray-300'
-                                        }
-                                    `}
-                                >
-                                    {isActive && (
-                                        <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r ${group.danger ? 'bg-red-400' : 'bg-primary'}`} />
-                                    )}
-                                    <Icon className="h-4 w-4" />
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Tier 2 — Label Panel */}
-                    <div className={`w-[188px] border-r flex flex-col overflow-y-auto
-                        ${activeGroupData?.danger
-                            ? 'bg-[#110a0a] border-red-900/20'
-                            : 'bg-[#111] border-white/5'
-                        }`}
-                    >
-                        {/* Group header */}
-                        <div className="px-4 pt-5 pb-3">
-                            <p className={`text-[10px] font-bold tracking-[0.12em] ${activeGroupData?.danger ? 'text-red-500/50' : 'text-gray-600'}`}>
-                                {activeGroupData?.label}
+                <div className="grid gap-2.5 px-2.5 pb-1 pt-3">
+                    <Link to="/organizer/home" title="All tournaments"
+                        className={cn('flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-fg-muted transition-colors hover:bg-white/[0.04] hover:text-fg md:justify-center lg:justify-start', FOCUS)}>
+                        <ArrowLeft aria-hidden className="h-3.5 w-3.5 shrink-0" />
+                        <span className="md:sr-only lg:not-sr-only">All tournaments</span>
+                    </Link>
+                    <div className="flex items-start gap-2.5 rounded-lg bg-panel p-2.5 ring-1 ring-inset ring-line md:justify-center md:bg-transparent md:p-1.5 md:ring-0 lg:justify-start lg:bg-panel lg:p-2.5 lg:ring-1">
+                        <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-raised text-xs font-semibold text-fg-muted ring-1 ring-inset ring-line">
+                            {sportLabel(tournamentSports[0] ?? '?')[0]}
+                        </span>
+                        <div className="min-w-0 md:hidden lg:block">
+                            <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-fg">{t.name}</p>
+                            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-fg-subtle">
+                                <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TONE[s.tone].dot)} />{s.label}
                             </p>
-                        </div>
-
-                        {/* Section items */}
-                        <div className="flex flex-col gap-0.5 px-2 pb-4">
-                            {visibleItems.map((item) => {
-                                const Icon = item.icon;
-                                const isActive = activeSection === item.key;
-                                return (
-                                    <button
-                                        key={item.key}
-                                        onClick={() => handleSectionClick(item.key)}
-                                        className={`
-                                            w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 text-left
-                                            ${activeGroupData?.danger
-                                                ? isActive
-                                                    ? 'bg-red-500/10 text-red-400'
-                                                    : 'text-red-400/50 hover:bg-red-500/8 hover:text-red-400'
-                                                : isActive
-                                                    ? 'bg-primary/10 text-primary font-medium'
-                                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                                            }
-                                        `}
-                                    >
-                                        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                                        <span className="truncate">{item.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Spacer to push content down if needed */}
-                        <div className="flex-1" />
-
-                        {/* Tournament name at bottom of panel */}
-                        <div className="px-4 py-4 border-t border-white/5">
-                            <p className="text-[10px] text-gray-600 font-medium truncate">{currentTournament?.name}</p>
-                            <p className="text-[10px] text-gray-700 capitalize mt-0.5">{tournamentSports.map((s) => s.replace('_', ' ')).join(', ')}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
-                <main className="flex-1 overflow-y-auto">
-                    <div className="p-6 lg:p-10 pb-24 w-full max-w-[1600px]">
-                        {renderSection()}
-                    </div>
+                <nav aria-label="Tournament sections" data-lenis-prevent className="flex-1 overflow-y-auto px-2.5 pb-2.5">
+                    {GROUPS.map(group => {
+                        const items = group.items.filter(isVisible);
+                        if (!items.length) return null;
+                        return (
+                            <div key={group.label} role="group" aria-label={group.label}
+                                className="mt-1.5 md:border-t md:border-line md:pt-1.5 md:first:border-t-0 lg:border-t-0 lg:pt-0">
+                                <p className="px-2.5 pb-1 pt-2.5 text-xs text-fg-subtle md:hidden lg:block">{group.label}</p>
+                                {items.map(key => {
+                                    const { label, icon: Icon } = SECTIONS[key];
+                                    const current = section === key;
+                                    return (
+                                        <button key={key} type="button" title={label} onClick={() => goTo(key)}
+                                            aria-current={current ? 'page' : undefined}
+                                            className={cn(
+                                                'relative flex h-[34px] w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-colors md:justify-center lg:justify-start',
+                                                FOCUS, current ? 'bg-white/[0.06] text-fg' : 'text-fg-muted hover:bg-white/[0.04] hover:text-fg',
+                                            )}>
+                                            {current && <span aria-hidden className="absolute -left-2.5 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+                                            <Icon aria-hidden className={cn('h-4 w-4 shrink-0', current && 'text-primary')} />
+                                            <span className="truncate md:sr-only lg:not-sr-only">{label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
+                </nav>
+
+                <div className="border-t border-line p-2.5">
+                    <Link to="/support" title="Help & support"
+                        className={cn('flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium text-fg-muted transition-colors hover:bg-white/[0.04] hover:text-fg md:justify-center lg:justify-start', FOCUS)}>
+                        <LifeBuoy aria-hidden className="h-4 w-4 shrink-0" />
+                        <span className="md:sr-only lg:not-sr-only">Help & support</span>
+                    </Link>
+                </div>
+            </aside>
+
+            <div className="md:pl-16 lg:pl-60">
+                <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-canvas/95 px-4 sm:px-6 lg:px-8">
+                    <button type="button" aria-label="Open navigation" onClick={() => setNavOpen(true)}
+                        className={cn('-ml-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted hover:bg-white/[0.05] hover:text-fg md:hidden', FOCUS)}>
+                        <Menu aria-hidden className="h-4 w-4" />
+                    </button>
+                    <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap text-sm text-fg-muted">
+                        <Link to="/organizer/home" className={cn('hidden rounded hover:text-fg md:inline', FOCUS)}>Tournaments</Link>
+                        <span aria-hidden className="hidden text-fg-subtle md:inline">/</span>
+                        <button type="button" onClick={() => goTo('overview')} className={cn('hidden min-w-0 truncate rounded hover:text-fg md:inline', FOCUS)}>{t.name}</button>
+                        <span aria-hidden className="hidden text-fg-subtle md:inline">/</span>
+                        <span aria-current="page" className="truncate text-fg">{SECTIONS[section].label}</span>
+                    </nav>
+                    <AccountMenu
+                        name={[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Organizer'}
+                        email={user?.email} image={user?.profileImage} onLogout={handleLogout} />
+                </header>
+
+                <main className={cn('mx-auto px-4 py-7 sm:px-6 lg:px-8 lg:py-9', ownSection ? 'max-w-6xl space-y-6' : 'max-w-[1600px]')}>
+                    {error && <div className={ownSection ? '' : 'mb-6'}><Notice tone="red" icon={AlertCircle}><span role="alert">{error}</span></Notice></div>}
+                    <SectionNavContext.Provider value={s => goTo(toSection(s))}>{renderSection()}</SectionNavContext.Provider>
                 </main>
             </div>
-
-            <HoverFooter />
         </div>
     );
 
     // ═════════════════════════════════════════════════════════════════════════
-    // SECTION RENDERER
-    // ═════════════════════════════════════════════════════════════════════════
 
     function renderSection() {
-        switch (activeSection) {
-            case 'overview': return <OverviewSection />;
-            case 'announcements': return id ? <AnnouncementsPanel tournamentId={id} canManage={true} /> : null;
-            case 'basic': return <BasicInfoSection />;
-            case 'schedule': return <ScheduleSection />;
-            case 'location': return <LocationSection />;
-            case 'settings': return <SettingsSection />;
-            case 'categories': return currentTournament && id ? <CategoriesSection tournamentId={id} sports={tournamentSports} /> : null;
-            case 'teams': return currentTournament && id ? <TeamsSection tournamentId={id} defaultBudget={currentTournament.settings?.defaultBudget || 100000} /> : null;
-            case 'registrations': return currentTournament && id ? <RegistrationsSection tournamentId={id} /> : null;
-            case 'payments': return currentTournament && id ? <PaymentsSection tournamentId={id} /> : null;
-            case 'auction': return currentTournament && id ? <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} /> : null;
-            case 'brackets': return currentTournament && id ? <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: c.sport }))} /> : null;
-            case 'matches': return currentTournament && id ? <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: c.sport }))} /> : null;
+        const id = t!._id;
+        switch (section) {
+            case 'overview': return overview();
+            case 'details': return detailsForm();
+            case 'settings': return settingsForm();
+            case 'announcements': return <AnnouncementsSection tournamentId={id} />;
+            case 'categories': return <CategoriesSection tournamentId={id} sports={tournamentSports} />;
+            case 'teams': return <TeamsSection tournamentId={id} defaultBudget={t!.settings?.defaultBudget || 100000} />;
+            case 'registrations': return <RegistrationsSection tournamentId={id} />;
+            case 'payments': return <PaymentsSection tournamentId={id} />;
+            case 'auction': return <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} />;
+            case 'brackets': return <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: c.sport }))} />;
+            case 'matches': return <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: c.sport }))} />;
             case 'team_league': {
-                if (!currentTournament || !id) return null;
-                const plugin = teamLeagueSportKey ? sportRegistry.get(teamLeagueSportKey) : undefined;
-                const section = plugin?.organizerTournamentSections?.find(s => s.key === 'team_league');
-                const projectedCategories = categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, teamLeagueConfig: c.teamLeagueConfig }));
-                if (!section || !section.visible(projectedCategories)) return null;
-                const SectionComponent = section.component;
-                return <SectionComponent tournamentId={id} categories={projectedCategories} />;
+                if (!teamLeagueSection) return null;
+                const SectionComponent = teamLeagueSection.component;
+                return <SectionComponent tournamentId={id} categories={leagueCategories} />;
             }
-            case 'staff': return currentTournament && id ? <StaffSection tournamentId={id} staffIds={currentTournament.staffIds || []} /> : null;
-            case 'danger': return <DangerSection />;
+            case 'staff': return <StaffSection tournamentId={id} staffIds={t!.staffIds || []} />;
             default: return null;
         }
     }
 
     // ─── Overview ────────────────────────────────────────────────────────────
 
-    function OverviewSection() {
-        const statusActions = getStatusActions();
+    function overview() {
+        const tt = t!;
+        const stage = STAGES.indexOf(status);
+        const next = NEXT[status];
+        const kd = keyDate(tt);
+        const maxTeams = tt.settings?.maxTeams;
+        const teams = tt.teamsCount ?? 0;
+        const openSlots = maxTeams ? maxTeams - teams : 0;
+        const openCats = categories.filter(c => c.status === 'registration').length;
+        const venueLine = [tt.venue?.name, tt.venue?.city].filter(Boolean).join(', ');
+        const deadlineIn = until(tt.registrationDeadline);
+
+        const metrics: { key: SectionKey; label: string; value: ReactNode; sub?: string; urgent?: boolean }[] = [
+            { key: 'registrations', label: 'Registered players', value: tt.registeredPlayersCount ?? '—' },
+            {
+                key: 'teams', label: 'Teams',
+                value: <>{teams}{maxTeams ? <span className="text-[15px] font-medium tracking-normal text-fg-subtle"> / {maxTeams}</span> : null}</>,
+                sub: maxTeams ? (openSlots > 0 ? `${openSlots} slot${openSlots === 1 ? '' : 's'} open` : 'Full') : undefined,
+            },
+            { key: 'categories', label: 'Categories', value: catsLoaded ? categories.length : '—', sub: openCats ? `${openCats} taking entries` : undefined },
+            { key: 'details', label: kd.label, value: kd.value, sub: kd.sub, urgent: kd.urgent },
+        ];
+
         return (
-            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <>
                 <div>
-                    <h2 className="text-2xl md:text-3xl font-oswald font-bold tracking-wide text-white">{currentTournament?.name}</h2>
-                    <p className="text-gray-500 mt-1 text-sm capitalize">{tournamentSports.map((s) => s.replace('_', ' ')).join(', ')} · {currentTournament?.venue?.city}</p>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {[
-                        { label: 'Reg. Players', value: currentTournament?.registeredPlayersCount ?? 0, icon: Users, color: 'text-primary', accent: 'bg-primary/10' },
-                        { label: 'Teams', value: `${currentTournament?.teamsCount ?? 0}/${currentTournament?.settings?.maxTeams || '∞'}`, icon: Shield, color: 'text-emerald-400', accent: 'bg-emerald-500/10' },
-                        { label: 'Categories', value: categories.length, icon: ListTree, color: 'text-blue-400', accent: 'bg-blue-500/10' },
-                        { label: 'Status', value: status.label, icon: LayoutDashboard, color: status.text, accent: `${status.bg}` },
-                    ].map(({ label, value, icon: Icon, color, accent }) => (
-                        <div key={label} className="bg-white/[0.03] border border-white/8 rounded-2xl p-4 flex flex-col gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${accent}`}>
-                                <Icon className={`h-4 w-4 ${color}`} />
-                            </div>
-                            <div>
-                                <p className={`text-xl font-oswald font-bold ${color}`}>{value}</p>
-                                <p className="text-[10px] uppercase tracking-wider text-gray-600 mt-0.5">{label}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Status Actions */}
-                {statusActions.length > 0 && (
-                    <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-5">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Quick Actions</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {statusActions.map(({ label, icon: Icon, action, color }) => (
-                                <button
-                                    key={label}
-                                    onClick={() => handleStatusAction(action)}
-                                    disabled={isLoading}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-white font-medium text-sm transition-all disabled:opacity-50 ${color}`}
-                                >
-                                    <Icon className="h-3.5 w-3.5" /> {label}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-fg font-ui!">{tt.name}</h1>
+                        <StatusBadge status={status} />
                     </div>
-                )}
+                    <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[13px] text-fg-muted">
+                        <span className="inline-flex items-center gap-1.5"><Calendar aria-hidden className="h-3.5 w-3.5 text-fg-subtle" />{formatRange(tt.startDate, tt.endDate)}</span>
+                        {venueLine && <span className="inline-flex min-w-0 items-center gap-1.5"><MapPin aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />{venueLine}</span>}
+                        <span>{tournamentSports.map(sportLabel).join(', ')}</span>
+                    </p>
+                </div>
 
-                {/* Key Dates */}
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-5">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Key Dates</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {[
-                            { label: 'Start Date', date: currentTournament?.startDate },
-                            { label: 'End Date', date: currentTournament?.endDate },
-                            { label: 'Reg. Deadline', date: currentTournament?.registrationDeadline },
-                        ].map(({ label, date }) => (
-                            <div key={label} className="flex items-center gap-3 p-3 bg-black/20 rounded-xl">
-                                <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
+                <section aria-label="Tournament progress" className="rounded-xl border border-line bg-panel p-4 sm:px-5">
+                    {status === 'cancelled' ? (
+                        <Notice tone="red" icon={AlertCircle}>
+                            <span className="font-medium">This tournament was cancelled.</span> It's read-only, and players can no longer register or play.
+                        </Notice>
+                    ) : stage >= 0 && (
+                        <>
+                            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[13px] text-fg-muted">
+                                <span>Tournament progress</span>
+                                <span>Stage <b className="font-medium text-fg">{stage + 1}</b> of {STAGES.length} · <b className="font-medium text-fg">{STAGE_LABELS[stage]}</b></span>
+                            </div>
+                            <ol className="mt-3 grid grid-cols-6 gap-1">
+                                {STAGE_LABELS.map((label, i) => (
+                                    <li key={label} aria-current={i === stage ? 'step' : undefined}>
+                                        <span aria-hidden className={cn('block h-1 rounded-full', i < stage ? 'bg-fg-subtle' : i === stage ? 'bg-primary' : 'bg-line')} />
+                                        <span className={cn('mt-2 hidden text-xs sm:block', i < stage ? 'text-fg-muted' : i === stage ? 'font-medium text-fg' : 'text-fg-subtle')}>
+                                            {label}{i < stage && <span className="sr-only"> (done)</span>}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ol>
+                            <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <p className="text-[10px] uppercase tracking-wider text-gray-600">{label}</p>
-                                    <p className="text-white text-sm font-medium mt-0.5">
-                                        {date ? new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                                    </p>
+                                    <p className="text-sm font-medium text-fg">{next ? `Next: ${next.label.toLowerCase()}` : 'All stages complete'}</p>
+                                    <p className="mt-0.5 text-[13px] leading-relaxed text-fg-muted">{next ? next.text : 'This tournament has finished.'}</p>
+                                    {status === 'draft' && catsLoaded && categories.length === 0 && (
+                                        <p className="mt-1.5 flex items-start gap-1.5 text-[13px] text-amber-300">
+                                            <AlertCircle aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />Add a category first. Players need one to register.
+                                        </p>
+                                    )}
                                 </div>
+                                {next && (confirming === 'advance' ? (
+                                    <Confirm question={`${next.label}?`} yes={`Yes, ${next.label.toLowerCase()}`} busy={busy}
+                                        onYes={() => runAction(next.thunk)} onNo={() => setConfirming(null)} />
+                                ) : (
+                                    <button type="button" onClick={() => setConfirming('advance')} className={cn(BTN_PRIMARY, 'shrink-0 self-start sm:self-auto')}>
+                                        {next.label}
+                                    </button>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                </div>
+                        </>
+                    )}
+                </section>
 
-                {/* Venue */}
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-5">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Venue</h3>
-                    <div className="flex items-start gap-3">
-                        <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <div>
-                            <p className="text-white font-medium">{currentTournament?.venue?.name || '—'}</p>
-                            <p className="text-gray-500 text-sm mt-0.5">{currentTournament?.venue?.city}{currentTournament?.venue?.address ? `, ${currentTournament.venue.address}` : ''}</p>
+                <section aria-label="At a glance" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-4">
+                    {metrics.map(m => (
+                        <button key={m.label} type="button" onClick={() => goTo(m.key)}
+                            className="bg-panel px-4 py-4 text-left transition-colors hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 sm:px-5">
+                            <span className="block text-[13px] text-fg-muted">{m.label}</span>
+                            <span className="mt-1.5 block text-2xl font-semibold tabular-nums tracking-tight text-fg">{m.value}</span>
+                            <span className={cn('mt-0.5 block min-h-[18px] text-xs', m.urgent ? 'text-amber-300' : 'text-fg-subtle')}>{m.sub}</span>
+                            <span className="sr-only">, open {SECTIONS[m.key].label}</span>
+                        </button>
+                    ))}
+                </section>
+
+                <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                    <section aria-labelledby="categories-heading" className="overflow-hidden rounded-xl border border-line bg-panel">
+                        <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3.5 sm:px-5">
+                            <h2 id="categories-heading" className="flex items-baseline gap-2 text-sm font-semibold text-fg">
+                                Categories {catsLoaded && <span className="text-[13px] font-normal tabular-nums text-fg-subtle">{categories.length}</span>}
+                            </h2>
+                            <button type="button" onClick={() => goTo('categories')} className={cn('inline-flex items-center gap-1 rounded text-[13px] text-fg-muted hover:text-fg', FOCUS)}>
+                                Manage <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+                            </button>
                         </div>
-                    </div>
+                        {!catsLoaded ? (
+                            <div aria-busy="true" aria-label="Loading categories" className="space-y-3 p-5">
+                                {[0, 1, 2].map(i => <span key={i} className="block h-4 animate-pulse rounded bg-white/[0.05]" />)}
+                            </div>
+                        ) : categories.length === 0 ? (
+                            <div className="px-6 py-10 text-center">
+                                <p className="text-sm font-medium text-fg">No categories yet</p>
+                                <p className="mt-1 text-sm text-fg-muted">Add the events players can register for, like singles or doubles.</p>
+                                <button type="button" onClick={() => goTo('categories')} className={cn(BTN_SECONDARY, 'mt-4')}>Add a category</button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className={cn('hidden gap-x-5 border-b border-line px-5 py-2 text-xs font-medium text-fg-subtle min-[1400px]:grid', CAT_COLS)}>
+                                    <span>Category</span><span>Format</span><span className="text-right">Fee</span><span className="text-right">Max</span><span>Status</span>
+                                </div>
+                                <ul className="divide-y divide-line">
+                                    {categories.map(c => {
+                                        const fmt = FORMAT[c.bracketType ?? ''] ?? '—';
+                                        const elig = [tournamentSports.length > 1 && c.sport ? sportLabel(c.sport) : '', eligibility(c)].filter(Boolean).join(' · ');
+                                        return (
+                                            <li key={c._id}>
+                                                <button type="button" onClick={() => goTo('categories')}
+                                                    className={cn('grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 sm:px-5 min-[1400px]:gap-x-5', CAT_COLS)}>
+                                                    <span className="min-w-0">
+                                                        <span className="block truncate text-sm font-medium text-fg">{c.name}</span>
+                                                        <span className="mt-0.5 block truncate text-[13px] text-fg-subtle">
+                                                            {elig}<span className="min-[1400px]:hidden">{elig && ' · '}{fmt} · {feeOf(c)} · {c.maxParticipants} max</span>
+                                                        </span>
+                                                    </span>
+                                                    <span className="hidden text-sm text-fg-muted min-[1400px]:block">{fmt}</span>
+                                                    <span className="hidden text-right text-sm tabular-nums text-fg-muted min-[1400px]:block">{feeOf(c)}</span>
+                                                    <span className="hidden text-right text-sm tabular-nums text-fg-muted min-[1400px]:block">{c.maxParticipants}</span>
+                                                    <span><StatusBadge status={c.status} /></span>
+                                                </button>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </>
+                        )}
+                    </section>
+
+                    <aside aria-label="Tournament facts" className="rounded-xl border border-line bg-panel px-4 py-1 sm:px-5">
+                        <FactSection title="Schedule" onEdit={readOnly ? undefined : () => goTo('details')}>
+                            <dl className="grid gap-1.5">
+                                <Fact term="Registration deadline">
+                                    {format(new Date(tt.registrationDeadline), 'd MMM yyyy')}
+                                    {status === 'registration_open' && (
+                                        <span className={cn('block text-xs', deadlineIn <= 3 ? 'text-amber-300' : 'text-fg-subtle')}>{relative(deadlineIn)}</span>
+                                    )}
+                                </Fact>
+                                <Fact term="Starts">{format(new Date(tt.startDate), 'EEE, d MMM yyyy')}</Fact>
+                                <Fact term="Ends">{format(new Date(tt.endDate), 'EEE, d MMM yyyy')}</Fact>
+                            </dl>
+                        </FactSection>
+                        <FactSection title="Venue" onEdit={readOnly ? undefined : () => goTo('details')}>
+                            <p className="text-[13px] leading-relaxed text-fg">{tt.venue?.name || '—'}</p>
+                            <p className="text-[13px] leading-relaxed text-fg-muted">{[tt.venue?.address, tt.venue?.city].filter(Boolean).join(', ')}</p>
+                        </FactSection>
+                        <FactSection title="Rules" onEdit={readOnly ? undefined : () => goTo('settings')}>
+                            <dl className="grid gap-1.5">
+                                <Fact term="Max teams">{tt.settings?.maxTeams ?? '—'}</Fact>
+                                <Fact term="Auction budget per team">{tt.settings?.defaultBudget != null ? inr(tt.settings.defaultBudget) : '—'}</Fact>
+                                <Fact term="Auction type">{tt.settings?.auctionType === 'live' ? 'Live' : 'Manual'}</Fact>
+                                <Fact term="Late registration">{tt.settings?.allowLateRegistration ? 'Allowed' : 'Not allowed'}</Fact>
+                            </dl>
+                        </FactSection>
+                    </aside>
                 </div>
+            </>
+        );
+    }
+
+    // ─── Forms ───────────────────────────────────────────────────────────────
+
+    function lockNotice() {
+        return readOnly ? <Notice tone="neutral" icon={Lock}>{statusOf(status).label} tournaments can't be edited.</Notice> : null;
+    }
+
+    function saveBar() {
+        if (readOnly || !(dirty || justSaved)) return null;
+        return (
+            <div role="status" className="sticky bottom-4 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-raised py-2.5 pl-4 pr-2.5 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.5)] ring-1 ring-line">
+                {dirty ? (
+                    <>
+                        <span>You have unsaved changes</span>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => setForm(toForm(t!))} disabled={saving} className={cn(BTN_SECONDARY, BTN_SM)}>Discard</button>
+                            <button type="submit" disabled={saving || !formValid} className={cn(BTN_PRIMARY, BTN_SM)}>
+                                {saving && <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />}Save changes
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <span className="flex items-center gap-2 py-1 text-fg-muted"><Check aria-hidden className="h-4 w-4 text-emerald-400" />Changes saved</span>
+                )}
             </div>
         );
     }
 
-    // ─── Basic Info ──────────────────────────────────────────────────────────
-
-    function BasicInfoSection() {
+    function detailsForm() {
+        if (!form) return null;
         return (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader icon={ImageIcon} title="Basic Information" />
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-6 flex flex-col gap-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="space-y-1.5 md:col-span-2">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Tournament Name</Label>
-                            {isEditing ? (
-                                <Input name="name" value={formData.name} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white text-lg font-oswald font-bold" />
-                            ) : (
-                                <p className="text-white font-oswald font-bold text-xl">{currentTournament?.name}</p>
-                            )}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Sports</Label>
-                            {isEditing ? (
-                                <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-white/10 bg-black/40">
-                                    {sportRegistry.list().map((p) => p.sportKey).map((s) => (
-                                        <label key={s} className="flex items-center gap-2 text-sm text-white capitalize">
-                                            <input
-                                                type="checkbox"
-                                                value={s}
-                                                checked={formData.sports.includes(s)}
-                                                onChange={(e) => {
-                                                    const next = e.target.checked
-                                                        ? [...formData.sports, s]
-                                                        : formData.sports.filter((x) => x !== s);
-                                                    setFormData(prev => ({ ...prev, sports: next }));
-                                                }}
-                                            />
-                                            {s.replace('_', ' ')}
+            <>
+                <PageHead title="Details" desc="How this tournament appears to players." />
+                {lockNotice()}
+                <form onSubmit={handleSave} noValidate>
+                    <FormSection title="General" desc="The name, sports and description players see when they find this tournament.">
+                        <div className="grid gap-4">
+                            <Field id="t-name" label="Tournament name">
+                                <input id="t-name" className={INPUT} value={form.name} disabled={readOnly} onChange={e => setField({ name: e.target.value })} />
+                            </Field>
+                            <Field label="Sports" help={form.sports.length === 0
+                                ? <span className="text-amber-300">Choose at least one sport.</span>
+                                : "You can't remove a sport that already has categories."}>
+                                <div role="group" aria-label="Sports" className="flex flex-wrap gap-2">
+                                    {sportRegistry.list().map(p => (
+                                        <label key={p.sportKey} className={cn(CHOICE, 'h-8 items-center px-3 py-0 text-[13px]')}>
+                                            <input type="checkbox" className="accent-primary" disabled={readOnly}
+                                                checked={form.sports.includes(p.sportKey)}
+                                                onChange={e => setField({ sports: e.target.checked ? [...form.sports, p.sportKey] : form.sports.filter(x => x !== p.sportKey) })} />
+                                            {p.displayName}
                                         </label>
                                     ))}
                                 </div>
-                            ) : (
-                                <p className="text-white font-medium capitalize">{tournamentSports.map(s => s.replace('_', ' ')).join(', ')}</p>
-                            )}
+                            </Field>
+                            <Field id="t-desc" label="Description">
+                                <textarea id="t-desc" rows={4} className={cn(INPUT, 'h-auto min-h-24 resize-y py-2.5 leading-relaxed')} value={form.description}
+                                    disabled={readOnly} onChange={e => setField({ description: e.target.value })} />
+                            </Field>
+                            <Field id="t-banner" label="Banner image URL">
+                                <input id="t-banner" className={INPUT} placeholder="https://" value={form.bannerImage} disabled={readOnly}
+                                    onChange={e => setField({ bannerImage: e.target.value })} />
+                            </Field>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Banner Image URL</Label>
-                            {isEditing ? (
-                                <Input name="bannerImage" value={formData.bannerImage} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white" placeholder="https://..." />
-                            ) : (
-                                <p className="text-white font-medium truncate text-sm">{currentTournament?.bannerImage || '—'}</p>
-                            )}
+                    </FormSection>
+                    <FormSection title="Schedule" desc="Registration closes at the end of the deadline day.">
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <Field id="t-start" label="Start date">
+                                <input id="t-start" type="date" className={INPUT} value={form.startDate} disabled={readOnly} onChange={e => setField({ startDate: e.target.value })} />
+                            </Field>
+                            <Field id="t-end" label="End date">
+                                <input id="t-end" type="date" className={INPUT} value={form.endDate} disabled={readOnly} onChange={e => setField({ endDate: e.target.value })} />
+                            </Field>
+                            <Field id="t-deadline" label="Registration deadline">
+                                <input id="t-deadline" type="date" className={INPUT} value={form.registrationDeadline} disabled={readOnly} onChange={e => setField({ registrationDeadline: e.target.value })} />
+                            </Field>
                         </div>
-                        <div className="space-y-1.5 md:col-span-2">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Description</Label>
-                            {isEditing ? (
-                                <textarea name="description" rows={4} className="flex w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white resize-none" value={formData.description} onChange={handleInputChange} />
-                            ) : (
-                                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{currentTournament?.description || 'No description provided.'}</p>
-                            )}
+                    </FormSection>
+                    <FormSection title="Venue" desc="Where matches are played.">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field id="t-venue" label="Venue name" className="sm:col-span-2">
+                                <input id="t-venue" className={INPUT} value={form.venue.name} disabled={readOnly} onChange={e => setVenue({ name: e.target.value })} />
+                            </Field>
+                            <Field id="t-city" label="City">
+                                <input id="t-city" className={INPUT} value={form.venue.city} disabled={readOnly} onChange={e => setVenue({ city: e.target.value })} />
+                            </Field>
+                            <Field id="t-address" label="Full address">
+                                <input id="t-address" className={INPUT} value={form.venue.address} disabled={readOnly} onChange={e => setVenue({ address: e.target.value })} />
+                            </Field>
                         </div>
-                    </div>
-                </div>
-            </div>
+                    </FormSection>
+                    {saveBar()}
+                </form>
+            </>
         );
     }
 
-    // ─── Schedule ────────────────────────────────────────────────────────────
-
-    function ScheduleSection() {
-        return (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader icon={Calendar} title="Schedule" />
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        {(['startDate', 'endDate', 'registrationDeadline'] as const).map(field => (
-                            <div key={field} className="space-y-1.5">
-                                <Label className="text-gray-500 text-xs uppercase tracking-wider">
-                                    {field === 'registrationDeadline' ? 'Reg. Deadline' : field === 'startDate' ? 'Start Date' : 'End Date'}
-                                </Label>
-                                {isEditing ? (
-                                    <Input name={field} type="date" className="bg-black/40 border-white/10 text-white [color-scheme:dark]" value={(formData as any)[field]} onChange={handleInputChange} />
-                                ) : (
-                                    <p className="text-white font-medium text-sm">
-                                        {(currentTournament as any)?.[field]
-                                            ? new Date((currentTournament as any)[field]).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
-                                            : '—'}
-                                    </p>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+    function settingsForm() {
+        if (!form) return null;
+        const showDanger = !readOnly && !isStaff;
+        const dangerRow = (key: 'cancel' | 'delete', title: string, text: string, question: string, yes: string, onYes: () => void) => (
+            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 [&+&]:border-t [&+&]:border-red-400/25">
+                <div>
+                    <p className="text-sm font-medium text-fg">{title}</p>
+                    <p className="mt-0.5 max-w-[52ch] text-[13px] leading-relaxed text-fg-muted">{text}</p>
                 </div>
+                {confirming === key ? (
+                    <Confirm question={question} yes={yes} no="Keep it" danger busy={busy} onYes={onYes} onNo={() => setConfirming(null)} />
+                ) : (
+                    <button type="button" onClick={() => setConfirming(key)} className={cn(BTN_DANGER, BTN_SM, 'self-start sm:self-auto')}>{title}</button>
+                )}
             </div>
         );
-    }
-
-    // ─── Location ────────────────────────────────────────────────────────────
-
-    function LocationSection() {
         return (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader icon={MapPin} title="Location" />
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="space-y-1.5 md:col-span-2">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Venue Name</Label>
-                            {isEditing ? <Input name="venue.name" value={formData.venue.name} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white" /> : <p className="text-white font-medium">{currentTournament?.venue?.name || '—'}</p>}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">City</Label>
-                            {isEditing ? <Input name="venue.city" value={formData.venue.city} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white" /> : <p className="text-white font-medium">{currentTournament?.venue?.city || '—'}</p>}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Full Address</Label>
-                            {isEditing ? <Input name="venue.address" value={formData.venue.address} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white" /> : <p className="text-white font-medium">{currentTournament?.venue?.address || '—'}</p>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ─── Settings ────────────────────────────────────────────────────────────
-
-    function SettingsSection() {
-        return (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader icon={Settings} title="Rules & Auction Settings" />
-                <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Max Teams</Label>
-                            {isEditing ? (
+            <>
+                <PageHead title="Settings" desc="Team limits, auction rules and tournament controls." />
+                {lockNotice()}
+                <form onSubmit={handleSave} noValidate>
+                    <FormSection title="Teams and auction" desc="Limits and defaults used when teams are created and the auction runs.">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field id="t-max" label="Maximum teams">
+                                <input id="t-max" type="number" min={2} className={INPUT} value={form.settings.maxTeams} disabled={readOnly}
+                                    onChange={e => setSettings({ maxTeams: Number(e.target.value) })} />
+                            </Field>
+                            <Field id="t-budget" label="Auction budget per team" help="Default for new teams. You can change it per team.">
                                 <div className="relative">
-                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-                                    <Input name="settings.maxTeams" type="number" min="2" value={formData.settings.maxTeams} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white pl-9" />
+                                    <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-fg-subtle">₹</span>
+                                    <input id="t-budget" type="number" min={0} step={1000} className={cn(INPUT, 'pl-7')} value={form.settings.defaultBudget} disabled={readOnly}
+                                        onChange={e => setSettings({ defaultBudget: Number(e.target.value) })} />
                                 </div>
-                            ) : <p className="text-white font-medium">{currentTournament?.settings?.maxTeams}</p>}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Default Auction Budget</Label>
-                            {isEditing ? (
-                                <div className="relative">
-                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-                                    <Input name="settings.defaultBudget" type="number" min="0" value={formData.settings.defaultBudget} onChange={handleInputChange} className="bg-black/40 border-white/10 text-white pl-9" />
+                            </Field>
+                            <Field label="Auction type" className="sm:col-span-2">
+                                <div role="radiogroup" aria-label="Auction type" className="grid gap-2 sm:grid-cols-2">
+                                    {[
+                                        { value: 'manual', title: 'Manual', text: 'Offline draft. You record each pick.' },
+                                        { value: 'live', title: 'Live', text: 'Interactive auction run live on KRIA.' },
+                                    ].map(o => (
+                                        <label key={o.value} className={CHOICE}>
+                                            <input type="radio" name="auctionType" className="mt-0.5 accent-primary" disabled={readOnly}
+                                                checked={form.settings.auctionType === o.value} onChange={() => setSettings({ auctionType: o.value })} />
+                                            <span>
+                                                <span className="block text-sm font-medium text-fg">{o.title}</span>
+                                                <span className="mt-0.5 block text-[13px] text-fg-muted">{o.text}</span>
+                                            </span>
+                                        </label>
+                                    ))}
                                 </div>
-                            ) : <p className="text-white font-medium">₹{currentTournament?.settings?.defaultBudget?.toLocaleString()}</p>}
+                            </Field>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-gray-500 text-xs uppercase tracking-wider">Auction Type</Label>
-                            {isEditing ? (
-                                <select name="settings.auctionType" className="flex h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-white appearance-none" value={formData.settings.auctionType} onChange={handleInputChange}>
-                                    <option value="manual">Manual (Offline Draft)</option>
-                                    <option value="live">Live Interactive Auction</option>
-                                </select>
-                            ) : <p className="text-white font-medium capitalize">{currentTournament?.settings?.auctionType}</p>}
+                    </FormSection>
+                    <FormSection title="Registration" desc="Control entries after the deadline.">
+                        <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg bg-panel p-3 ring-1 ring-inset ring-line has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-60">
+                            <span>
+                                <span className="block text-sm font-medium text-fg">Allow late registration</span>
+                                <span className="mt-0.5 block text-[13px] text-fg-muted">Accept entries after the registration deadline.</span>
+                            </span>
+                            <span className="relative inline-flex h-5 w-9 shrink-0">
+                                <input type="checkbox" role="switch" className="peer sr-only" disabled={readOnly}
+                                    checked={form.settings.allowLateRegistration}
+                                    onChange={e => setSettings({ allowLateRegistration: e.target.checked })} />
+                                <span aria-hidden className="absolute inset-0 rounded-full bg-line transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/70" />
+                                <span aria-hidden className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-fg transition-transform peer-checked:translate-x-4" />
+                            </span>
+                        </label>
+                    </FormSection>
+                    {saveBar()}
+                </form>
+                {showDanger && (
+                    <FormSection title="Danger zone" desc="These actions can't be undone." danger>
+                        <div className="rounded-xl border border-red-400/25">
+                            {dangerRow('cancel', 'Cancel tournament',
+                                'Stops the tournament for everyone. Registrations, teams and results stay on record, but nothing can be changed.',
+                                `Cancel ${t!.name}?`, 'Yes, cancel it', () => runAction(cancelTournament))}
+                            {dangerRow('delete', 'Delete tournament',
+                                'Permanently removes the tournament and all of its data.',
+                                'Delete permanently?', 'Yes, delete', handleDelete)}
                         </div>
-                        <div className="flex items-center pt-5">
-                            {isEditing ? (
-                                <label className="flex items-center gap-2.5 cursor-pointer">
-                                    <input type="checkbox" name="settings.allowLateRegistration" className="w-4 h-4 rounded border-white/20 bg-black/50 text-primary" checked={formData.settings.allowLateRegistration} onChange={handleInputChange} />
-                                    <span className="text-gray-300 text-sm">Allow Late Registration</span>
-                                </label>
-                            ) : (
-                                <p className="text-white font-medium text-sm">{currentTournament?.settings?.allowLateRegistration ? 'Late Registration Allowed' : 'No Late Registration'}</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ─── Danger Zone ─────────────────────────────────────────────────────────
-
-    function DangerSection() {
-        return (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader icon={Trash2} title="Danger Zone" danger />
-                <div className="bg-red-950/20 border border-red-900/30 rounded-2xl p-6 flex flex-col gap-5">
-                    <p className="text-red-300/60 text-sm">Deleting a tournament is permanent and cannot be undone. All associated data will be lost.</p>
-                    {!showDeleteConfirm ? (
-                        <button onClick={() => setShowDeleteConfirm(true)} className="w-fit flex items-center gap-2 px-5 py-2 rounded-full border border-red-500/40 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-all">
-                            <Trash2 className="h-4 w-4" /> Delete Tournament
-                        </button>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                            <span className="text-red-300 text-sm">Are you absolutely sure?</span>
-                            <button onClick={handleDelete} disabled={isLoading} className="flex items-center gap-2 px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50">
-                                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Yes, Delete
-                            </button>
-                            <button onClick={() => setShowDeleteConfirm(false)} className="px-5 py-2 rounded-full bg-white/8 hover:bg-white/15 text-white text-sm">
-                                Cancel
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
+                    </FormSection>
+                )}
+            </>
         );
     }
 };
-
-// ─── Shared Section Header ────────────────────────────────────────────────────
-
-function SectionHeader({ icon: Icon, title, danger }: { icon: React.ElementType; title: string; danger?: boolean }) {
-    return (
-        <div className="flex items-center gap-3 mb-4">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${danger ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>
-                <Icon className="h-4 w-4" />
-            </div>
-            <h2 className={`text-xl font-oswald font-bold tracking-wide ${danger ? 'text-red-400' : 'text-white'}`}>{title}</h2>
-        </div>
-    );
-}
 
 export default TournamentDetailPage;

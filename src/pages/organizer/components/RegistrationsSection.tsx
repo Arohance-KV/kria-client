@@ -1,399 +1,487 @@
-import React, { useEffect, useState } from 'react';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { useEffect, useRef, useState } from 'react';
+import { format } from 'date-fns';
+import { AlertCircle, AlertTriangle, Check, Loader2, Shield, Star, UserMinus } from 'lucide-react';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
-    fetchRegistrationsByTournament,
-    fetchTournamentCategories,
-    approveRegistration,
-    rejectRegistration,
-    manualAssignPlayer,
-    setCaptainRole,
-    setIconRole,
-    unassignRegistration
-} from '../../../store/slices/registrationSlice';
-import { fetchTournamentTeams } from '../../../store/slices/teamSlice';
-import { Users, Loader2, CheckCircle, XCircle, Clock, ShieldAlert, UserPlus, X, Shield, Star, UserMinus } from 'lucide-react';
+    approveRegistration, bulkApproveRegistrations, fetchRegistrationsByTournament, fetchTournamentCategories,
+    manualAssignPlayer, Registration, rejectRegistration, setCaptainRole, setIconRole, unassignRegistration,
+} from '@/store/slices/registrationSlice';
+import { fetchTournamentTeams, Team } from '@/store/slices/teamSlice';
+import { cn } from '@/lib/utils';
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, inr, Tone, ToneBadge } from '../shared';
+import {
+    Avatar, CHOICE, COLHEAD, ConfirmBar, Dialog, EmptyState, Field, INPUT, INPUT_SM, MenuItem, MoreMenu, Notice,
+    PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, TeamLogo, Toolbar, useSectionNav,
+} from '../ui';
 
-interface RegistrationsSectionProps {
-    tournamentId: string;
-}
+type Reg = Registration & { createdAt?: string };
+type Status = Registration['status'];
 
+const REG_STATUS: Record<Status, { label: string; tone: Tone }> = {
+    pending: { label: 'Pending review', tone: 'amber' },
+    approved: { label: 'Approved', tone: 'green' },
+    assigned: { label: 'Assigned', tone: 'blue' },
+    auctioned: { label: 'Auctioned', tone: 'blue' },
+    rejected: { label: 'Rejected', tone: 'red' },
+    withdrawn: { label: 'Withdrawn', tone: 'neutral' },
+};
+const TABS: { key: 'all' | Status; label: string }[] = [
+    { key: 'all', label: 'All' }, { key: 'pending', label: 'Pending' }, { key: 'approved', label: 'Approved' },
+    { key: 'assigned', label: 'Assigned' }, { key: 'auctioned', label: 'Auctioned' }, { key: 'rejected', label: 'Rejected' },
+    { key: 'withdrawn', label: 'Withdrawn' },
+];
 // Statuses where an organizer may manually assign/reassign the player to a team.
-const ASSIGNABLE_STATUSES = ['approved', 'assigned', 'auctioned'];
+const ASSIGNABLE: Status[] = ['approved', 'assigned', 'auctioned'];
+const NO_FILTERS = { q: '', categoryId: '', teamId: '', gender: '', skill: '' };
 
-const RegistrationsSection: React.FC<RegistrationsSectionProps> = ({ tournamentId }) => {
+// Stacked rows on narrow containers, a full table from 1024px of content width.
+// Phones: actions drop under the player. From 448px they sit on the right; from 1024px it's a full table.
+const COLS = 'grid-cols-[20px_minmax(0,1fr)] @md:grid-cols-[20px_minmax(0,1fr)_auto] @5xl:grid-cols-[20px_minmax(0,1.4fr)_minmax(0,1.1fr)_9rem_5rem_8.5rem_minmax(0,1fr)_11rem]';
+const WIDE = 'hidden @5xl:block';
+const NARROW = '@5xl:hidden';
+const CELL = 'min-w-0 truncate text-[13.5px] text-fg-muted';
+const CHIP = 'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-px text-xs text-fg-muted ring-1 ring-inset ring-line';
+
+const playerName = (r: Reg) => [r.profile?.firstName, r.profile?.lastName].filter(Boolean).join(' ') || 'Unnamed player';
+const capital = (s?: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+const errText = (p: unknown) => (typeof p === 'string' && p ? p : 'Check your connection and try again.');
+
+export const RoleChip = ({ role }: { role?: string }) => {
+    if (role !== 'captain' && role !== 'icon') return null;
+    const Icon = role === 'captain' ? Shield : Star;
+    return <span className={CHIP}><Icon aria-hidden className="h-3 w-3 text-primary" />{role === 'captain' ? 'Captain' : 'Icon player'}</span>;
+};
+
+const StatusBadge = ({ status }: { status: Status }) => {
+    const s = REG_STATUS[status] ?? { label: status, tone: 'neutral' as Tone };
+    return <ToneBadge label={s.label} tone={s.tone} />;
+};
+
+const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
     const dispatch = useAppDispatch();
-    const { tournamentRegistrations, isLoading, categories, error } = useAppSelector(state => state.registration);
-    const { teams } = useAppSelector(state => state.team);
+    const { tournamentRegistrations, categories } = useAppSelector(s => s.registration);
+    const teams = useAppSelector(s => s.team.teams);
+    const regs = tournamentRegistrations as Reg[];
 
-    const [assigningId, setAssigningId] = useState<string | null>(null);
-    // The registration currently open in the assign modal (null = closed).
-    const [assignTarget, setAssignTarget] = useState<any | null>(null);
-    const [assignForm, setAssignForm] = useState({ teamId: '', soldPrice: '' });
+    const [loaded, setLoaded] = useState(false);
+    const [loadError, setLoadError] = useState('');
+    const [actionError, setActionError] = useState('');
 
-    // Captain / icon role assignment modal.
-    const [roleTarget, setRoleTarget] = useState<{ reg: any; type: 'captain' | 'icon' } | null>(null);
-    const [roleTeamId, setRoleTeamId] = useState('');
-    const [roleActionLoading, setRoleActionLoading] = useState(false);
-    const [roleModalError, setRoleModalError] = useState('');
-    const [unassigningId, setUnassigningId] = useState<string | null>(null);
+    const [tab, setTab] = useState<'all' | Status>('all');
+    const [f, setF] = useState(NO_FILTERS);
+    const [moreOpen, setMoreOpen] = useState(false);
+    const [selected, setSelected] = useState<string[]>([]);
+    const [confirm, setConfirm] = useState<{ kind: 'reject' | 'remove'; id: string } | null>(null);
+    const [assignFor, setAssignFor] = useState<Reg | null>(null);
+    const [roleFor, setRoleFor] = useState<{ reg: Reg; kind: 'captain' | 'icon' } | null>(null);
 
-    // ── Filters (client-side — every field is already in the fetched data) ──
-    const [filters, setFilters] = useState({ search: '', status: '', categoryId: '', gender: '', skillLevel: '', teamId: '' });
-    const setF = (k: keyof typeof filters, v: string) => setFilters(prev => ({ ...prev, [k]: v }));
-    const clearFilters = () => setFilters({ search: '', status: '', categoryId: '', gender: '', skillLevel: '', teamId: '' });
+    // Per-row busy state; the ref blocks a second click landing before the re-render disables the button.
+    const [busy, setBusy] = useState<string[]>([]);
+    const inFlight = useRef(new Set<string>());
+    const guard = async (key: string, fn: () => Promise<void>) => {
+        if (inFlight.current.has(key)) return;
+        inFlight.current.add(key);
+        setBusy(b => [...b, key]);
+        setActionError('');
+        try { await fn(); } finally {
+            inFlight.current.delete(key);
+            setBusy(b => b.filter(k => k !== key));
+        }
+    };
 
-    useEffect(() => {
+    const load = () => {
+        setLoaded(false);
+        setLoadError('');
+        const fail = (what: string) => (r: { meta: { requestStatus: string }; payload?: unknown }) => {
+            if (r.meta.requestStatus === 'rejected') setLoadError(`Couldn't load ${what}. ${errText(r.payload)}`);
+        };
+        dispatch(fetchRegistrationsByTournament({ tournamentId })).then(r => { fail('registrations')(r); setLoaded(true); });
+        dispatch(fetchTournamentCategories(tournamentId)).then(fail('categories'));
+        dispatch(fetchTournamentTeams(tournamentId)).then(fail('teams'));
+    };
+    useEffect(load, [dispatch, tournamentId]);
+
+    // Assignments, roles and removals move money and can carry a player over to another team,
+    // so reload both lists instead of patching them locally.
+    const refresh = () => {
         dispatch(fetchRegistrationsByTournament({ tournamentId }));
-        dispatch(fetchTournamentCategories(tournamentId));
         dispatch(fetchTournamentTeams(tournamentId));
-    }, [dispatch, tournamentId]);
-
-    const handleApprove = async (id: string) => {
-        await dispatch(approveRegistration(id));
     };
 
-    const handleReject = async (id: string) => {
-        await dispatch(rejectRegistration(id));
-    };
+    const teamOf = (r: Reg) => (r.teamId ? teams.find(t => t._id === r.teamId) : undefined);
+    const categoryName = (r: Reg) => categories.find(c => c._id === r.categoryId)?.name || r.categoryDetails?.name || 'Unknown category';
 
-    const openAssignModal = (reg: any) => {
-        setAssignTarget(reg);
-        setAssignForm({
-            teamId: reg.teamId || '',
-            soldPrice: reg.auctionData?.soldPrice ? String(reg.auctionData.soldPrice) : '',
-        });
-    };
+    const q = f.q.trim().toLowerCase();
+    const list = regs.filter(r =>
+        (tab === 'all' || r.status === tab)
+        && (!f.categoryId || r.categoryId === f.categoryId)
+        && (!f.teamId || (f.teamId === 'none' ? !r.teamId : r.teamId === f.teamId))
+        && (!f.gender || r.profile?.gender?.toLowerCase() === f.gender)
+        && (!f.skill || r.profile?.skillLevel?.toLowerCase() === f.skill)
+        && (!q || `${playerName(r)} ${r.profile?.phone ?? ''}`.toLowerCase().includes(q)));
+    const filtering = tab !== 'all' || Object.values(f).some(Boolean);
+    const clearFilters = () => { setTab('all'); setF(NO_FILTERS); };
+    const setFilter = (k: keyof typeof NO_FILTERS) => (v: string) => setF(p => ({ ...p, [k]: v }));
+    const count = (s: Status) => regs.filter(r => r.status === s).length;
+    const showMore = moreOpen || !!f.gender || !!f.skill;
 
-    const handleAssign = async () => {
-        if (!assignTarget || !assignForm.teamId) return;
-        const registrationId = assignTarget._id;
-        setAssigningId(registrationId);
-        const result = await dispatch(manualAssignPlayer({
-            registrationId,
-            teamId: assignForm.teamId,
-            soldPrice: assignForm.soldPrice ? Number(assignForm.soldPrice) : undefined,
-        }));
-        setAssigningId(null);
-        if (manualAssignPlayer.fulfilled.match(result)) {
-            // Refresh team budgets to reflect the deduction.
-            dispatch(fetchTournamentTeams(tournamentId));
-            setAssignTarget(null);
-        }
-    };
+    const pendingIds = new Set(regs.filter(r => r.status === 'pending').map(r => r._id));
+    const sel = selected.filter(id => pendingIds.has(id));
+    const toggle = (id: string) => setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
 
-    const openRoleModal = (reg: any, type: 'captain' | 'icon') => {
-        setRoleTarget({ reg, type });
-        setRoleTeamId(reg.teamId || '');
-        setRoleModalError('');
-    };
-
-    const handleConfirmRole = async () => {
-        if (!roleTarget || !roleTeamId) return;
-        const { reg, type } = roleTarget;
-        setRoleActionLoading(true);
-        setRoleModalError('');
-        const result = type === 'captain'
-            ? await dispatch(setCaptainRole({ tournamentId, playerId: reg.playerId, teamId: roleTeamId }))
-            : await dispatch(setIconRole({ registrationId: reg._id, teamId: roleTeamId }));
-        setRoleActionLoading(false);
-        const succeeded = type === 'captain' ? setCaptainRole.fulfilled.match(result) : setIconRole.fulfilled.match(result);
-        if (succeeded) {
-            setRoleTarget(null);
-        } else {
-            setRoleModalError((result.payload as string) || `Failed to set ${type}.`);
-        }
-    };
-
-    const handleRemoveRole = async (reg: any) => {
-        const teamName = teams.find(t => t._id === reg.teamId)?.name || 'their team';
-        if (!window.confirm(`Remove ${reg.profile?.firstName} ${reg.profile?.lastName} from ${teamName}? This clears their captain/icon status and team assignment.`)) return;
-        setUnassigningId(reg._id);
-        await dispatch(unassignRegistration(reg._id));
-        setUnassigningId(null);
-    };
-
-    const getRoleBadge = (role?: string) => {
-        if (role === 'captain') return <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><Shield className="h-3 w-3" /> Captain</span>;
-        if (role === 'icon') return <span className="px-2.5 py-1 bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><Star className="h-3 w-3" /> Icon</span>;
-        return <span className="text-gray-600">—</span>;
-    };
-
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'pending': return <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><Clock className="h-3 w-3" /> Pending</span>;
-            case 'approved': return <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><CheckCircle className="h-3 w-3" /> Approved</span>;
-            case 'rejected': return <span className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 w-fit"><XCircle className="h-3 w-3" /> Rejected</span>;
-            default: return <span className="px-3 py-1 bg-gray-500/10 text-gray-400 border border-gray-500/20 rounded-full text-xs font-bold uppercase tracking-wider w-fit">{status}</span>;
-        }
-    };
-
-    const filteredRegistrations = (tournamentRegistrations as any[]).filter((reg) => {
-        if (filters.status && reg.status !== filters.status) return false;
-        if (filters.categoryId && reg.categoryId !== filters.categoryId) return false;
-        if (filters.gender && reg.profile?.gender !== filters.gender) return false;
-        if (filters.skillLevel && reg.profile?.skillLevel !== filters.skillLevel) return false;
-        if (filters.teamId === '__none__' && reg.teamId) return false;
-        if (filters.teamId && filters.teamId !== '__none__' && reg.teamId !== filters.teamId) return false;
-        if (filters.search) {
-            const q = filters.search.toLowerCase();
-            const name = `${reg.profile?.firstName || ''} ${reg.profile?.lastName || ''}`.toLowerCase();
-            if (!name.includes(q) && !(reg.profile?.phone || '').toLowerCase().includes(q)) return false;
-        }
-        return true;
+    const approve = (r: Reg) => guard(r._id, async () => {
+        const res = await dispatch(approveRegistration(r._id));
+        if (approveRegistration.rejected.match(res)) setActionError(`Couldn't approve ${playerName(r)}. ${errText(res.payload)}`);
     });
-    const hasActiveFilters = Object.values(filters).some(Boolean);
-    const selCls = 'px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-white text-sm focus:outline-none focus:border-primary';
+    const reject = (r: Reg) => guard(r._id, async () => {
+        const res = await dispatch(rejectRegistration(r._id));
+        setConfirm(null);
+        if (rejectRegistration.rejected.match(res)) setActionError(`Couldn't reject ${playerName(r)}. ${errText(res.payload)}`);
+    });
+    const remove = (r: Reg) => guard(r._id, async () => {
+        const res = await dispatch(unassignRegistration(r._id));
+        setConfirm(null);
+        if (unassignRegistration.rejected.match(res)) setActionError(`Couldn't remove ${playerName(r)} from the team. ${errText(res.payload)}`);
+        else refresh();
+    });
+    const bulkApprove = () => guard('bulk', async () => {
+        const res = await dispatch(bulkApproveRegistrations(sel));
+        if (bulkApproveRegistrations.rejected.match(res)) {
+            setActionError(`Couldn't approve the selected players. ${errText(res.payload)}`);
+            return;
+        }
+        const { failed } = res.payload;
+        setSelected(failed.map(x => x.id));
+        if (failed.length) setActionError(`${failed.length} of ${sel.length} players couldn't be approved. ${failed[0].error}`);
+    });
+
+    const removeMessage = (r: Reg) => {
+        const price = r.auctionData?.soldPrice;
+        return [
+            `Remove ${playerName(r)} from ${teamOf(r)?.name ?? 'their team'}?`,
+            price ? `${inr(price)} goes back to the team's budget.` : '',
+            r.role === 'captain' || r.role === 'icon' ? `Their ${r.role === 'icon' ? 'icon player' : 'captain'} role is cleared.` : '',
+        ].filter(Boolean).join(' ');
+    };
+
+    const actions = (r: Reg) => {
+        const rowBusy = busy.includes(r._id) || busy.includes('bulk');
+        if (r.status === 'pending') return (
+            <>
+                <button type="button" onClick={() => approve(r)} disabled={rowBusy} aria-label={`Approve ${playerName(r)}`} className={cn(BTN_SECONDARY, BTN_SM)}>
+                    {busy.includes(r._id) && confirm?.id !== r._id
+                        ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+                        : <Check aria-hidden className="h-3.5 w-3.5 text-emerald-400" />}
+                    Approve
+                </button>
+                <button type="button" onClick={() => setConfirm({ kind: 'reject', id: r._id })} disabled={rowBusy} aria-label={`Reject ${playerName(r)}`} className={cn(BTN_GHOST, BTN_SM)}>Reject</button>
+            </>
+        );
+        if (!ASSIGNABLE.includes(r.status)) return null;
+        const menu: MenuItem[] = [
+            ...(r.role !== 'captain' ? [{ label: 'Make captain', icon: Shield, onSelect: () => setRoleFor({ reg: r, kind: 'captain' }) }] : []),
+            ...(r.role !== 'icon' ? [{ label: 'Make icon player', icon: Star, onSelect: () => setRoleFor({ reg: r, kind: 'icon' }) }] : []),
+            ...(r.teamId ? ['separator' as const, { label: 'Remove from team', icon: UserMinus, danger: true, onSelect: () => setConfirm({ kind: 'remove', id: r._id }) }] : []),
+        ];
+        return (
+            <>
+                <button type="button" onClick={() => setAssignFor(r)} disabled={rowBusy} className={cn(BTN_SECONDARY, BTN_SM)}>
+                    {busy.includes(r._id) && <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />}
+                    {r.teamId ? 'Reassign' : 'Assign to team'}
+                </button>
+                <MoreMenu items={menu} label={`More actions for ${playerName(r)}`} />
+            </>
+        );
+    };
+
+    const row = (r: Reg) => {
+        const name = playerName(r);
+        const team = teamOf(r);
+        const price = r.auctionData?.soldPrice;
+        const rowBusy = busy.includes(r._id);
+        const acts = actions(r);
+        return (
+            <li key={r._id} aria-label={name}>
+                <div className={cn(ROW, COLS, 'gap-x-3.5')}>
+                    {r.status === 'pending'
+                        ? <input type="checkbox" aria-label={`Select ${name}`} checked={sel.includes(r._id)} disabled={rowBusy}
+                            onChange={() => toggle(r._id)} className={cn('h-4 w-4 accent-primary', FOCUS)} />
+                        : <span />}
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <Avatar name={name} size="lg" />
+                        <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-fg">{name}</p>
+                            <p className="mt-0.5 truncate text-[13px] text-fg-subtle">
+                                {r.profile?.phone}<span className={NARROW}> · {categoryName(r)}</span>
+                            </p>
+                            <div className={cn('mt-1.5 flex flex-wrap items-center gap-1.5', NARROW)}>
+                                <StatusBadge status={r.status} />
+                                {r.teamId && <span className={CHIP}>{team?.name ?? 'Unknown team'}</span>}
+                                <RoleChip role={r.role} />
+                            </div>
+                        </div>
+                    </div>
+                    <span className={cn(WIDE, CELL)}>{categoryName(r)}</span>
+                    <span className={cn(WIDE, CELL)}>
+                        {[capital(r.profile?.gender), r.profile?.age].filter(Boolean).join(', ') || '—'}
+                        <small className="block text-xs text-fg-subtle">{capital(r.profile?.skillLevel)}</small>
+                    </span>
+                    <span className={cn(WIDE, CELL, 'tabular-nums')}>{r.createdAt ? format(new Date(r.createdAt), 'd MMM') : '—'}</span>
+                    <span className={WIDE}><StatusBadge status={r.status} /></span>
+                    <div className={cn(WIDE, 'min-w-0')}>
+                        {r.teamId ? (
+                            <div className="flex min-w-0 items-center gap-2">
+                                <TeamLogo name={team?.name ?? '?'} logo={team?.logo} color={team?.primaryColor} size="sm" />
+                                <div className="min-w-0">
+                                    <span className="block truncate text-[13.5px] text-fg">{team?.name ?? 'Unknown team'}</span>
+                                    <small className="block text-xs text-fg-subtle">{price ? inr(price) : r.role === 'captain' || r.role === 'icon' ? '' : 'No price'}</small>
+                                </div>
+                            </div>
+                        ) : <span className="text-fg-subtle">—</span>}
+                        {(r.role === 'captain' || r.role === 'icon') && <div className="mt-1"><RoleChip role={r.role} /></div>}
+                    </div>
+                    {acts && <div className="col-start-2 flex flex-wrap items-center gap-1.5 pl-[46px] @md:col-start-auto @md:justify-end @md:pl-0">{acts}</div>}
+                </div>
+                {confirm?.id === r._id && (confirm.kind === 'reject' ? (
+                    <ConfirmBar message={`Reject ${name}? Their entry will show as rejected, and this can't be undone.`}
+                        confirmLabel="Reject" danger busy={rowBusy} onConfirm={() => reject(r)} onCancel={() => setConfirm(null)} />
+                ) : (
+                    <ConfirmBar message={removeMessage(r)} confirmLabel="Remove" danger busy={rowBusy}
+                        onConfirm={() => remove(r)} onCancel={() => setConfirm(null)} />
+                ))}
+            </li>
+        );
+    };
+
+    const body = () => {
+        if (!loaded) return <Spinner label="Loading registrations" />;
+        if (loadError && !regs.length) return (
+            <EmptyState title="Something didn't load" text={loadError}
+                action={<button type="button" onClick={load} className={BTN_SECONDARY}>Try again</button>} />
+        );
+        if (!regs.length) return <EmptyState title="No registrations yet" text="Players who sign up for a category show up here for review." />;
+        if (!list.length) return (
+            <EmptyState title="No registrations match these filters" text="Try another status, or clear the search."
+                action={<button type="button" onClick={clearFilters} className={BTN_SECONDARY}>Clear filters</button>} />
+        );
+        return (
+            <>
+                <div aria-hidden className={cn(COLHEAD, COLS, 'hidden @5xl:grid')}>
+                    <span /><span>Player</span><span>Category</span><span>Details</span><span>Applied</span><span>Status</span><span>Team</span><span />
+                </div>
+                <ul className="divide-y divide-line">{list.map(row)}</ul>
+            </>
+        );
+    };
 
     return (
-        <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-2">
-                <div className="p-2 bg-primary/10 rounded-lg text-primary"><Users className="h-5 w-5" /></div>
-                <h2 className="text-2xl font-oswald font-bold text-white tracking-wide">Player Applications</h2>
-            </div>
+        <div className="@container space-y-6">
+            <PageHead title="Registrations" desc="Review entries, approve players and place them on teams." />
 
-            {error && (
-                <div className="flex items-center gap-3 p-4 bg-red-900/20 border border-red-900/50 rounded-xl text-red-300 text-sm">
-                    <ShieldAlert className="h-5 w-5 flex-shrink-0" /> {error}
-                </div>
+            {loadError && regs.length > 0 && (
+                <Notice tone="red" icon={AlertCircle}>
+                    <span role="alert">{loadError}</span>{' '}
+                    <button type="button" onClick={load} className={cn('underline underline-offset-2', FOCUS)}>Try again</button>
+                </Notice>
             )}
+            {actionError && <Notice tone="red" icon={AlertCircle}><span role="alert">{actionError}</span></Notice>}
 
-            {/* Filters */}
-            {tournamentRegistrations.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
-                    <input
-                        value={filters.search}
-                        onChange={e => setF('search', e.target.value)}
-                        placeholder="Search name or phone…"
-                        className={`${selCls} flex-1 min-w-[180px]`}
-                    />
-                    <select value={filters.status} onChange={e => setF('status', e.target.value)} className={`${selCls} capitalize`}>
-                        <option value="">All statuses</option>
-                        {['pending', 'approved', 'rejected', 'assigned', 'auctioned', 'withdrawn'].map(s => (
-                            <option key={s} value={s} className="bg-[#111] capitalize">{s}</option>
-                        ))}
-                    </select>
-                    <select value={filters.categoryId} onChange={e => setF('categoryId', e.target.value)} className={selCls}>
-                        <option value="">All categories</option>
-                        {categories?.map((c: any) => <option key={c._id} value={c._id} className="bg-[#111]">{c.name}</option>)}
-                    </select>
-                    <select value={filters.gender} onChange={e => setF('gender', e.target.value)} className={selCls}>
-                        <option value="">All genders</option>
-                        <option value="male" className="bg-[#111]">Male</option>
-                        <option value="female" className="bg-[#111]">Female</option>
-                    </select>
-                    <select value={filters.skillLevel} onChange={e => setF('skillLevel', e.target.value)} className={`${selCls} capitalize`}>
-                        <option value="">All skill levels</option>
-                        {['beginner', 'intermediate', 'advanced', 'professional'].map(s => (
-                            <option key={s} value={s} className="bg-[#111] capitalize">{s}</option>
-                        ))}
-                    </select>
-                    <select value={filters.teamId} onChange={e => setF('teamId', e.target.value)} className={selCls}>
-                        <option value="">All teams</option>
-                        <option value="__none__" className="bg-[#111]">Unassigned</option>
-                        {teams.map(t => <option key={t._id} value={t._id} className="bg-[#111]">{t.name}</option>)}
-                    </select>
-                    {hasActiveFilters && (
-                        <button onClick={clearFilters} className="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5 border border-white/10 transition-colors">Clear</button>
+            <section aria-label="Registrations" className={cn(PANEL, 'overflow-hidden')}>
+                {loaded && regs.length > 0 && (
+                    <Toolbar>
+                        <SegTabs<'all' | Status> label="Status" value={tab} onChange={setTab}
+                            items={TABS.map(t => ({ ...t, count: t.key === 'all' ? regs.length : count(t.key), hot: t.key === 'pending' }))} />
+                        <div className="flex flex-wrap items-center gap-2">
+                            <SearchInput label="Search registrations" placeholder="Search name or phone" value={f.q} onChange={setFilter('q')} className="min-w-full sm:min-w-0" />
+                            <label>
+                                <span className="sr-only">Category</span>
+                                <select value={f.categoryId} onChange={e => setFilter('categoryId')(e.target.value)} className={INPUT_SM}>
+                                    <option value="">All categories</option>
+                                    {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                </select>
+                            </label>
+                            <label>
+                                <span className="sr-only">Team</span>
+                                <select value={f.teamId} onChange={e => setFilter('teamId')(e.target.value)} className={INPUT_SM}>
+                                    <option value="">All teams</option>
+                                    <option value="none">No team</option>
+                                    {teams.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}
+                                </select>
+                            </label>
+                            {showMore ? (
+                                <>
+                                    <label>
+                                        <span className="sr-only">Gender</span>
+                                        <select value={f.gender} onChange={e => setFilter('gender')(e.target.value)} className={INPUT_SM}>
+                                            <option value="">All genders</option>
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span className="sr-only">Skill level</span>
+                                        <select value={f.skill} onChange={e => setFilter('skill')(e.target.value)} className={INPUT_SM}>
+                                            <option value="">All skill levels</option>
+                                            {['beginner', 'intermediate', 'advanced', 'professional'].map(s => <option key={s} value={s}>{capital(s)}</option>)}
+                                        </select>
+                                    </label>
+                                </>
+                            ) : (
+                                <button type="button" onClick={() => setMoreOpen(true)} className={cn(BTN_GHOST, BTN_SM)}>More filters</button>
+                            )}
+                            {filtering && <button type="button" onClick={clearFilters} className={cn(BTN_GHOST, BTN_SM)}>Clear filters</button>}
+                            <span className="text-xs tabular-nums text-fg-subtle">{list.length} of {regs.length}</span>
+                        </div>
+                    </Toolbar>
+                )}
+                {sel.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-primary/[0.06] px-4 py-2.5 text-[13px] sm:px-5">
+                        <span className="font-medium text-fg">{sel.length} selected</span>
+                        <button type="button" onClick={bulkApprove} disabled={busy.includes('bulk')} className={cn(BTN_SECONDARY, BTN_SM)}>
+                            {busy.includes('bulk')
+                                ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+                                : <Check aria-hidden className="h-3.5 w-3.5 text-emerald-400" />}
+                            Approve selected
+                        </button>
+                        <button type="button" onClick={() => setSelected([])} className={cn(BTN_GHOST, BTN_SM)}>Clear</button>
+                    </div>
+                )}
+                {body()}
+            </section>
+
+            {assignFor && (
+                <AssignDialog reg={assignFor} teams={teams} onClose={() => setAssignFor(null)}
+                    onDone={() => { setAssignFor(null); refresh(); }} />
+            )}
+            {roleFor && (
+                <RoleDialog {...roleFor} teams={teams} tournamentId={tournamentId} categoryName={categoryName(roleFor.reg)}
+                    onClose={() => setRoleFor(null)} onDone={() => { setRoleFor(null); refresh(); }} />
+            )}
+        </div>
+    );
+};
+
+const AssignDialog = ({ reg, teams, onClose, onDone }: { reg: Reg; teams: Team[]; onClose: () => void; onDone: () => void }) => {
+    const dispatch = useAppDispatch();
+    const goTo = useSectionNav();
+    const [teamId, setTeamId] = useState(reg.teamId || '');
+    const [price, setPrice] = useState(reg.auctionData?.soldPrice ? String(reg.auctionData.soldPrice) : '');
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
+    const name = playerName(reg);
+    const team = teams.find(t => t._id === teamId);
+
+    const submit = async () => {
+        if (!teamId) return setError('Choose a team.');
+        const soldPrice = price === '' ? undefined : Number(price);
+        if (soldPrice !== undefined && !(Number.isInteger(soldPrice) && soldPrice >= 0)) {
+            return setError('Enter the price in whole rupees, or leave it empty.');
+        }
+        setBusy(true);
+        setError('');
+        const res = await dispatch(manualAssignPlayer({ registrationId: reg._id, teamId, soldPrice }));
+        setBusy(false);
+        if (manualAssignPlayer.rejected.match(res)) setError(`Couldn't assign ${name}. ${errText(res.payload)}`);
+        else onDone();
+    };
+
+    return (
+        <Dialog title={reg.teamId ? `Reassign ${name}` : `Assign ${name}`} onClose={onClose}
+            footer={<>
+                <button type="button" onClick={onClose} className={BTN_SECONDARY}>Cancel</button>
+                <button type="button" onClick={submit} disabled={busy || !teams.length} className={BTN_PRIMARY}>
+                    {busy && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}{reg.teamId ? 'Reassign' : 'Assign player'}
+                </button>
+            </>}>
+            {teams.length ? (
+                <div className="grid gap-4">
+                    <Field label="Team">
+                        <div role="radiogroup" aria-label="Team" className="grid gap-2">
+                            {teams.map(t => (
+                                <label key={t._id} className={cn(CHOICE, 'items-center')}>
+                                    <input type="radio" name="assign-team" checked={teamId === t._id} onChange={() => setTeamId(t._id)}
+                                        className={cn('accent-primary', FOCUS)} />
+                                    <TeamLogo name={t.name} logo={t.logo} color={t.primaryColor} />
+                                    <span className="min-w-0">
+                                        <span className="block truncate text-sm font-medium text-fg">{t.name}</span>
+                                        <span className="block truncate text-[12.5px] text-fg-muted">{t.owner?.name}</span>
+                                    </span>
+                                    <span className={cn('ml-auto shrink-0 text-right text-[13px] tabular-nums', t.budget < 0 ? 'text-red-300' : 'text-fg-muted')}>
+                                        {inr(t.budget)}<span className="block text-xs text-fg-subtle">left</span>
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </Field>
+                    <Field id="assign-price" label="Price" help="Taken from the team's budget. Leave empty to assign for free.">
+                        <div className="relative">
+                            <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-fg-subtle">₹</span>
+                            <input id="assign-price" type="number" min={0} step={1} inputMode="numeric" placeholder="0"
+                                value={price} onChange={e => setPrice(e.target.value)} className={cn(INPUT, 'pl-7')} />
+                        </div>
+                    </Field>
+                    {team && team.budget < 0 && (
+                        <Notice tone="amber" icon={AlertTriangle}>
+                            {team.name} is already {inr(-team.budget)} over budget. Assigning more players with a price takes it further below zero.
+                        </Notice>
                     )}
-                    <span className="text-xs text-gray-500 ml-auto whitespace-nowrap">{filteredRegistrations.length} of {tournamentRegistrations.length}</span>
-                </div>
-            )}
-
-            {isLoading && tournamentRegistrations.length === 0 ? (
-                <div className="flex justify-center p-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-            ) : tournamentRegistrations.length === 0 ? (
-                <div className="text-center p-10 bg-black/20 rounded-2xl border border-white/5">
-                    <ShieldAlert className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
-                    <p className="text-gray-400">No applications received yet.</p>
-                </div>
-            ) : filteredRegistrations.length === 0 ? (
-                <div className="text-center p-10 bg-black/20 rounded-2xl border border-white/5">
-                    <ShieldAlert className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
-                    <p className="text-gray-400">No applications match your filters.</p>
-                    <button onClick={clearFilters} className="mt-3 text-primary text-sm font-medium hover:underline">Clear filters</button>
+                    {error && <Notice tone="red" icon={AlertCircle}><span role="alert">{error}</span></Notice>}
                 </div>
             ) : (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[600px]">
-                        <thead>
-                            <tr className="border-b border-white/10 bg-black/40">
-                                <th className="p-4 rounded-tl-xl text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Player Name</th>
-                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Category</th>
-                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Gender / Age</th>
-                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Status</th>
-                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Team</th>
-                                <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider border-0">Role</th>
-                                <th className="p-4 rounded-tr-xl text-xs font-bold text-gray-400 uppercase tracking-wider text-right border-0">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5 bg-black/20">
-                            {filteredRegistrations.map((reg: any) => (
-                                <tr key={reg._id} className="hover:bg-white/5 transition-colors">
-                                    <td className="p-4">
-                                        <p className="text-white font-medium capitalize">{reg.profile?.firstName} {reg.profile?.lastName}</p>
-                                        <p className="text-xs text-gray-500">{reg.profile?.phone}</p>
-                                    </td>
-                                    <td className="p-4 text-primary font-medium text-sm">
-                                        {categories?.find((c: any) => c._id === reg.categoryId)?.name || reg.categoryDetails?.name || 'Unknown Category'}
-                                    </td>
-                                    <td className="p-4 text-gray-300 text-sm">
-                                        <span className="capitalize font-medium">{reg.profile?.gender}</span>, {reg.profile?.age} yrs
-                                    </td>
-                                    <td className="p-4">
-                                        {getStatusBadge(reg.status)}
-                                    </td>
-                                    <td className="p-4 text-sm text-gray-300">
-                                        {reg.teamId
-                                            ? <span className="font-medium text-white">{teams.find(t => t._id === reg.teamId)?.name || 'Assigned'}</span>
-                                            : <span className="text-gray-600">—</span>}
-                                    </td>
-                                    <td className="p-4">
-                                        {getRoleBadge(reg.role)}
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center justify-end gap-2">
-                                            {reg.status === 'pending' && (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleApprove(reg._id)}
-                                                        className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg transition-colors group"
-                                                        title="Approve"
-                                                    >
-                                                        <CheckCircle className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleReject(reg._id)}
-                                                        className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors group"
-                                                        title="Reject"
-                                                    >
-                                                        <XCircle className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                                                    </button>
-                                                </>
-                                            )}
-                                            {ASSIGNABLE_STATUSES.includes(reg.status) && (
-                                                <button
-                                                    onClick={() => openAssignModal(reg)}
-                                                    disabled={assigningId === reg._id}
-                                                    className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                                                    title={reg.teamId ? 'Reassign to team' : 'Assign to team'}
-                                                >
-                                                    {assigningId === reg._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                                                    {reg.teamId ? 'Reassign' : 'Assign'}
-                                                </button>
-                                            )}
-                                            {ASSIGNABLE_STATUSES.includes(reg.status) && reg.role !== 'captain' && (
-                                                <button
-                                                    onClick={() => openRoleModal(reg, 'captain')}
-                                                    className="p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-colors"
-                                                    title="Make captain"
-                                                >
-                                                    <Shield className="h-4 w-4" />
-                                                </button>
-                                            )}
-                                            {ASSIGNABLE_STATUSES.includes(reg.status) && reg.role !== 'icon' && (
-                                                <button
-                                                    onClick={() => openRoleModal(reg, 'icon')}
-                                                    className="p-2 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-lg transition-colors"
-                                                    title="Make icon player"
-                                                >
-                                                    <Star className="h-4 w-4" />
-                                                </button>
-                                            )}
-                                            {(reg.role === 'captain' || reg.role === 'icon') && (
-                                                <button
-                                                    onClick={() => handleRemoveRole(reg)}
-                                                    disabled={unassigningId === reg._id}
-                                                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors disabled:opacity-50"
-                                                    title="Remove role and team assignment"
-                                                >
-                                                    {unassigningId === reg._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <Notice tone="neutral" icon={AlertCircle}>
+                    There are no teams yet. Add teams first, then assign players.{' '}
+                    <button type="button" onClick={() => { onClose(); goTo('teams'); }} className={cn('underline underline-offset-2', FOCUS)}>Go to Teams</button>
+                </Notice>
             )}
+        </Dialog>
+    );
+};
 
-            {/* MANUAL ASSIGN MODAL */}
-            {assignTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-300">
-                        <button onClick={() => setAssignTarget(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
-                        <h3 className="text-2xl font-oswald font-bold mb-2">{assignTarget.teamId ? 'Reassign Player' : 'Assign Player'}</h3>
-                        <p className="text-gray-400 text-sm mb-6">
-                            Assign <span className="text-white font-bold capitalize">{assignTarget.profile?.firstName} {assignTarget.profile?.lastName}</span> to a team
-                        </p>
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm text-gray-400">Select Team *</label>
-                                <select value={assignForm.teamId} onChange={e => setAssignForm({ ...assignForm, teamId: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/10 text-white focus:outline-none focus:border-primary">
-                                    <option value="">Choose team…</option>
-                                    {teams.map(team => <option key={team._id} value={team._id}>{team.name} — ₹{team.budget.toLocaleString()} left</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm text-gray-400">Price (₹) <span className="text-gray-600">optional — deducted from team budget</span></label>
-                                <input type="number" min="0" value={assignForm.soldPrice} onChange={e => setAssignForm({ ...assignForm, soldPrice: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/10 text-white focus:outline-none focus:border-primary font-mono text-lg" placeholder="Leave blank for free assignment" />
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 mt-8">
-                            <button onClick={() => setAssignTarget(null)} className="px-5 py-2.5 rounded-xl border border-white/10 text-white hover:bg-white/5 font-medium">Cancel</button>
-                            <button onClick={handleAssign} disabled={!assignForm.teamId || assigningId === assignTarget._id}
-                                className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50 flex items-center gap-2">
-                                {assigningId === assignTarget._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                                Confirm
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+const RoleDialog = ({ reg, kind, teams, tournamentId, categoryName, onClose, onDone }: {
+    reg: Reg; kind: 'captain' | 'icon'; teams: Team[]; tournamentId: string; categoryName: string; onClose: () => void; onDone: () => void;
+}) => {
+    const dispatch = useAppDispatch();
+    const [teamId, setTeamId] = useState(reg.teamId || '');
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
+    const name = playerName(reg);
+    const captain = kind === 'captain';
 
-            {/* CAPTAIN / ICON ROLE MODAL */}
-            {roleTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-300">
-                        <button onClick={() => setRoleTarget(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
-                        <h3 className="text-2xl font-oswald font-bold mb-2 flex items-center gap-2">
-                            {roleTarget.type === 'captain' ? <Shield className="h-5 w-5 text-amber-400" /> : <Star className="h-5 w-5 text-violet-400" />}
-                            {roleTarget.type === 'captain' ? 'Set Captain' : 'Set Icon Player'}
-                        </h3>
-                        <p className="text-gray-400 text-sm mb-6">
-                            <span className="text-white font-bold capitalize">{roleTarget.reg.profile?.firstName} {roleTarget.reg.profile?.lastName}</span>
-                            {roleTarget.type === 'captain'
-                                ? ' will be made captain of the chosen team across all of their categories in this tournament, and excluded from the auction.'
-                                : ' will be marked as the icon player for the chosen team in this category, and excluded from the auction.'}
-                        </p>
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm text-gray-400">Select Team *</label>
-                                <select value={roleTeamId} onChange={e => setRoleTeamId(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/10 text-white focus:outline-none focus:border-primary">
-                                    <option value="">Choose team…</option>
-                                    {teams.map(team => <option key={team._id} value={team._id}>{team.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        {roleModalError && (
-                            <p className="text-xs text-red-400 mt-3">{roleModalError}</p>
-                        )}
-                        <div className="flex justify-end gap-3 mt-8">
-                            <button onClick={() => setRoleTarget(null)} className="px-5 py-2.5 rounded-xl border border-white/10 text-white hover:bg-white/5 font-medium">Cancel</button>
-                            <button onClick={handleConfirmRole} disabled={!roleTeamId || roleActionLoading}
-                                className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50 flex items-center gap-2">
-                                {roleActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                                Confirm
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </section>
+    const submit = async () => {
+        if (!teamId) return setError('Choose a team.');
+        setBusy(true);
+        setError('');
+        const res = captain
+            ? await dispatch(setCaptainRole({ tournamentId, playerId: reg.playerId, teamId }))
+            : await dispatch(setIconRole({ registrationId: reg._id, teamId }));
+        setBusy(false);
+        if (res.meta.requestStatus === 'rejected') setError(`Couldn't make ${name} ${captain ? 'captain' : 'an icon player'}. ${errText(res.payload)}`);
+        else onDone();
+    };
+
+    return (
+        <Dialog title={captain ? `Make ${name} captain` : `Make ${name} an icon player`} onClose={onClose}
+            footer={<>
+                <button type="button" onClick={onClose} className={BTN_SECONDARY}>Cancel</button>
+                <button type="button" onClick={submit} disabled={busy} className={BTN_PRIMARY}>
+                    {busy && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}{captain ? 'Make captain' : 'Make icon player'}
+                </button>
+            </>}>
+            <div className="grid gap-4">
+                <p className="text-[13.5px] leading-relaxed text-fg-muted">
+                    {captain
+                        ? `${name} becomes captain of the team you choose, in every category they've entered in this tournament. They won't go to auction.`
+                        : `${name} becomes the icon player for the team you choose, in ${categoryName} only. They won't go to auction.`}
+                </p>
+                <Field id="role-team" label="Team">
+                    <select id="role-team" value={teamId} onChange={e => setTeamId(e.target.value)} className={INPUT}>
+                        <option value="">Choose a team</option>
+                        {teams.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}
+                    </select>
+                </Field>
+                {error && <Notice tone="red" icon={AlertCircle}><span role="alert">{error}</span></Notice>}
+            </div>
+        </Dialog>
     );
 };
 

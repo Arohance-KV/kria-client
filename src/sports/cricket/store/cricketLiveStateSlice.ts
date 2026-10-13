@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import API from '@/api/axios';
 import { cricketMatchApi, type CricketLineupPayload, type BallPayload } from '@/sports/cricket/api/cricketMatch';
 
 export interface MatchEntry {
@@ -23,6 +24,12 @@ const ensure = (state: CricketLiveStateShape, matchId: string): MatchEntry => {
     return state.byMatchId[matchId];
 };
 
+// Rejects with the SERVER's message rather than letting createAsyncThunk
+// serialize the axios error, which discards `response.data.message` and leaves
+// callers with "Request failed with status code 400". Shaped as an object with
+// `message` so callers reading `e?.message` get the real reason.
+const reason = (e: any, fallback: string) => ({ message: e?.response?.data?.message || e?.message || fallback });
+
 // Fetch the match doc + live state together (console load).
 export const fetchMatchAndLive = createAsyncThunk(
     'cricketLive/fetchMatchAndLive',
@@ -39,39 +46,47 @@ export const fetchMatchAndLive = createAsyncThunk(
 
 export const recordToss = createAsyncThunk(
     'cricketLive/recordToss',
-    async ({ matchId, winnerTeamId, decision }: { matchId: string; winnerTeamId: string; decision: 'bat' | 'bowl' }) => {
-        await cricketMatchApi.recordToss(matchId, winnerTeamId, decision);
-        // Re-fetch the canonical match so cricketSetup is guaranteed fresh (phase advances
-        // reliably regardless of what the POST response shape is).
-        const match = await cricketMatchApi.getById(matchId);
-        return { matchId, match };
+    async ({ matchId, winnerTeamId, decision }: { matchId: string; winnerTeamId: string; decision: 'bat' | 'bowl' }, { rejectWithValue }) => {
+        try {
+            await cricketMatchApi.recordToss(matchId, winnerTeamId, decision);
+            // Re-fetch the canonical match so cricketSetup is guaranteed fresh (phase advances
+            // reliably regardless of what the POST response shape is).
+            const match = await cricketMatchApi.getById(matchId);
+            return { matchId, match };
+        } catch (e) {
+            return rejectWithValue(reason(e, 'Failed to record the toss.'));
+        }
     },
 );
 
 export const recordLineup = createAsyncThunk(
     'cricketLive/recordLineup',
-    async ({ matchId, payload }: { matchId: string; payload: CricketLineupPayload }) => {
-        await cricketMatchApi.recordLineup(matchId, payload);
-        const match = await cricketMatchApi.getById(matchId);
-        return { matchId, match };
+    async ({ matchId, payload }: { matchId: string; payload: CricketLineupPayload }, { rejectWithValue }) => {
+        try {
+            await cricketMatchApi.recordLineup(matchId, payload);
+            const match = await cricketMatchApi.getById(matchId);
+            return { matchId, match };
+        } catch (e) {
+            return rejectWithValue(reason(e, 'Failed to save the lineup.'));
+        }
     },
 );
 
 export const recordBall = createAsyncThunk(
     'cricketLive/recordBall',
-    async ({ matchId, payload }: { matchId: string; payload: BallPayload }) => {
-        const result = await cricketMatchApi.recordBall(matchId, payload);
-        return { matchId, result };
+    async ({ matchId, payload }: { matchId: string; payload: BallPayload }, { rejectWithValue }) => {
+        try {
+            const result = await cricketMatchApi.recordBall(matchId, payload);
+            return { matchId, result };
+        } catch (e) {
+            return rejectWithValue(reason(e, 'Failed to record the ball.'));
+        }
     },
 );
 
-// Rejects with the SERVER's message rather than letting createAsyncThunk
-// serialize the axios error, which discards `response.data.message` and leaves
-// callers with "Request failed with status code 400". The undo's refusals are
-// specific and actionable — "No balls to undo." for a match completed through
-// the manual result endpoint, or a bracket conflict — so they have to survive
-// the trip. Shaped as an object with `message` so existing callers reading
-// `e?.message` keep working and simply start seeing a better string.
+// The undo's refusals are specific and actionable — "No balls to undo." for a
+// match completed through the manual result endpoint, or a bracket conflict —
+// so they have to survive the trip (see `reason`).
 export const undoLastBall = createAsyncThunk(
     'cricketLive/undoLastBall',
     async (matchId: string, { rejectWithValue }) => {
@@ -79,7 +94,22 @@ export const undoLastBall = createAsyncThunk(
             const result = await cricketMatchApi.undoLastBall(matchId);
             return { matchId, result };
         } catch (e) {
-            return rejectWithValue({ message: e?.response?.data?.message || e?.message || 'Failed to undo the last ball.' });
+            return rejectWithValue(reason(e, 'Failed to undo the last ball.'));
+        }
+    },
+);
+
+// Names the side that went through a tied knockout, then re-reads the match so
+// the result card shows it without a page reload.
+export const resolveTie = createAsyncThunk(
+    'cricketLive/resolveTie',
+    async ({ matchId, winnerTeamId }: { matchId: string; winnerTeamId: string }, { rejectWithValue }) => {
+        try {
+            await API.post(`/sports/cricket/match/${matchId}/resolve-tie`, { winnerTeamId });
+            const match = await cricketMatchApi.getById(matchId);
+            return { matchId, match };
+        } catch (e) {
+            return rejectWithValue(reason(e, 'Could not record who advanced.'));
         }
     },
 );
@@ -98,8 +128,13 @@ const slice = createSlice({
     },
     extraReducers: (builder) => {
         builder
+            // A refetch (socket reconnect, end of match) must not flip a loaded
+            // match back to 'loading' or 'error': screens swap in a full-page
+            // spinner for those, which would unmount an open wicket dialog or
+            // picks not yet posted.
             .addCase(fetchMatchAndLive.pending, (state, action) => {
-                ensure(state, action.meta.arg).status = 'loading';
+                const e = ensure(state, action.meta.arg);
+                if (!e.match) e.status = 'loading';
             })
             .addCase(fetchMatchAndLive.fulfilled, (state, action) => {
                 const e = ensure(state, action.payload.matchId);
@@ -109,6 +144,7 @@ const slice = createSlice({
             })
             .addCase(fetchMatchAndLive.rejected, (state, action) => {
                 const e = ensure(state, action.meta.arg);
+                if (e.match) return; // keep what we have; the next push or reconnect catches up
                 e.status = 'error';
                 e.error = action.error.message;
             })
@@ -116,6 +152,9 @@ const slice = createSlice({
                 ensure(state, action.payload.matchId).match = action.payload.match;
             })
             .addCase(recordLineup.fulfilled, (state, action) => {
+                ensure(state, action.payload.matchId).match = action.payload.match;
+            })
+            .addCase(resolveTie.fulfilled, (state, action) => {
                 ensure(state, action.payload.matchId).match = action.payload.match;
             })
             .addCase(recordBall.fulfilled, (state, action) => {

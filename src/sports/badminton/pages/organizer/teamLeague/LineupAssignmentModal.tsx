@@ -1,8 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Loader2, Save, X, Users, Search, ChevronDown, Shuffle } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
+import { useEffect, useId, useState } from 'react';
+import { AlertTriangle, ChevronDown, Loader2, Search, Shuffle, X } from 'lucide-react';
 import API from '@/api/axios';
+import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, INPUT, Notice, Spinner } from '@/pages/organizer/ui';
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM } from '@/pages/organizer/shared';
+import { cn } from '@/lib/utils';
 
 interface Props {
     tieId: string;
@@ -11,13 +14,11 @@ interface Props {
     categoryConfig: any;
     onClose: () => void;
     onSaved: () => void;
-    setError: (err: string | null) => void;
 }
 
 interface RosterPlayer {
     _id: string;
     playerId: string;
-    profile: { firstName: string; lastName: string; photo?: string };
     fullName: string;
 }
 
@@ -27,192 +28,116 @@ interface SlotAssignment {
     playerNames: string[];
 }
 
+const slotSize = (slot: any) => (slot.matchType === 'singles' ? 1 : 2);
+
 // ─── Searchable player picker ────────────────────────────────────────────────
 
-function PlayerPicker({
-    players,
-    value,
-    onChange,
-    placeholder,
-    excluded,
-}: {
+function PlayerPicker({ label, players, value, onChange, excluded }: {
+    label: string;
     players: RosterPlayer[];
     value: string;
     onChange: (id: string, name: string) => void;
-    placeholder: string;
     excluded: string[];
 }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
-    const ref = useRef<HTMLDivElement>(null);
+    const listId = useId();
 
     const selected = players.find(p => p.playerId === value || p._id === value);
-    const available = players.filter(p => !excluded.includes(p.playerId) || p.playerId === value);
-    const filtered = available.filter(p =>
-        p.fullName.toLowerCase().includes(query.toLowerCase())
-    );
+    const options = players.filter(p =>
+        (!excluded.includes(p.playerId) || p.playerId === value) && p.fullName.toLowerCase().includes(query.trim().toLowerCase()));
 
-    // Close on outside click
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    const handleSelect = (player: RosterPlayer) => {
-        onChange(player.playerId || player._id, player.fullName);
-        setOpen(false);
-        setQuery('');
-    };
-
-    const handleClear = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onChange('', '');
-    };
+    const pick = (id: string, name: string) => { onChange(id, name); setOpen(false); setQuery(''); };
 
     return (
-        <div ref={ref} className="relative">
-            <button
-                type="button"
-                onClick={() => setOpen(o => !o)}
-                className={`w-full flex items-center justify-between h-9 px-3 rounded-md border text-sm transition-colors ${
-                    selected
-                        ? 'bg-primary/10 border-primary/40 text-white'
-                        : 'bg-black/50 border-white/10 text-gray-400'
-                }`}
-            >
-                <span className="truncate">{selected ? selected.fullName : placeholder}</span>
-                <div className="flex items-center gap-1 shrink-0">
-                    {selected && (
-                        <span
-                            onClick={handleClear}
-                            className="p-0.5 text-gray-500 hover:text-red-400 cursor-pointer"
-                        >
-                            <X className="h-3 w-3" />
-                        </span>
-                    )}
-                    <ChevronDown className={`h-3.5 w-3.5 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
-                </div>
-            </button>
-
-            {open && (
-                <div className="absolute z-50 mt-1 w-full bg-gray-900 border border-white/10 rounded-lg shadow-xl overflow-hidden">
-                    {/* Search */}
-                    <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10">
-                        <Search className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        <input
-                            autoFocus
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Search player..."
-                            className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1"
-                        />
+        <div className="flex min-w-0 items-center gap-1">
+            <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) setQuery(''); }}>
+                <PopoverTrigger role="combobox" aria-label={label} aria-controls={listId}
+                    className={cn(INPUT, 'flex min-w-0 items-center justify-between gap-2 text-left', !selected && 'text-fg-subtle')}>
+                    <span className="truncate">{selected ? selected.fullName : 'Choose a player'}</span>
+                    <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                </PopoverTrigger>
+                <PopoverContent align="start" sideOffset={4}
+                    className="z-[70] w-[var(--radix-popover-trigger-width)] min-w-56 overflow-hidden rounded-[10px] border-line bg-raised p-0 font-ui text-fg">
+                    <label className="flex items-center gap-2 border-b border-line px-3">
+                        <Search aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                        <span className="sr-only">Search players</span>
+                        <input type="search" autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search players"
+                            className="h-9 min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none" />
+                    </label>
+                    <div id={listId} role="listbox" aria-label={label} data-lenis-prevent className="max-h-56 overflow-y-auto p-1">
+                        {options.length === 0 ? (
+                            <p className="px-2.5 py-3 text-center text-[13px] text-fg-subtle">No players found</p>
+                        ) : options.map(p => (
+                            <button key={p._id} type="button" role="option" aria-selected={p === selected}
+                                onClick={() => pick(p.playerId || p._id, p.fullName)}
+                                className={cn('block w-full truncate rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors hover:bg-white/[0.05] focus-visible:bg-white/[0.06] focus-visible:outline-none',
+                                    p === selected ? 'text-primary' : 'text-fg-muted hover:text-fg')}>
+                                {p.fullName}
+                            </button>
+                        ))}
                     </div>
-
-                    {/* Options */}
-                    <div className="max-h-44 overflow-y-auto">
-                        {filtered.length === 0 ? (
-                            <p className="text-center text-xs text-gray-500 py-3">No players found</p>
-                        ) : (
-                            filtered.map(player => (
-                                <button
-                                    key={player._id}
-                                    type="button"
-                                    onClick={() => handleSelect(player)}
-                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition-colors ${
-                                        (player.playerId === value || player._id === value)
-                                            ? 'text-primary bg-primary/10'
-                                            : 'text-gray-300'
-                                    }`}
-                                >
-                                    {player.fullName}
-                                </button>
-                            ))
-                        )}
-                    </div>
-                </div>
+                </PopoverContent>
+            </Popover>
+            {selected && (
+                <button type="button" aria-label={`Clear ${label}`} onClick={() => onChange('', '')} className={cn(BTN_GHOST, 'w-9 px-0')}>
+                    <X aria-hidden className="h-4 w-4" />
+                </button>
             )}
         </div>
     );
 }
 
-// ─── Main modal ──────────────────────────────────────────────────────────────
+// ─── Lineup dialog ───────────────────────────────────────────────────────────
 
-export default function LineupAssignmentModal({ tieId, teamId, teamName, categoryConfig, onClose, onSaved, setError }: Props) {
+export default function LineupAssignmentModal({ tieId, teamId, teamName, categoryConfig, onClose, onSaved }: Props) {
     const [roster, setRoster] = useState<RosterPlayer[]>([]);
     const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const subTeamSlots: any[] = categoryConfig?.subTeamSlots || [];
+    const needed = subTeamSlots.reduce((n: number, s: any) => n + slotSize(s), 0);
 
     useEffect(() => {
-        loadData();
-    }, [tieId, teamId]);
-
-    const loadData = async () => {
-        setLoading(true);
-        try {
+        let live = true;
+        (async () => {
+            setLoading(true);
             // Fetch roster and existing lineup in parallel
             const [rosterRes, lineupRes] = await Promise.allSettled([
                 API.get(`/registrations/teams/${teamId}/roster`),
                 teamLeagueApi.getLineup(tieId, teamId),
             ]);
+            if (!live) return;
 
-            // Build roster list
-            let rosterPlayers: RosterPlayer[] = [];
+            let players: RosterPlayer[] = [];
             if (rosterRes.status === 'fulfilled') {
                 const rosterData = rosterRes.value.data?.data?.data || rosterRes.value.data?.data;
-                const raw: any[] = rosterData?.players || [];
-                rosterPlayers = raw.map(p => ({
+                players = (rosterData?.players || []).map((p: any) => ({
                     _id: p._id,
                     playerId: p.playerId || p._id,
-                    profile: p.profile,
                     fullName: `${p.profile?.firstName || ''} ${p.profile?.lastName || ''}`.trim(),
                 }));
             }
-            setRoster(rosterPlayers);
+            setRoster(players);
 
-            // Build assignment state from existing lineup or blank
-            const defaultAssignments = subTeamSlots.map((s: any) => ({
-                slotNumber: s.slotNumber,
-                playerIds: s.matchType === 'singles' ? [''] : ['', ''],
-                playerNames: s.matchType === 'singles' ? [''] : ['', ''],
+            const lineupData = lineupRes.status === 'fulfilled' ? lineupRes.value : null;
+            const lineups = Array.isArray(lineupData) ? lineupData : lineupData ? [lineupData] : [];
+            const existing = lineups.find((l: any) => l.teamId === teamId);
+            setAssignments(subTeamSlots.map((s: any) => {
+                const found = existing?.assignments?.find((a: any) => a.slotNumber === s.slotNumber);
+                const blank = Array(slotSize(s)).fill('');
+                return {
+                    slotNumber: s.slotNumber,
+                    playerIds: found?.playerIds?.length ? found.playerIds : blank,
+                    playerNames: found?.playerNames?.length ? found.playerNames : blank,
+                };
             }));
-
-            if (lineupRes.status === 'fulfilled') {
-                const lineupData = lineupRes.value;
-                const lineups = Array.isArray(lineupData) ? lineupData : lineupData ? [lineupData] : [];
-                const existing = lineups.find((l: any) => l.teamId === teamId);
-                if (existing?.assignments?.length) {
-                    const merged = defaultAssignments.map(def => {
-                        const found = existing.assignments.find((a: any) => a.slotNumber === def.slotNumber);
-                        if (!found) return def;
-                        return {
-                            ...def,
-                            playerIds: found.playerIds?.length ? found.playerIds : def.playerIds,
-                            playerNames: found.playerNames?.length ? found.playerNames : def.playerNames,
-                        };
-                    });
-                    setAssignments(merged);
-                } else {
-                    setAssignments(defaultAssignments);
-                }
-            } else {
-                setAssignments(defaultAssignments);
-            }
-        } catch {
-            setAssignments(subTeamSlots.map((s: any) => ({
-                slotNumber: s.slotNumber,
-                playerIds: s.matchType === 'singles' ? [''] : ['', ''],
-                playerNames: s.matchType === 'singles' ? [''] : ['', ''],
-            })));
-        } finally {
             setLoading(false);
-        }
-    };
+        })();
+        return () => { live = false; };
+    }, [tieId, teamId]);
 
     const updatePlayer = (slotIdx: number, playerIdx: number, playerId: string, playerName: string) => {
         setAssignments(prev => prev.map((a, i) => {
@@ -226,13 +151,7 @@ export default function LineupAssignmentModal({ tieId, teamId, teamName, categor
     };
 
     // Fill every slot with distinct random players from the roster.
-    const handleRandomize = () => {
-        const needed = subTeamSlots.reduce((n: number, s: any) => n + (s.matchType === 'singles' ? 1 : 2), 0);
-        if (roster.length < needed) {
-            setError(`Need ${needed} players to fill the lineup, roster has ${roster.length}.`);
-            return;
-        }
-        setError(null);
+    const fillRandomly = () => {
         const pool = [...roster];
         for (let i = pool.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -240,135 +159,92 @@ export default function LineupAssignmentModal({ tieId, teamId, teamName, categor
         }
         let k = 0;
         setAssignments(subTeamSlots.map((s: any) => {
-            const count = s.matchType === 'singles' ? 1 : 2;
-            const picks = pool.slice(k, k + count);
-            k += count;
-            return {
-                slotNumber: s.slotNumber,
-                playerIds: picks.map(p => p.playerId || p._id),
-                playerNames: picks.map(p => p.fullName),
-            };
+            const picks = pool.slice(k, k + slotSize(s));
+            k += slotSize(s);
+            return { slotNumber: s.slotNumber, playerIds: picks.map(p => p.playerId || p._id), playerNames: picks.map(p => p.fullName) };
         }));
+        setError(null);
     };
 
     // All playerIds selected in this lineup (for exclusion in pickers)
     const allSelectedIds = assignments.flatMap(a => a.playerIds.filter(Boolean));
+    const labelOf = (slotNumber: number) => subTeamSlots.find((s: any) => s.slotNumber === slotNumber)?.label || `Slot ${slotNumber}`;
 
-    const handleSave = async () => {
+    const save = async () => {
+        // A half-filled doubles pair can't be saved; empty slots are simply left for later.
+        const half = assignments.find(a => a.playerIds.some(Boolean) && !a.playerIds.every(Boolean));
+        if (half) { setError(`${labelOf(half.slotNumber)} needs both players.`); return; }
+        const filled = assignments.filter(a => a.playerIds.length && a.playerIds.every(Boolean));
+        if (!filled.length) { setError('Choose players for at least one slot.'); return; }
         setSaving(true);
         setError(null);
         try {
-            await teamLeagueApi.submitLineup(tieId, teamId, assignments);
+            await teamLeagueApi.submitLineup(tieId, teamId, filled);
             onSaved();
             onClose();
         } catch (e: any) {
             setError(e.response?.data?.message || 'Failed to save lineup');
-        } finally {
             setSaving(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-            <div
-                className="bg-gray-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto"
-                onClick={e => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                        <Users className="h-5 w-5 text-primary" />
-                        <h3 className="text-lg font-bold text-white">{teamName} Lineup</h3>
+        <Dialog title={`${teamName} lineup`} onClose={onClose}
+            footer={<>
+                {error && <p role="alert" className="mr-auto min-w-0 text-[13px] text-red-300">{error}</p>}
+                <button type="button" onClick={onClose} className={BTN_SECONDARY}>Cancel</button>
+                <button type="button" onClick={save} disabled={saving || loading} className={BTN_PRIMARY}>
+                    {saving && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}Save lineup
+                </button>
+            </>}>
+            {loading ? <Spinner label="Loading lineup" /> : (
+                <div className="grid gap-4">
+                    <div className="flex items-center justify-between gap-2 text-[13px]">
+                        <span className="text-fg-muted">{roster.length} player{roster.length === 1 ? '' : 's'} in roster</span>
+                        <button type="button" onClick={fillRandomly} disabled={!roster.length || roster.length < needed} className={cn(BTN_GHOST, BTN_SM)}>
+                            <Shuffle aria-hidden className="h-3.5 w-3.5" />Fill randomly
+                        </button>
                     </div>
-                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-white">
-                        <X className="h-5 w-5" />
-                    </button>
-                </div>
 
-                {loading ? (
-                    <div className="flex justify-center p-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {/* Roster summary */}
-                        {roster.length === 0 ? (
-                            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm">
-                                No players found in this team's roster. Ensure the auction is complete and players are assigned to this team.
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2 p-2.5 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-400">
-                                <Users className="h-3.5 w-3.5 text-primary shrink-0" />
-                                {roster.length} player{roster.length !== 1 ? 's' : ''} in roster
-                                <button
-                                    onClick={handleRandomize}
-                                    className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 text-primary hover:bg-primary/25 font-medium"
-                                >
-                                    <Shuffle className="h-3.5 w-3.5" /> Randomize
-                                </button>
-                            </div>
-                        )}
+                    {roster.length === 0 ? (
+                        <Notice tone="amber" icon={AlertTriangle}>
+                            No players in this team's roster yet. Players appear here once the auction assigns them to the team.
+                        </Notice>
+                    ) : roster.length < needed && (
+                        <Notice tone="amber" icon={AlertTriangle}>
+                            A full lineup needs {needed} different players, and the roster has {roster.length}. Some slots will stay empty.
+                        </Notice>
+                    )}
 
-                        {/* Slot assignments */}
-                        {subTeamSlots.map((slot: any, idx: number) => {
-                            const assignment = assignments[idx];
-                            if (!assignment) return null;
-                            const isDoubles = slot.matchType === 'doubles' || slot.matchType === 'mixed_doubles';
-
-                            // For each picker, exclude all selected IDs except the one in this position
-                            const excludedForP1 = allSelectedIds.filter(id => id !== assignment.playerIds[0]);
-                            const excludedForP2 = allSelectedIds.filter(id => id !== assignment.playerIds[1]);
-
-                            return (
-                                <div key={slot.slotNumber} className="p-3 bg-black/40 border border-white/10 rounded-lg space-y-2.5">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-gray-300 font-semibold text-sm">{slot.label}</Label>
-                                        <span className="text-[10px] text-gray-500 uppercase bg-white/5 px-2 py-0.5 rounded">
-                                            {slot.matchType.replace('_', ' ')}
-                                        </span>
-                                    </div>
-
-                                    <PlayerPicker
-                                        players={roster}
-                                        value={assignment.playerIds[0] || ''}
-                                        onChange={(id, name) => updatePlayer(idx, 0, id, name)}
-                                        placeholder={isDoubles ? 'Player 1' : 'Select player'}
-                                        excluded={excludedForP1}
-                                    />
-
-                                    {isDoubles && (
-                                        <PlayerPicker
-                                            players={roster}
-                                            value={assignment.playerIds[1] || ''}
-                                            onChange={(id, name) => updatePlayer(idx, 1, id, name)}
-                                            placeholder="Player 2"
-                                            excluded={excludedForP2}
-                                        />
-                                    )}
+                    {subTeamSlots.map((slot: any, idx: number) => {
+                        const a = assignments[idx];
+                        if (!a) return null;
+                        const size = slotSize(slot);
+                        return (
+                            <div key={slot.slotNumber} className="grid gap-1.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[13px] font-medium text-fg-muted">{slot.label}</span>
+                                    <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[11.5px] text-fg-subtle ring-1 ring-inset ring-white/10">
+                                        {String(slot.matchType).replace('_', ' ')}
+                                    </span>
                                 </div>
-                            );
-                        })}
-
-                        {/* Footer */}
-                        <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-                            <button
-                                onClick={onClose}
-                                className="px-4 py-2 rounded-full border border-white/10 text-white text-sm hover:bg-white/5"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="flex items-center gap-2 px-5 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-                            >
-                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                Save Lineup
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
+                                <div className={cn('grid gap-2', size > 1 && 'sm:grid-cols-2')}>
+                                    {Array.from({ length: size }, (_, k) => (
+                                        <PlayerPicker key={k}
+                                            label={size > 1 ? `${slot.label} player ${k + 1}` : slot.label}
+                                            players={roster}
+                                            value={a.playerIds[k] || ''}
+                                            onChange={(id, name) => updatePlayer(idx, k, id, name)}
+                                            excluded={allSelectedIds.filter(id => id !== a.playerIds[k])}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {subTeamSlots.length > 0 && <p className="text-xs text-fg-subtle">A player already picked for another slot isn't offered again.</p>}
+                </div>
+            )}
+        </Dialog>
     );
 }

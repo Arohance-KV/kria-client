@@ -23,10 +23,12 @@ export interface LayoutRound { name: string; matches: LayoutMatch[] }
 export type CompetitorType = 'player' | 'team';
 export type Slot = 'player1' | 'player2';
 
-export const CARD_H = 215;  // header + 2 slots + Record Result button; score entry opens as a modal so the height never changes
-export const CARD_W = 340;
-export const CARD_GAP = 20;
-export const CONN_W = 72;
+// header (32 + 1px rule) + two 32px competitor rows (+ 1px rule). Scoring and errors live
+// in the match dialog, so nothing inside a card can grow it.
+export const CARD_H = 98;
+export const CARD_W = 236;
+export const CARD_GAP = 18;
+export const CONN_W = 64;
 /**
  * A bye is not rendered, but its position still anchors the card it feeds, so
  * the space is reserved rather than removed. Two stacked bye slots must be at

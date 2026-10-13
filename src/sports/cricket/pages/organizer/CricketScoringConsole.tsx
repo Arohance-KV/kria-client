@@ -1,296 +1,210 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { ReactNode, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, Check, CircleAlert, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { BTN_GHOST, BTN_SM, MATCH_STATUS, ToneBadge } from '@/pages/organizer/shared';
+import { Notice, SegTabs, Spinner } from '@/pages/organizer/ui';
 import { fetchMatchAndLive, selectMatchEntry } from '@/sports/cricket/store/cricketLiveStateSlice';
 import { cricketCategoryApi } from '@/sports/cricket/api/cricketCategory';
 import { cricketMatchApi } from '@/sports/cricket/api/cricketMatch';
-import TossSetup from './TossSetup';
-import LineupSetup from './LineupSetup';
-import LiveScoreboardPanel from './LiveScoreboardPanel';
-import BallEntryPanel from './BallEntryPanel';
-import StartInningsStep from './StartInningsStep';
-import CricketMatchSummary from './CricketMatchSummary';
 import { xiSlots } from '@/sports/cricket/lib/lineup';
 import { useMatchSocket } from '@/sports/cricket/lib/useMatchSocket';
+import TossSetup from './TossSetup';
+import LineupSetup from './LineupSetup';
+import BallEntryPanel from './BallEntryPanel';
+import StartInningsStep, { InningsBreak } from './StartInningsStep';
+import CricketMatchSummary from './CricketMatchSummary';
+import { sidesOf, teamName } from './LiveScoreboardPanel';
 
-// ─── Shared styles injected once at the root ─────────────────────────────────
-export const SCORER_STYLES = `
-@keyframes scFadeIn  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-@keyframes scBallPop { 0% { opacity:0; transform:scale(.4); } 65% { transform:scale(1.12); } 100% { opacity:1; transform:scale(1); } }
-@keyframes scPillPulse { 0%,100% { box-shadow:0 0 0 0 rgba(249,115,22,.45); } 70% { box-shadow:0 0 0 6px rgba(249,115,22,0); } }
+const STEPS = ['Toss', 'Lineups', '1st innings', '2nd innings', 'Result'];
 
-/* surfaces */
-.sc-bg   { background:#07101e; min-height:100vh; color:#f9fafb; }
-.sc-card { background:#0c1526; border:1px solid rgba(255,255,255,.07); border-radius:14px; }
-
-/* progress pills */
-.sc-pill-done   { background:rgba(16,185,129,.12); color:#34d399; border:1px solid rgba(16,185,129,.22); }
-.sc-pill-active { background:rgba(249,115,22,.12); color:#F97316; border:1px solid rgba(249,115,22,.3); animation:scPillPulse 2s infinite; }
-.sc-pill-todo   { background:rgba(255,255,255,.05); color:#4b5563; border:1px solid rgba(255,255,255,.07); }
-
-/* run buttons */
-.sc-run-btn {
-    background:#101c30; border:1.5px solid rgba(255,255,255,.08); border-radius:12px;
-    color:#fff; font-family:'Oswald',sans-serif; font-size:1.6rem; font-weight:700;
-    transition:background .14s, border-color .14s, transform .09s; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
+/** "12.3 · 4": the last delivery on the scorecard, so Undo can say what it removes. */
+function lastBallOf(scorecard: any): string | null {
+    const inn = scorecard?.innings2?.oversTimeline?.length ? scorecard.innings2 : scorecard?.innings1;
+    const over = inn?.oversTimeline?.[inn.oversTimeline.length - 1];
+    const ball = over?.balls?.[over.balls.length - 1];
+    if (!ball) return null;
+    const extra = (label: string) => /^(wd|nb)/.test(label);
+    const legal = over.balls.filter((b: any) => !extra(b.label)).length;
+    // A wide or no-ball is numbered as the legal ball it was meant to be.
+    return `${over.overNumber - 1}.${extra(ball.label) ? legal + 1 : legal} · ${ball.label}`;
 }
-.sc-run-btn:hover:not(:disabled)  { background:rgba(249,115,22,.14); border-color:rgba(249,115,22,.45); }
-.sc-run-btn:active:not(:disabled) { transform:scale(.92); }
-.sc-run-btn.sc-btn-4  { background:rgba(37,99,235,.1);  border-color:rgba(37,99,235,.3);  color:#93c5fd; }
-.sc-run-btn.sc-btn-4:hover:not(:disabled)  { background:rgba(37,99,235,.22); }
-.sc-run-btn.sc-btn-6  { background:rgba(5,150,105,.1);  border-color:rgba(5,150,105,.3);  color:#6ee7b7; }
-.sc-run-btn.sc-btn-6:hover:not(:disabled)  { background:rgba(5,150,105,.22); }
-.sc-run-btn:disabled  { opacity:.3; cursor:not-allowed; }
-
-/* extra type buttons */
-.sc-extra-btn {
-    border-radius:9px; font-size:.72rem; font-weight:700; letter-spacing:.06em;
-    padding:.5rem .6rem; border:1.5px solid rgba(255,255,255,.07);
-    background:#101c30; color:#6b7280; transition:all .14s; cursor:pointer;
-}
-.sc-extra-btn.sc-extra-active { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.45); color:#fbbf24; }
-.sc-extra-btn:hover:not(.sc-extra-active):not(:disabled) { background:rgba(255,255,255,.07); color:#d1d5db; }
-.sc-extra-btn:disabled { opacity:.3; cursor:not-allowed; }
-
-/* run pip buttons (extra run picker) */
-.sc-pip { width:36px; height:36px; border-radius:8px; border:1.5px solid rgba(255,255,255,.08);
-    background:#101c30; color:#9ca3af; font-weight:700; font-size:.85rem;
-    transition:all .12s; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.sc-pip.sc-pip-active { background:rgba(249,115,22,.18); border-color:rgba(249,115,22,.5); color:#F97316; }
-.sc-pip:hover:not(.sc-pip-active) { background:rgba(255,255,255,.09); color:#fff; }
-
-/* wicket / undo */
-.sc-wicket-btn {
-    background:#dc2626; border:none; border-radius:12px; color:#fff;
-    font-family:'Oswald',sans-serif; font-size:1.05rem; font-weight:700; letter-spacing:.1em;
-    width:100%; transition:background .14s, transform .09s; cursor:pointer;
-}
-.sc-wicket-btn:hover:not(:disabled) { background:#b91c1c; }
-.sc-wicket-btn:active:not(:disabled) { transform:scale(.97); }
-.sc-wicket-btn:disabled { opacity:.3; cursor:not-allowed; }
-.sc-undo-btn {
-    background:rgba(255,255,255,.05); border:1.5px solid rgba(255,255,255,.08);
-    border-radius:12px; color:#6b7280; font-weight:600; font-size:.85rem;
-    cursor:pointer; transition:all .14s; display:flex; align-items:center; justify-content:center; gap:.4rem;
-}
-.sc-undo-btn:hover:not(:disabled) { background:rgba(255,255,255,.1); color:#d1d5db; border-color:rgba(255,255,255,.15); }
-.sc-undo-btn:disabled { opacity:.3; cursor:not-allowed; }
-
-/* ball dots */
-.sc-ball {
-    animation:scBallPop .22s cubic-bezier(.34,1.56,.64,1) both;
-    border-radius:6px; min-width:28px; height:28px; padding:0 5px;
-    display:flex; align-items:center; justify-content:center;
-    font-size:.68rem; font-weight:800; border:1.5px solid;
-}
-.sc-ball-0  { background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.1); color:#4b5563; }
-.sc-ball-r  { background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.18); color:#e5e7eb; }
-.sc-ball-4  { background:rgba(37,99,235,.18); border-color:rgba(37,99,235,.45); color:#93c5fd; box-shadow:0 0 6px rgba(37,99,235,.18); }
-.sc-ball-6  { background:rgba(5,150,105,.18); border-color:rgba(5,150,105,.45); color:#6ee7b7; box-shadow:0 0 6px rgba(5,150,105,.18); }
-.sc-ball-w  { background:rgba(220,38,38,.2); border-color:rgba(220,38,38,.5); color:#fca5a5; box-shadow:0 0 6px rgba(220,38,38,.2); }
-.sc-ball-ex { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.35); color:#fcd34d; }
-
-/* player rows in lineup */
-.sc-pr       { padding:.42rem .65rem; border-radius:8px; display:flex; align-items:center; gap:.5rem; }
-.sc-pr-str   { background:rgba(249,115,22,.09); border-left:3px solid #F97316; }
-.sc-pr-bat   { background:rgba(255,255,255,.03); }
-.sc-pr-bowl  { background:rgba(37,99,235,.07);  border-left:3px solid #3b82f6; }
-.sc-pr-out   { opacity:.4; }
-
-/* tabs */
-.sc-tab      { padding:.3rem .9rem; border-radius:7px; font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; transition:all .14s; border:1.5px solid transparent; background:transparent; }
-.sc-tab-on   { background:rgba(249,115,22,.12); border-color:rgba(249,115,22,.3); color:#F97316; }
-.sc-tab-off  { color:#4b5563; }
-.sc-tab-off:hover { color:#9ca3af; }
-
-.sc-fadein { animation:scFadeIn .35s ease both; }
-`;
 
 export default function CricketScoringConsole() {
-    const { matchId } = useParams<{ matchId: string }>();
+    const { matchId = '' } = useParams<{ matchId: string }>();
     const dispatch = useAppDispatch();
-    const entry = useAppSelector(selectMatchEntry(matchId || ''));
-    const [playersPerTeam, setPlayersPerTeam] = useState(11);
-    const [maxOversPerBowler, setMaxOversPerBowler] = useState<number | undefined>(undefined);
+    const entry = useAppSelector(selectMatchEntry(matchId));
+    const socketStatus = useMatchSocket(matchId || undefined);
+    const [category, setCategory] = useState<any>(null);
     const [openers, setOpeners] = useState<{ strikerId: string; nonStrikerId: string; bowlerId: string } | null>(null);
-    const [scorecard, setScorecard] = useState<any>(null);
-
-    useEffect(() => { if (matchId) dispatch(fetchMatchAndLive(matchId)); }, [matchId, dispatch]);
-    useMatchSocket(matchId);
-
-    useEffect(() => { if (entry?.liveState?.strikerId) setOpeners(null); }, [entry?.liveState?.strikerId]);
+    const [sc, setSc] = useState<{ key: string; data: any } | null>(null);
 
     const match = entry?.match;
     const live = entry?.liveState;
 
+    useEffect(() => { if (matchId) dispatch(fetchMatchAndLive(matchId)); }, [matchId, dispatch]);
+    useEffect(() => { if (live?.strikerId) setOpeners(null); }, [live?.strikerId]);
+
     useEffect(() => {
-        if (match?.categoryId) {
-            cricketCategoryApi.getById(match.categoryId)
-                .then((c: any) => {
-                    setPlayersPerTeam(c?.cricketConfig?.playersPerTeam ?? 11);
-                    setMaxOversPerBowler(c?.cricketConfig?.maxOversPerBowler);
-                })
-                .catch(() => {});
-        }
+        if (!match?.categoryId) return;
+        cricketCategoryApi.getById(match.categoryId).then(setCategory).catch(() => {});
     }, [match?.categoryId]);
 
-    // Fetch scorecard on every meaningful tally change — shared by both child panels.
-    const tallyKey = `${live?.runs ?? 0}|${live?.wickets ?? 0}|${live?.completedOvers ?? 0}|${live?.currentInnings ?? 1}`;
+    // Any delivery or undo moves this key, dot balls included, and the scorecard follows.
+    const tallyKey = `${live?.runs ?? 0}|${live?.wickets ?? 0}|${live?.completedOvers ?? 0}|${live?.ballsInCurrentOver ?? 0}|${live?.currentInnings ?? 1}|${live?.matchStatus ?? ''}`;
     useEffect(() => {
         if (!matchId) return;
         let active = true;
         cricketMatchApi.getScorecard(matchId)
-            .then((sc: any) => { if (active) setScorecard(sc); })
+            .then((data: any) => { if (active) setSc({ key: tallyKey, data }); })
             .catch(() => {});
         return () => { active = false; };
     }, [matchId, tallyKey]);
 
+    // The final ball completes the match on the server; re-read the match so the
+    // result has its winner, innings scores and margin without a reload.
+    useEffect(() => {
+        if (live?.matchStatus === 'completed' && match && match.status !== 'completed') dispatch(fetchMatchAndLive(matchId));
+    }, [live?.matchStatus]);
+
     if (!matchId) return null;
-    if (!entry || entry.status === 'loading') {
+    if (!match) {
         return (
-            <>
-                <style>{SCORER_STYLES}</style>
-                <div className="sc-bg flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-3">
-                        <Loader2 className="h-8 w-8 animate-spin text-[#F97316]" />
-                        <p className="text-[11px] text-gray-600 uppercase tracking-widest">Loading match…</p>
-                    </div>
-                </div>
-            </>
-        );
-    }
-    if (entry.status === 'error' || !match) {
-        return (
-            <>
-                <style>{SCORER_STYLES}</style>
-                <div className="sc-bg flex items-center justify-center text-red-400 font-montserrat text-sm">
-                    {entry.error || 'Match not found.'}
-                </div>
-            </>
+            <div className="min-h-screen bg-canvas font-ui text-fg antialiased">
+                {entry?.status === 'error'
+                    ? <main className="mx-auto max-w-xl px-4 py-10"><Notice tone="red" icon={CircleAlert}>{entry.error || 'Match not found.'}</Notice></main>
+                    : <Spinner label="Loading match" />}
+            </div>
         );
     }
 
     const setup = match.cricketSetup || {};
-    const team1 = { id: match.teams?.team1Id, name: match.teams?.team1Name || 'Team 1' };
-    const team2 = { id: match.teams?.team2Id, name: match.teams?.team2Name || 'Team 2' };
-    const matchStatus = live?.matchStatus || 'awaiting_start';
+    const team1 = { id: String(match.teams?.team1Id ?? ''), name: match.teams?.team1Name || 'Team 1' };
+    const team2 = { id: String(match.teams?.team2Id ?? ''), name: match.teams?.team2Name || 'Team 2' };
+    const tossDone = !!setup.toss?.recorded;
+    const t1Done = !!setup.team1Lineup?.lineupSet;
+    const t2Done = !!setup.team2Lineup?.lineupSet;
+    const status = live?.matchStatus || 'awaiting_start';
+    // A result entered by hand completes the match without the live state knowing.
+    const completed = match.status === 'completed' || status === 'completed';
 
-    const tossDone      = !!setup.toss?.recorded;
-    const t1LineupDone  = !!setup.team1Lineup?.lineupSet;
-    const t2LineupDone  = !!setup.team2Lineup?.lineupSet;
-    const setupComplete = !!setup.setupComplete || (tossDone && t1LineupDone && t2LineupDone);
+    // Same precedence as the server: the match's own snapshot, then the category.
+    const cfg = category?.cricketConfig ?? {};
+    const maxOvers: number = match.matchConfig?.maxOvers ?? cfg.maxOvers ?? 20;
+    const maxOversPerBowler: number = match.matchConfig?.maxOversPerBowler ?? cfg.maxOversPerBowler ?? 4;
+    const playersPerTeam: number = match.matchConfig?.playersPerTeam ?? 11;
 
-    const steps = [
-        { label: 'Toss',            done: tossDone,      active: !tossDone },
-        { label: `${team1.name} XI`, done: t1LineupDone, active: tossDone && !t1LineupDone },
-        { label: `${team2.name} XI`, done: t2LineupDone, active: t1LineupDone && !t2LineupDone },
-        { label: 'Ready',           done: setupComplete,  active: t2LineupDone && !setupComplete },
-    ];
+    const { batting, bowling } = sidesOf(match, live);
+    // Only name the ball once the scorecard has caught up with it.
+    const lastBall = sc?.key === tallyKey ? lastBallOf(sc.data) : null;
+    const offline = socketStatus === 'reconnecting';
+    const openersFor = (inningsNumber: number, note?: string) => (
+        <StartInningsStep inningsNumber={inningsNumber} note={note} onReady={setOpeners}
+            battingTeam={teamName(match, batting)} bowlingTeam={teamName(match, bowling)}
+            battingXI={xiSlots(match, batting)} bowlingXI={xiSlots(match, bowling)} />
+    );
 
-    let phase: React.ReactNode;
-
-    if (!tossDone) {
-        phase = <TossSetup matchId={matchId} team1={team1} team2={team2} />;
-    } else if (!t1LineupDone) {
-        phase = <LineupSetup key={team1.id} matchId={matchId} team={team1} playersPerTeam={playersPerTeam} />;
-    } else if (!t2LineupDone) {
-        phase = <LineupSetup key={team2.id} matchId={matchId} team={team2} playersPerTeam={playersPerTeam} />;
-    } else if (matchStatus === 'completed') {
-        phase = <CricketMatchSummary match={match} />;
+    let step: number;
+    let body: ReactNode;
+    if (completed) {
+        step = STEPS.length;
+        // The live state lands first; the summary waits for the re-read match.
+        body = match.status === 'completed' ? <CricketMatchSummary match={match} /> : <Spinner label="Loading the result" />;
+    } else if (!tossDone) {
+        step = 0;
+        body = <TossSetup matchId={matchId} team1={team1} team2={team2} />;
+    } else if (!t1Done || !t2Done) {
+        step = 1;
+        const team = t1Done ? team2 : team1;
+        body = (
+            <div className="mx-auto max-w-3xl space-y-4">
+                {/* Progress only: a saved lineup can't be edited (no server support). */}
+                <SegTabs label="Team" value={team.id} onChange={() => {}}
+                    items={[{ key: team1.id, label: `${team1.name}${t1Done ? ' ✓' : ''}` }, { key: team2.id, label: `${team2.name}${t2Done ? ' ✓' : ''}` }]} />
+                <LineupSetup key={team.id} matchId={matchId} team={team} playersPerTeam={playersPerTeam} />
+            </div>
+        );
+    } else if (status === 'innings_break' && !openers) {
+        step = 3;
+        body = (
+            <div className="mx-auto grid max-w-2xl gap-4">
+                <InningsBreak matchId={matchId} match={match} live={live} scorecard={sc?.data} lastBall={lastBall} maxOvers={maxOvers} offline={offline} />
+                {openersFor(2)}
+            </div>
+        );
+    } else if (status === 'awaiting_start' && !openers) {
+        step = 2;
+        const toss = setup.toss;
+        body = openersFor(1, toss?.winnerTeamId ? `${teamName(match, toss.winnerTeamId)} won the toss and chose to ${toss.decision}.` : undefined);
     } else {
-        const needOpeners = !live || live.matchStatus === 'awaiting_start' || live.matchStatus === 'innings_break';
-        if (needOpeners && !openers) {
-            const battingTeamId = live?.battingTeamId
-                ?? (setup.toss?.decision === 'bat' ? setup.toss?.winnerTeamId
-                    : (setup.toss?.winnerTeamId === team1.id ? team2.id : team1.id));
-            const bowlingTeamId = battingTeamId === team1.id ? team2.id : team1.id;
-            const inningsNo = live?.matchStatus === 'innings_break' ? 2 : 1;
-            phase = (
-                <div className="flex flex-col gap-4">
-                    {live?.matchStatus === 'innings_break' && (
-                        <LiveScoreboardPanel match={match} live={live} scorecard={scorecard} />
-                    )}
-                    <StartInningsStep
-                        inningsNumber={inningsNo}
-                        battingXI={xiSlots(match, battingTeamId)}
-                        bowlingXI={xiSlots(match, bowlingTeamId)}
-                        onReady={setOpeners}
-                    />
-                </div>
-            );
-        } else {
-            phase = (
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] xl:grid-cols-[1fr_460px] gap-4 items-start">
-                    <LiveScoreboardPanel match={match} live={live} scorecard={scorecard} />
-                    <BallEntryPanel
-                        matchId={matchId}
-                        match={match}
-                        live={live}
-                        scorecard={scorecard}
-                        initialStrikerId={openers?.strikerId}
-                        initialNonStrikerId={openers?.nonStrikerId}
-                        initialBowlerId={openers?.bowlerId}
-                        maxOversPerBowler={maxOversPerBowler}
-                    />
-                </div>
-            );
-        }
+        step = live?.currentInnings === 2 ? 3 : 2;
+        body = (
+            <BallEntryPanel
+                matchId={matchId}
+                match={match}
+                live={live}
+                scorecard={sc?.data}
+                initialStrikerId={openers?.strikerId}
+                initialNonStrikerId={openers?.nonStrikerId}
+                initialBowlerId={openers?.bowlerId}
+                maxOversPerBowler={maxOversPerBowler}
+                maxOvers={maxOvers}
+                lastBall={lastBall}
+                offline={offline}
+            />
+        );
     }
 
+    const scoring = !completed && step >= 2;
+    const badge = completed ? MATCH_STATUS.completed
+        : live && status !== 'awaiting_start' ? MATCH_STATUS.in_progress : MATCH_STATUS.scheduled;
+    const meta = [category?.name, match.bracketRound, `${maxOvers} overs`].filter(Boolean).join(' · ');
+
     return (
-        <>
-            <style>{SCORER_STYLES}</style>
-            <div className="sc-bg font-montserrat">
-
-                {/* ── Sticky header ── */}
-                <div className="sticky top-0 z-20 bg-[#07101e]/90 backdrop-blur-md border-b border-white/5 px-4 md:px-8 lg:px-12 py-3 flex items-center gap-3">
-                    <Link
-                        to={`/organizer/tournament/${match.tournamentId}`}
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/8 transition-colors"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
+        <div className="min-h-screen bg-canvas font-ui text-fg antialiased">
+            <header className="sticky top-0 z-20 border-b border-line bg-canvas/95 backdrop-blur">
+                <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
+                    <Link to={`/organizer/tournament/${match.tournamentId}?section=matches`} aria-label="Back to matches" className={cn(BTN_GHOST, BTN_SM, '-ml-2 px-2')}>
+                        <ArrowLeft aria-hidden className="h-4 w-4" /><span className="hidden sm:inline">Matches</span>
                     </Link>
-
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-sm font-oswald font-bold tracking-wide text-white">Cricket Scoring</h1>
-                            {live && matchStatus !== 'completed' && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F97316]/10 border border-[#F97316]/25 text-[10px] font-bold text-[#F97316] uppercase tracking-wider">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-[#F97316] animate-pulse" />
-                                    Live
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-[11px] text-gray-600 truncate">{team1.name} vs {team2.name}</p>
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{team1.name} vs {team2.name}</p>
+                        <p className="truncate text-xs text-fg-subtle">{meta}</p>
                     </div>
-
-                    {/* Progress pills — hidden on very small screens, shown in body instead */}
-                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                        {steps.map(s => (
-                            <span key={s.label} className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${s.done ? 'sc-pill-done' : s.active ? 'sc-pill-active' : 'sc-pill-todo'}`}>
-                                {s.done ? '✓ ' : ''}{s.label}
+                    <div className="flex items-center gap-2">
+                        {scoring && (
+                            <span className={cn('hidden items-center gap-1.5 text-xs sm:flex', socketStatus === 'connected' ? 'text-fg-subtle' : 'text-amber-300')}>
+                                {socketStatus === 'connected' ? <Wifi aria-hidden className="h-3.5 w-3.5" /> : <WifiOff aria-hidden className="h-3.5 w-3.5" />}
+                                {socketStatus === 'connected' ? 'Synced' : socketStatus === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}
                             </span>
-                        ))}
+                        )}
+                        <ToneBadge label={badge.label} tone={badge.tone} live={badge.live} />
                     </div>
                 </div>
-
-                {/* ── Page body ── */}
-                <div className="px-4 md:px-8 lg:px-12 py-5 flex flex-col gap-4">
-
-                    {/* Mobile progress pills */}
-                    <div className="sm:hidden flex items-center gap-1.5 flex-wrap">
-                        {steps.map(s => (
-                            <span key={s.label} className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${s.done ? 'sc-pill-done' : s.active ? 'sc-pill-active' : 'sc-pill-todo'}`}>
-                                {s.done ? '✓ ' : ''}{s.label}
+                <ol aria-label="Match progress" className="mx-auto flex max-w-[1400px] items-center gap-1 overflow-x-auto border-t border-line px-4 py-2 text-xs [scrollbar-width:none] sm:px-6">
+                    {STEPS.map((l, i) => (
+                        <li key={l} aria-current={i === step ? 'step' : undefined} className="flex shrink-0 items-center gap-1">
+                            {i > 0 && <span aria-hidden className={cn('mx-1 h-px w-4 sm:w-8', i <= step ? 'bg-fg-subtle' : 'bg-line')} />}
+                            <span className={cn('flex items-center gap-1.5 rounded-md px-1.5 py-1', i === step ? 'font-medium text-fg' : i < step ? 'text-fg-muted' : 'text-fg-subtle')}>
+                                {i < step
+                                    ? <Check aria-hidden className="h-3.5 w-3.5 text-emerald-400" />
+                                    : <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full', i === step ? 'bg-primary' : 'bg-line')} />}
+                                {l}
                             </span>
-                        ))}
+                        </li>
+                    ))}
+                </ol>
+            </header>
+            {offline && scoring && (
+                <div role="status" className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2.5 text-[13px] text-amber-300 sm:px-6">
+                    <div className="mx-auto flex max-w-[1400px] items-center gap-2">
+                        <Loader2 aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        Reconnecting. Scoring is locked until the connection is back, so no ball gets lost.
                     </div>
-
-                    {phase}
                 </div>
-            </div>
-        </>
+            )}
+            <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 lg:py-7">{body}</main>
+        </div>
     );
 }

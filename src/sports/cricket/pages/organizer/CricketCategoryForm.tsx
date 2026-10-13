@@ -1,20 +1,22 @@
-import React, { useState } from 'react';
-import { Loader2, Save, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import CategoryCommonFields, { CommonFieldsValue } from '@/components/CategoryCommonFields';
+import { FormEvent, useRef, useState } from 'react';
+import CategoryCommonFields, {
+    CategoryFormFooter, CommonFieldsErrors, CommonFieldsValue, focusFirstInvalid, FormatChoice, notInt, num, validateCommonFields,
+} from '@/components/CategoryCommonFields';
 import { cricketCategoryApi } from '@/sports/cricket/api/cricketCategory';
+import { Field, FormGroup, INPUT } from '@/pages/organizer/ui';
 import type { CategoryFormProps } from '@/sports/_contracts/SportPlugin';
+
+type N = number | '';
 
 interface CricketFormState extends CommonFieldsValue {
     bracketType: string;
-    hybridConfig: { leagueSize: number; topN: number };
+    hybridConfig: { leagueSize: N; topN: N };
     cricketConfig: {
-        overs: number;
-        maxOversPerBowler: number;
-        playersPerTeam: number;
-        reservesAllowed: number;
-        powerplayOvers: number;
+        overs: N;
+        maxOversPerBowler: N;
+        playersPerTeam: N;
+        reservesAllowed: N;
+        powerplayOvers: N;
         tieBreaker: string;
     };
 }
@@ -47,16 +49,44 @@ function fromCategory(c: any): CricketFormState {
     };
 }
 
+type CricketKey = 'overs' | 'maxOversPerBowler' | 'playersPerTeam' | 'reservesAllowed' | 'powerplayOvers';
+type Errors = CommonFieldsErrors & Partial<Record<CricketKey | 'leagueSize' | 'topN', string>>;
+
+// Same limits the server enforces, checked on save so fields can be cleared while typing.
+const LIMITS: Record<CricketKey, { label: string; min: number; max?: number; error: string }> = {
+    overs: { label: 'Overs', min: 1, max: 50, error: 'Enter 1 to 50 overs.' },
+    maxOversPerBowler: { label: 'Max overs per bowler', min: 1, error: 'Allow each bowler at least 1 over.' },
+    playersPerTeam: { label: 'Players per team', min: 5, max: 11, error: 'Teams need 5 to 11 players.' },
+    reservesAllowed: { label: 'Reserves allowed', min: 0, error: 'Enter 0 or more reserves.' },
+    powerplayOvers: { label: 'Powerplay overs', min: 0, error: 'Enter 0 or more powerplay overs.' },
+};
+
+function validate(f: CricketFormState): Errors {
+    const e: Errors = validateCommonFields(f);
+    (Object.keys(LIMITS) as CricketKey[]).forEach(k => {
+        if (notInt(f.cricketConfig[k], LIMITS[k].min, LIMITS[k].max)) e[k] = LIMITS[k].error;
+    });
+    if (f.bracketType === 'hybrid') {
+        if (notInt(f.hybridConfig.leagueSize, 2)) e.leagueSize = 'Groups need at least 2 teams.';
+        if (notInt(f.hybridConfig.topN, 1)) e.topN = 'At least 1 team must qualify from each group.';
+    }
+    return e;
+}
+
 export default function CricketCategoryForm({ tournamentId, category, onSuccess, onCancel }: CategoryFormProps) {
     const isEdit = !!category;
     const [formData, setFormData] = useState<CricketFormState>(category ? fromCategory(category) : initialState);
+    const [tried, setTried] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const formRef = useRef<HTMLFormElement>(null);
+    const errors: Errors = tried ? validate(formData) : {};
 
     const setField = (patch: Partial<CricketFormState>) => setFormData(prev => ({ ...prev, ...patch }));
     const setCricket = (patch: Partial<CricketFormState['cricketConfig']>) =>
         setFormData(prev => ({ ...prev, cricketConfig: { ...prev.cricketConfig, ...patch } }));
-    const numInt = (raw: string, fallback: number) => (raw === '' ? fallback : Number(raw));
+    const setHybrid = (patch: Partial<CricketFormState['hybridConfig']>) =>
+        setFormData(prev => ({ ...prev, hybridConfig: { ...prev.hybridConfig, ...patch } }));
 
     const buildPayload = () => {
         const p: any = JSON.parse(JSON.stringify(formData));
@@ -65,109 +95,68 @@ export default function CricketCategoryForm({ tournamentId, category, onSuccess,
         if (p.ageGroup.max === '') delete p.ageGroup.max;
         if (p.bracketType !== 'hybrid') delete p.hybridConfig;
         if (!p.isPaidRegistration) p.registrationFee = 0;
-        else if (p.registrationFee === '') delete p.registrationFee;
         if (p.maxRegistrations === '' || p.maxRegistrations === null) delete p.maxRegistrations;
         return p;
     };
 
-    const handleSubmit = async () => {
-        if (!formData.name || !formData.ageGroup.label) return;
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        setTried(true);
+        if (Object.keys(validate(formData)).length) { focusFirstInvalid(formRef.current); return; }
         setSaving(true);
         setError(null);
         try {
             const payload = buildPayload();
-            if (isEdit) await cricketCategoryApi.update((category as any)._id, payload);
+            if (isEdit) await cricketCategoryApi.update((category as { _id: string })._id, payload);
             else await cricketCategoryApi.create(payload);
             onSuccess();
-        } catch (e: any) {
-            setError(e.response?.data?.message || e.message || 'Failed to save category.');
-        } finally {
+        } catch (err: any) {
+            setError(err.response?.data?.message || err.message || 'Couldn’t save this category. Try again.');
             setSaving(false);
         }
     };
 
+    const numInput = (id: string, value: N, onChange: (v: N) => void, min: number, invalid?: string) => (
+        <input id={id} type="number" min={min} className={INPUT} aria-invalid={!!invalid}
+            value={value} onChange={e => onChange(num(e.target.value))} />
+    );
+
     return (
-        <div className="bg-black/40 border border-white/10 rounded-2xl p-6 mb-4 animate-in fade-in slide-in-from-top-4">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white">{isEdit ? 'Edit Category' : 'Create New Category'}</h3>
-                <button onClick={onCancel} className="text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
-            </div>
+        <form ref={formRef} onSubmit={handleSubmit} noValidate className="grid gap-5">
+            <CategoryCommonFields value={formData} errors={errors} onChange={patch => setField(patch as Partial<CricketFormState>)} />
 
-            {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">{error}</div>}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
-                <CategoryCommonFields value={formData} onChange={(patch) => setField(patch as Partial<CricketFormState>)} />
-
-                {/* Match Settings (cricket) */}
-                <div className="space-y-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-                    <h4 className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">Match Settings</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Overs</Label>
-                            <Input type="number" min="1" value={formData.cricketConfig.overs} onChange={(e) => setCricket({ overs: numInt(e.target.value, 20) })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Max Overs / Bowler</Label>
-                            <Input type="number" min="1" value={formData.cricketConfig.maxOversPerBowler} onChange={(e) => setCricket({ maxOversPerBowler: numInt(e.target.value, 4) })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Players / Team</Label>
-                            <Input type="number" min="2" value={formData.cricketConfig.playersPerTeam} onChange={(e) => setCricket({ playersPerTeam: numInt(e.target.value, 11) })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Reserves Allowed</Label>
-                            <Input type="number" min="0" value={formData.cricketConfig.reservesAllowed} onChange={(e) => setCricket({ reservesAllowed: numInt(e.target.value, 0) })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Powerplay Overs</Label>
-                            <Input type="number" min="0" value={formData.cricketConfig.powerplayOvers} onChange={(e) => setCricket({ powerplayOvers: numInt(e.target.value, 6) })} className="bg-black/50 border-white/10 text-white" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Tie Breaker</Label>
-                            <select value={formData.cricketConfig.tieBreaker} onChange={(e) => setCricket({ tieBreaker: e.target.value })} className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white">
-                                <option value="super_over">Super Over</option>
-                                <option value="bowl_out">Bowl Out</option>
-                                <option value="shared">Shared</option>
-                            </select>
-                        </div>
-                    </div>
+            <FormGroup title="Match settings">
+                <div className="grid gap-3 sm:grid-cols-3">
+                    {(Object.keys(LIMITS) as CricketKey[]).map(k => (
+                        <Field key={k} id={`ck-${k}`} label={LIMITS[k].label} error={errors[k]}>
+                            {numInput(`ck-${k}`, formData.cricketConfig[k], v => setCricket({ [k]: v }), LIMITS[k].min, errors[k])}
+                        </Field>
+                    ))}
+                    <Field id="ck-tie" label="Tie breaker">
+                        <select id="ck-tie" className={INPUT} value={formData.cricketConfig.tieBreaker} onChange={e => setCricket({ tieBreaker: e.target.value })}>
+                            <option value="super_over">Super over</option>
+                            <option value="bowl_out">Bowl out</option>
+                            <option value="shared">Shared</option>
+                        </select>
+                    </Field>
                 </div>
+            </FormGroup>
 
-                {/* Bracket Settings (cricket: no team_league) */}
-                <div className="space-y-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-                    <h4 className="text-sm font-semibold text-primary uppercase tracking-wider mb-2">Bracket Settings</h4>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label className="text-gray-400">Bracket Type *</Label>
-                            <select value={formData.bracketType} onChange={(e) => setField({ bracketType: e.target.value })} className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white">
-                                <option value="knockout">Knockout</option>
-                                <option value="league">League</option>
-                                <option value="hybrid">Hybrid (Group + Knockout)</option>
-                            </select>
-                        </div>
-                        {formData.bracketType === 'hybrid' && (
-                            <div className="grid grid-cols-2 gap-4 animate-in fade-in">
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Group Size</Label>
-                                    <Input type="number" min="2" value={formData.hybridConfig.leagueSize} onChange={(e) => setField({ hybridConfig: { ...formData.hybridConfig, leagueSize: numInt(e.target.value, 4) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-gray-400">Qualifiers / Group</Label>
-                                    <Input type="number" min="1" value={formData.hybridConfig.topN} onChange={(e) => setField({ hybridConfig: { ...formData.hybridConfig, topN: numInt(e.target.value, 2) } })} className="bg-black/50 border-white/10 text-white" />
-                                </div>
-                            </div>
-                        )}
+            <FormGroup title="Format">
+                <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })} formats={['knockout', 'league', 'hybrid']} />
+                {formData.bracketType === 'hybrid' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <Field id="ck-group-size" label="Teams per group" error={errors.leagueSize}>
+                            {numInput('ck-group-size', formData.hybridConfig.leagueSize, leagueSize => setHybrid({ leagueSize }), 2, errors.leagueSize)}
+                        </Field>
+                        <Field id="ck-top-n" label="Qualify from each group" error={errors.topN}>
+                            {numInput('ck-top-n', formData.hybridConfig.topN, topN => setHybrid({ topN }), 1, errors.topN)}
+                        </Field>
                     </div>
-                </div>
-            </div>
+                )}
+            </FormGroup>
 
-            <div className="flex justify-end mt-6 gap-3 pt-4 border-t border-white/10">
-                <button onClick={onCancel} className="px-5 py-2 rounded-full border border-white/10 text-white font-medium hover:bg-white/5 transition-colors">Cancel</button>
-                <button onClick={handleSubmit} disabled={saving || !formData.name || !formData.ageGroup.label} className="flex items-center gap-2 px-6 py-2 rounded-full bg-primary hover:bg-primary/90 text-white font-medium disabled:opacity-50">
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {isEdit ? 'Save Changes' : 'Create Category'}
-                </button>
-            </div>
-        </div>
+            <CategoryFormFooter isEdit={isEdit} saving={saving} error={error} invalid={Object.keys(errors).length > 0} onCancel={onCancel} />
+        </form>
     );
 }

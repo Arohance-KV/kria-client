@@ -1,31 +1,79 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import {
-    Loader2, Trophy, Swords, CheckCircle2, Shuffle, MousePointer2,
-    RefreshCw, ChevronRight
-} from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeftRight, Check, CircleAlert, ExternalLink, Info, Lock, Shuffle } from 'lucide-react';
 import API from '../../../api/axios';
 import { sportRegistry } from '@/sports/registry';
-import TeamLeagueBracketView from '@/sports/badminton/pages/organizer/teamLeague/TeamLeagueBracketView';
+import type { MatchResultSectionProps } from '@/sports/_contracts/SportPlugin';
 import { isDecidedFinal } from '@/lib/champion';
 import {
     CARD_H, CARD_W, CONN_W, bracketHeight, computeCardPositions,
-    getC1, getC2, isHiddenBye, resolveSwapSlot,
+    getC1, getC2, isHiddenBye, isPlaceholderSlot, resolveSwapSlot,
     type LayoutMatch, type LayoutRound, type Slot,
 } from '@/lib/bracketLayout';
+import { cn } from '@/lib/utils';
+import { useAppDispatch } from '@/store/hooks';
+import { fetchTournamentCategories } from '@/store/slices/registrationSlice';
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, FOCUS, MATCH_STATUS, ToneBadge, type Tone } from '../shared';
+import { CategoryTabs, ConfirmBar, Dialog, EmptyState, MoreMenu, Notice, PageHead, PANEL, Spinner, categoryMeta, useSectionNav } from '../ui';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TYPES
+// TYPES & HELPERS (shared with MatchManagementSection)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string; sport?: string }
 
-type Match = LayoutMatch & {
+export type BracketMatch = LayoutMatch & {
     positionInRound?: number;
     competitorType?: 'player' | 'team';
     winnerId?: string;
     result?: { team1Total?: number; team2Total?: number; marginOfVictory?: string };
+    gameScores?: { gameNumber: number; team1Score: number; team2Score: number }[];
+    matchConfig?: { bestOf?: number; pointsToWin?: number };
 };
+
+export type CompetitorType = 'player' | 'team';
+export type ResultSlot = React.ComponentType<MatchResultSectionProps>;
+
+export interface MatchesPayload { matches: BracketMatch[]; rounds: Record<string, BracketMatch[]>; competitorType: CompetitorType }
+
+export const errorMessage = (err: any, fallback: string): string =>
+    err?.response?.data?.message || err?.response?.data?.data?.message || fallback;
+
+export async function fetchCategoryMatches(categoryId: string): Promise<MatchesPayload> {
+    const res = await API.get(`/matches/categories/${categoryId}`);
+    const payload = res.data?.data?.data || res.data?.data || {};
+    return { matches: payload.matches || [], rounds: payload.rounds || {}, competitorType: payload.competitorType || 'player' };
+}
+
+/** Round names in play order. */
+export const sortedRounds = (rounds: Record<string, BracketMatch[]>) =>
+    Object.keys(rounds).sort((a, b) => (rounds[a]?.[0]?.roundNumber || 0) - (rounds[b]?.[0]?.roundNumber || 0));
+
+/** "21–15, 21–12" */
+export const gamesText = (m: BracketMatch) => (m.gameScores || []).map(g => `${g.team1Score}–${g.team2Score}`).join(', ');
+
+/** A scheduled match still missing a competitor reads as "Waiting". */
+export function matchStatus(m: BracketMatch, waiting: boolean): { label: string; tone: Tone; live?: boolean } {
+    if (waiting && m.status === 'scheduled') return MATCH_STATUS.waiting;
+    return MATCH_STATUS[m.status] ?? { label: m.status, tone: 'neutral' };
+}
+
+export const isDone = (m: BracketMatch) => m.status === 'completed' || (m.status === 'walkover' && !isHiddenBye(m));
+
+/** The public scoreboard for screens, in a new tab. */
+export const ScoreboardLink = ({ matchId, label, className, children }: { matchId: string; label: string; className?: string; children: React.ReactNode }) => (
+    <a href={`/live/${matchId}`} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}
+        onClick={e => e.stopPropagation()} className={cn('rounded', FOCUS, className)}>
+        {children}
+    </a>
+);
+
+const WinnerMark = () => (
+    <><Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-emerald-400" /><span className="sr-only">(winner)</span></>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface Props {
     tournamentId: string;
@@ -43,488 +91,503 @@ interface SwapSelection {
     name: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-
 const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categories }) => {
-    const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
-    const [matches, setMatches] = useState<Match[]>([]);
-    const [rounds, setRounds] = useState<Record<string, Match[]>>({});
-    const [competitorType, setCompetitorType] = useState<'player' | 'team'>('player');
-    const [isLoading, setIsLoading] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [isReshuffling, setIsReshuffling] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const goTo = useSectionNav();
+    const dispatch = useAppDispatch();
 
-    // Swap mode state
+    const [selectedCat, setSelectedCat] = useState('');
+    const [data, setData] = useState<MatchesPayload>({ matches: [], rounds: {}, competitorType: 'player' });
+    const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [confirm, setConfirm] = useState<'generate' | 'reshuffle' | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+
     const [swapMode, setSwapMode] = useState(false);
     const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(null);
-    const [isSwapping, setIsSwapping] = useState(false);
+    const [swapping, setSwapping] = useState(false);
+    const [swapError, setSwapError] = useState<string | null>(null);
 
+    // Categories can arrive after mount, and the selected one can disappear; either way
+    // fall back to the first category with a draw to show (team leagues live elsewhere).
+    useEffect(() => {
+        if (categories.some(c => c._id === selectedCat)) return;
+        setSelectedCat((categories.find(c => c.bracketType !== 'team_league') ?? categories[0])?._id ?? '');
+    }, [categories, selectedCat]);
+
+    const category = categories.find(c => c._id === selectedCat);
+    const isTeamLeague = category?.bracketType === 'team_league';
+    // The selected category's own sport picks the plugin; the tournament's first sport
+    // is only a fallback for a category that doesn't say.
+    const ResultSection = sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
+
+    const { matches, rounds, competitorType } = data;
     const hasBracket = matches.length > 0;
     const hasResults = matches.some(m => m.status === 'completed');
-    const eligibleCategories = categories.filter(c => !['draft'].includes(c.status));
-    const selectedCategory = categories.find(c => c._id === selectedCat);
-    const isTeamLeague = selectedCategory?.bracketType === 'team_league';
-    // Use the selected category's own sport for its plugin; fall back to the
-    // tournament's first sport only when no category is selected (empty state).
-    const ResultSection = sportRegistry.get(selectedCategory?.sport || sports[0])?.matchResultSection;
-    const canGenerate = !isTeamLeague && !hasBracket && eligibleCategories.some(c => c._id === selectedCat);
 
-    const fetchMatches = useCallback(async () => {
-        if (!selectedCat) return;
-        setIsLoading(true);
-        setError(null);
+    // A slow response for a category the organizer has already left must not land.
+    const current = useRef(selectedCat);
+    current.current = selectedCat;
+
+    const load = useCallback(async (quiet = false) => {
+        const cat = selectedCat;
+        if (!cat || isTeamLeague) return;
+        if (!quiet) { setLoading(true); setData({ matches: [], rounds: {}, competitorType: 'player' }); }
         try {
-            const res = await API.get(`/matches/categories/${selectedCat}`);
-            const payload = res.data?.data?.data || res.data?.data || {};
-            setMatches(payload.matches || []);
-            setRounds(payload.rounds || {});
-            setCompetitorType(payload.competitorType || 'player');
-        } catch {
-            setMatches([]); setRounds({});
-        } finally { setIsLoading(false); }
-    }, [selectedCat]);
+            const next = await fetchCategoryMatches(cat);
+            if (current.current !== cat) return;
+            setData(next);
+            setLoadError(null);
+        } catch (err) {
+            if (current.current === cat) setLoadError(errorMessage(err, 'Could not load the bracket.'));
+        } finally {
+            if (current.current === cat && !quiet) setLoading(false);
+        }
+    }, [selectedCat, isTeamLeague]);
 
-    useEffect(() => { fetchMatches(); }, [fetchMatches]);
+    useEffect(() => {
+        setSwapMode(false); setSwapSelection(null); setSwapError(null);
+        setConfirm(null); setActionError(null); setOpenMatchId(null); setLoadError(null);
+        setLoading(false); // a team league never loads; don't inherit a spinner from the last category
+        load();
+    }, [load]);
 
-    const handleGenerateBracket = async () => {
-        setIsGenerating(true); setError(null);
+    const refresh = useCallback(() => load(true), [load]);
+
+    const generate = async () => {
+        setBusy(true); setActionError(null);
         try {
-            await API.post(`/matches/generate/${selectedCat}`);
-            await fetchMatches();
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Failed to generate bracket.');
-        } finally { setIsGenerating(false); }
+            // One draw, one consistent status. Out of auction, configure-bracket is the
+            // lifecycle step: it builds the draw itself and moves the category to "Bracket
+            // ready" (it accepts auction only). Anywhere else, generate builds the draw alone.
+            // Both refuse to rebuild over played matches, and this button only shows when
+            // there is no draw at all.
+            if (category?.status === 'auction') await API.post(`/categories/${selectedCat}/configure-bracket`);
+            else await API.post(`/matches/generate/${selectedCat}`);
+            setConfirm(null);
+            dispatch(fetchTournamentCategories(tournamentId)); // the category's status may have moved
+            await refresh();
+        } catch (err) {
+            setActionError(errorMessage(err, 'Could not generate the bracket.'));
+        } finally { setBusy(false); }
     };
 
-    const handleReshuffle = async () => {
-        if (!window.confirm('Reshuffle will randomize all Round 1 assignments. Continue?')) return;
-        setIsReshuffling(true); setError(null);
+    const reshuffle = async () => {
+        setBusy(true); setActionError(null);
         try {
             await API.post(`/matches/reshuffle/${selectedCat}`);
-            await fetchMatches();
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Failed to reshuffle.');
-        } finally { setIsReshuffling(false); }
+            setConfirm(null);
+            setSwapSelection(null);
+            await refresh();
+        } catch (err) {
+            setActionError(errorMessage(err, 'Could not reshuffle round 1.'));
+        } finally { setBusy(false); }
     };
 
-    const handleSwapClick = (match: Match, slot: Slot, name: string) => {
-        if (!swapMode) return;
+    const handleSwapClick = (match: BracketMatch, slot: Slot, name: string) => {
         // The clicked slot may be a later round showing a competitor who had a
         // bye. The swap is applied to the first-round slot that really holds them.
         const target = resolveSwapSlot(match, slot, matches, competitorType);
-        if (!target) return;
+        if (!target || swapping) return;
+        setSwapError(null);
         if (!swapSelection) {
             setSwapSelection({ ...target, clickedMatchId: match._id, clickedSlot: slot, name });
         } else if (swapSelection.matchId === target.matchId && swapSelection.slot === target.slot) {
-            setSwapSelection(null); // Deselect
+            setSwapSelection(null);
         } else {
             executeSwap(swapSelection.matchId, swapSelection.slot, target.matchId, target.slot);
         }
     };
 
-    const executeSwap = async (mId1: string, s1: string, mId2: string, s2: string) => {
-        setIsSwapping(true); setError(null);
+    const executeSwap = async (matchId1: string, slot1: Slot, matchId2: string, slot2: Slot) => {
+        setSwapping(true);
         try {
-            await API.put('/matches/swap', { matchId1: mId1, slot1: s1, matchId2: mId2, slot2: s2 });
-            await fetchMatches();
+            await API.put('/matches/swap', { matchId1, slot1, matchId2, slot2 });
             setSwapSelection(null);
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Swap failed.');
-        } finally { setIsSwapping(false); }
+            await refresh();
+        } catch (err) {
+            setSwapError(errorMessage(err, 'Swap failed.'));
+        } finally { setSwapping(false); }
     };
 
-    // Sort round names by roundNumber
-    const sortedRoundNames = Object.keys(rounds).sort((a, b) => {
-        const aM = rounds[a]?.[0]; const bM = rounds[b]?.[0];
-        return ((aM as any)?.roundNumber || 0) - ((bM as any)?.roundNumber || 0);
-    });
+    const toggleSwap = () => { setSwapMode(on => !on); setSwapSelection(null); setSwapError(null); setConfirm(null); };
 
-    return (
-        <section className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
-            {/* Header */}
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-2">
-                <div className="p-2 bg-primary/10 rounded-lg text-primary"><Trophy className="h-5 w-5" /></div>
-                <h2 className="text-2xl font-oswald font-bold text-white tracking-wide">Bracket Management</h2>
-            </div>
-
-            {/* Controls */}
-            <div className="flex items-center flex-wrap gap-3">
-                <select
-                    value={selectedCat}
-                    onChange={e => { setSelectedCat(e.target.value); setSwapMode(false); setSwapSelection(null); }}
-                    className="px-4 py-2.5 rounded-xl bg-white/5 border border-primary/30 text-white text-sm focus:outline-none focus:border-primary"
-                >
-                    {eligibleCategories.map(c => <option key={c._id} value={c._id} className="bg-[#111]">{c.name} ({c.status})</option>)}
-                </select>
-
-                {canGenerate && (
-                    <button onClick={handleGenerateBracket} disabled={isGenerating} className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl transition-all disabled:opacity-50 text-sm">
-                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
-                        Generate Bracket
-                    </button>
-                )}
-
-                {!isTeamLeague && hasBracket && !hasResults && (
-                    <>
-                        <button onClick={handleReshuffle} disabled={isReshuffling} className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold rounded-xl hover:bg-amber-500/20 transition-all disabled:opacity-50 text-sm">
-                            {isReshuffling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
-                            Reshuffle
-                        </button>
-                        <button
-                            onClick={() => { setSwapMode(!swapMode); setSwapSelection(null); }}
-                            className={`flex items-center gap-2 px-4 py-2.5 font-bold rounded-xl transition-all text-sm ${swapMode ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-400' : 'bg-white/5 border border-white/15 text-gray-300 hover:bg-white/10'}`}
-                        >
-                            <MousePointer2 className="h-4 w-4" />
-                            {swapMode ? 'Exit Swap Mode' : 'Swap Players'}
-                        </button>
-                    </>
-                )}
-            </div>
-
-            {/* Swap mode indicator */}
-            {swapMode && (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-sm">
-                    <MousePointer2 className="h-4 w-4 text-cyan-400 shrink-0" />
-                    {isSwapping ? (
-                        <span className="text-cyan-300 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Swapping...</span>
-                    ) : !swapSelection ? (
-                        <span className="text-cyan-300">Click a highlighted name to pick it up, then click another to swap the two. Names that follow from a played result cannot be moved.</span>
-                    ) : (
-                        <span className="text-cyan-300">
-                            Selected: <strong className="text-cyan-100">{swapSelection.name}</strong> — now click another slot to swap.
-                            <button onClick={() => setSwapSelection(null)} className="ml-2 text-cyan-500 hover:text-cyan-300 underline">Cancel</button>
-                        </span>
-                    )}
-                </div>
-            )}
-
-            {error && <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl">{error}</div>}
-
-            {/* Team League: render the dedicated read-only view instead of a knockout tree */}
-            {isTeamLeague ? (
-                <>
-                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary/5 border border-primary/15 text-sm text-gray-400">
-                        <Trophy className="h-4 w-4 text-primary shrink-0" />
-                        <span>This is a Team League category. Groups, ties and lineups are managed in the <strong className="text-gray-200">Team League</strong> tab — below is a read-only overview.</span>
-                    </div>
-                    <TeamLeagueBracketView categoryId={selectedCat} />
-                </>
-            ) : /* Bracket tree */ isLoading ? (
-                <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-            ) : !hasBracket ? (
-                <div className="bg-black/20 border border-white/5 rounded-2xl p-8 text-center text-gray-500 flex flex-col items-center gap-3">
-                    <Trophy className="h-10 w-10 opacity-30" />
-                    <p>No bracket generated yet.</p>
-                    {canGenerate && <p className="text-sm text-gray-600">Click "Generate Bracket" above.</p>}
-                </div>
-            ) : (
-                <BracketKnockoutView
-                    sortedRoundNames={sortedRoundNames}
-                    rounds={rounds}
-                    competitorType={competitorType}
-                    swapMode={swapMode}
-                    swapSelection={swapSelection}
-                    onSwapClick={handleSwapClick}
-                    allMatches={matches}
-                    ResultSection={ResultSection}
-                    onRecorded={fetchMatches}
-                />
-            )}
-        </section>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BRACKET KNOCKOUT VIEW — SVG connector tree (organizer)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const BracketKnockoutView: React.FC<{
-    sortedRoundNames: string[];
-    rounds: Record<string, Match[]>;
-    competitorType: 'player' | 'team';
-    swapMode: boolean;
-    swapSelection: SwapSelection | null;
-    onSwapClick: (match: Match, slot: Slot, name: string) => void;
-    allMatches: Match[];
-    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
-    onRecorded: () => void;
-}> = ({ sortedRoundNames, rounds, competitorType, swapMode, swapSelection, onSwapClick, allMatches, ResultSection, onRecorded }) => {
-
-    // Byes stay in the layout — they hold the geometry every later card centres
-    // on — but they are never rendered, because a bye card only ever repeats the
-    // name already shown on the card it feeds.
-    const layout: LayoutRound[] = sortedRoundNames
+    const layout: LayoutRound[] = sortedRounds(rounds)
         .map(name => ({
             name,
-            matches: (rounds[name] || [])
-                .slice()
+            matches: (rounds[name] || []).slice()
                 .sort((a, b) => (a.positionInRound ?? a.matchNumber) - (b.positionInRound ?? b.matchNumber)),
         }))
         .filter(r => r.matches.length > 0);
+    const league = layout.filter(r => r.name === 'League');
+    const knockout = layout.filter(r => r.name !== 'League');
+    const openMatch = matches.find(m => m._id === openMatchId) ?? null;
 
-    if (layout.length === 0) return null;
+    const cardProps: CardContext = {
+        competitorType, swapMode, swapSelection, allMatches: matches,
+        onSwapClick: handleSwapClick, onOpen: id => setOpenMatchId(id),
+    };
 
-    const cardPos = computeCardPositions(layout);
-    const bHeight = bracketHeight(cardPos);
-
-    return (
-        <div className="overflow-x-auto no-scrollbar pb-4">
-            <div className="pb-4">
-                {/* Stage headers */}
-                <div className="flex mb-6">
-                    {layout.map((round, ri) => {
-                        // A bye is not a match, so the two are reported separately
-                        // rather than summed.
-                        const byes = round.matches.filter(isHiddenBye).length;
-                        const playable = round.matches.length - byes;
-                        return (
-                            <React.Fragment key={round.name}>
-                                <div className="text-center shrink-0" style={{ width: CARD_W }}>
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{round.name}</p>
-                                    <p className="text-[9px] text-gray-600 mt-1 uppercase tracking-wider">
-                                        {playable} match{playable !== 1 ? 'es' : ''}{byes > 0 ? ` · ${byes} bye${byes !== 1 ? 's' : ''}` : ''}
-                                    </p>
-                                </div>
-                                {ri < layout.length - 1 && <div style={{ width: CONN_W }} />}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
-
-                {/* Bracket body */}
-                <div className="flex items-start">
-                    {layout.map((round, ri) => {
-                        const isLast = ri === layout.length - 1;
-                        return (
-                            <React.Fragment key={round.name}>
-                                {/* Cards column */}
-                                <div className="relative shrink-0" style={{ width: CARD_W, height: bHeight }}>
-                                    {round.matches.filter(m => !isHiddenBye(m)).map(match => (
-                                        <div
-                                            key={match._id}
-                                            className="absolute"
-                                            style={{ top: cardPos.get(match._id), left: 0, width: CARD_W, height: CARD_H }}
-                                        >
-                                            <BracketMatchCard
-                                                match={match}
-                                                competitorType={competitorType}
-                                                swapMode={swapMode}
-                                                swapSelection={swapSelection}
-                                                onSwapClick={onSwapClick}
-                                                allMatches={allMatches}
-                                                ResultSection={ResultSection}
-                                                onRecorded={onRecorded}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* SVG connectors to next round */}
-                                {!isLast && (
-                                    <ConnectorSvg
-                                        currentMatches={round.matches}
-                                        nextMatches={layout[ri + 1].matches}
-                                        positions={cardPos}
-                                        height={bHeight}
-                                    />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONNECTOR SVG
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const ConnectorSvg: React.FC<{
-    currentMatches: Match[];
-    nextMatches: Match[];
-    positions: Map<string, number>;
-    height: number;
-}> = ({ currentMatches, nextMatches, positions, height }) => {
-    const midX = CONN_W / 2;
-    const stroke = 'rgba(255,255,255,0.14)';
-    const sw = 1.5;
-
-    const centre = (id: string) => (positions.get(id) ?? 0) + CARD_H / 2;
-
-    // A hidden bye has no card to draw a line out of, so its leg is skipped —
-    // but its sibling's leg still runs to the shared elbow, which sits on the
-    // next card's centre because the bye's reserved slot was counted there.
-    const groups = new Map<string, Match[]>();
-    currentMatches.forEach(match => {
-        if (!match.nextMatchId || isHiddenBye(match)) return;
-        if (!groups.has(match.nextMatchId)) groups.set(match.nextMatchId, []);
-        groups.get(match.nextMatchId)!.push(match);
-    });
-
-    const paths: React.ReactNode[] = [];
-    groups.forEach((sources, nextMatchId) => {
-        if (!nextMatches.some(m => m._id === nextMatchId)) return;
-        const midY = centre(nextMatchId);
-        const ys = sources.map(m => centre(m._id)).sort((a, b) => a - b);
-        paths.push(
-            <g key={nextMatchId}>
-                {/* one stub per source, out to the shared spine */}
-                {ys.map(y => (
-                    <path key={y} d={`M 0 ${y} H ${midX}`} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
-                ))}
-                {/* the spine, spanning the sources and the elbow it feeds */}
-                <path
-                    d={`M ${midX} ${Math.min(ys[0], midY)} V ${Math.max(ys[ys.length - 1], midY)}`}
-                    fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round"
-                />
-                <path d={`M ${midX} ${midY} H ${CONN_W}`} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
-            </g>
-        );
-    });
-
-    // The gutter clips: a path can never bleed sideways into a card.
-    return (
-        <svg width={CONN_W} height={height} className="shrink-0" style={{ display: 'block' }}>
-            {paths}
-        </svg>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BRACKET MATCH CARD — with swap + inline scoring
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const BracketMatchCard: React.FC<{
-    match: Match;
-    competitorType: 'player' | 'team';
-    swapMode: boolean;
-    swapSelection: SwapSelection | null;
-    onSwapClick: (match: Match, slot: Slot, name: string) => void;
-    allMatches: Match[];
-    ResultSection?: React.ComponentType<{ match: any; competitorType: 'player' | 'team'; onRecorded: () => void }>;
-    onRecorded: () => void;
-}> = ({ match, competitorType, swapMode, swapSelection, onSwapClick, allMatches, ResultSection, onRecorded }) => {
-    const c1 = getC1(match, competitorType);
-    const c2 = getC2(match, competitorType);
-    const isBye = isHiddenBye(match);
-    const isLive = match.status === 'in_progress';
-    const isCompleted = match.status === 'completed' || (match.status === 'walkover' && !isBye);
-    // Winning the final wins the whole category, so that card says so instead
-    // of reading like any other completed match.
-    const champions = isDecidedFinal(match);
-    // A name is editable where it is shown. For a competitor who had a bye that
-    // is a later round than the slot the swap actually writes to, which
-    // resolveSwapSlot works out; a null means this name is not the organizer's
-    // to move.
-    const c1Swappable = swapMode && !!resolveSwapSlot(match, 'player1', allMatches, competitorType);
-    const c2Swappable = swapMode && !!resolveSwapSlot(match, 'player2', allMatches, competitorType);
-
-    const isSlotSelected = (slot: Slot) =>
-        swapSelection?.clickedMatchId === match._id && swapSelection?.clickedSlot === slot;
-
-    return (
-        <div className={`rounded-2xl border overflow-hidden transition-all ${champions ? 'border-amber-400/50 bg-amber-400/[0.05]' : isBye ? 'border-amber-500/15 bg-amber-500/[0.02]' : isCompleted ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-600 font-mono">M{match.matchNumber}</span>
-                    {isBye && <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/15 text-amber-400 uppercase tracking-wider">BYE</span>}
-                </div>
-                <div className="flex items-center gap-2">
-                    {champions ? (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-400/20 text-amber-300 uppercase tracking-wider">🏆 Champions</span>
-                    ) : isBye ? (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400/70 uppercase">Auto-advanced</span>
-                    ) : isLive ? (
-                        <Link to={`/live/${match._id}`} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-500/15 text-red-400 hover:bg-red-500/25 uppercase">
-                            <span className="h-1 w-1 rounded-full bg-red-500 animate-pulse" /> Live
-                        </Link>
-                    ) : isCompleted ? (
-                        <Link to={`/live/${match._id}`} className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 uppercase">Scorecard</Link>
-                    ) : c1.isTBD || c2.isTBD ? (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/10 text-gray-500 uppercase">Pending</span>
-                    ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-primary/15 text-primary uppercase">Upcoming</span>
-                    )}
-                </div>
-            </div>
-
-            {/* Competitor 1 */}
-            <CompetitorSlot
-                name={c1.name} teamName={c1.teamName}
-                isWinner={isCompleted && match.winnerId === c1.id}
-                isTBD={c1.isTBD}
-                score={match.result?.team1Total}
-                competitorType={competitorType}
-                canSwap={c1Swappable}
-                isSelected={isSlotSelected('player1')}
-                onClick={() => c1Swappable && onSwapClick(match, 'player1', c1.name)}
-            />
-
-            <div className="flex items-center px-4">
-                <div className="flex-1 h-px bg-white/5" />
-                <span className="px-2 text-[9px] text-gray-600 font-bold">VS</span>
-                <div className="flex-1 h-px bg-white/5" />
-            </div>
-
-            {/* Competitor 2 */}
-            <CompetitorSlot
-                name={c2.name} teamName={c2.teamName}
-                isWinner={isCompleted && match.winnerId === c2.id}
-                isTBD={c2.isTBD}
-                score={match.result?.team2Total}
-                competitorType={competitorType}
-                canSwap={c2Swappable}
-                isSelected={isSlotSelected('player2')}
-                onClick={() => c2Swappable && onSwapClick(match, 'player2', c2.name)}
-            />
-
-            {/* Sport-specific result section */}
-            {ResultSection && <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />}
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPETITOR SLOT (with swap highlighting)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const CompetitorSlot: React.FC<{
-    name: string; teamName: string;
-    isWinner: boolean; isTBD: boolean;
-    score: number | null | undefined;
-    competitorType: 'player' | 'team';
-    canSwap: boolean; isSelected: boolean;
-    onClick: () => void;
-}> = ({ name, teamName, isWinner, isTBD, score, competitorType, canSwap, isSelected, onClick }) => (
-    <div
-        onClick={canSwap ? onClick : undefined}
-        className={`flex items-center justify-between px-4 py-3 transition-all ${isWinner ? 'bg-emerald-500/5' : ''} ${isTBD ? 'opacity-30' : ''} ${canSwap ? 'cursor-pointer hover:bg-cyan-500/10' : ''} ${isSelected ? '!bg-cyan-500/20 ring-1 ring-cyan-400/50' : ''}`}
-    >
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            {isWinner && <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />}
-            {isSelected && <MousePointer2 className="h-3.5 w-3.5 text-cyan-400 shrink-0 animate-pulse" />}
-            <div className="min-w-0">
-                <span className={`font-semibold text-sm truncate block ${isWinner ? 'text-emerald-400' : isTBD ? 'text-gray-600 italic' : isSelected ? 'text-cyan-300' : 'text-white'}`}>
-                    {name}
+    const ready = !!category && !isTeamLeague && !loading && !loadError;
+    const actions = (
+        <>
+            {selectedCat && (
+                <a href={`/bracket/${tournamentId}/${selectedCat}`} target="_blank" rel="noopener noreferrer" className={BTN_GHOST}>
+                    <ExternalLink aria-hidden className="h-4 w-4" />Public bracket
+                </a>
+            )}
+            {ready && !hasBracket && (
+                <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>
+            )}
+            {ready && hasBracket && !hasResults && (
+                <>
+                    <button type="button" onClick={toggleSwap} className={swapMode ? BTN_PRIMARY : BTN_SECONDARY}>
+                        <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : 'Swap players'}
+                    </button>
+                    <MoreMenu label="More bracket actions" items={[{ label: 'Reshuffle round 1', icon: Shuffle, onSelect: () => setConfirm('reshuffle') }]} />
+                </>
+            )}
+            {ready && hasResults && (
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-subtle">
+                    <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: results are in
                 </span>
-                {competitorType === 'player' && teamName && !isTBD && (
-                    <span className="text-[10px] text-primary/70 font-medium mt-0.5 block truncate">{teamName}</span>
+            )}
+        </>
+    );
+
+    const body = () => {
+        if (!category) {
+            return (
+                <section className={PANEL}>
+                    <EmptyState title="No categories yet" text="Add a category first. Its draw appears here once generated."
+                        action={<button type="button" onClick={() => goTo('categories')} className={BTN_SECONDARY}>Open Categories</button>} />
+                </section>
+            );
+        }
+        if (isTeamLeague) {
+            return (
+                <Notice tone="blue" icon={Info}>
+                    Team league categories are run from{' '}
+                    <button type="button" onClick={() => goTo('team_league')} className={cn('rounded underline underline-offset-2 hover:text-sky-200', FOCUS)}>Team league</button>
+                    , where you set up groups, ties and lineups.
+                </Notice>
+            );
+        }
+        if (loading) return <section className={PANEL}><Spinner label="Loading bracket" /></section>;
+        if (loadError && !hasBracket) {
+            return (
+                <section className={cn(PANEL, 'p-4')}>
+                    <div role="alert"><Notice tone="red" icon={CircleAlert}>Couldn't load the bracket. {loadError}</Notice></div>
+                    <button type="button" onClick={() => load()} className={cn(BTN_SECONDARY, 'mt-3')}>Try again</button>
+                </section>
+            );
+        }
+        if (!hasBracket) {
+            return (
+                <section className={PANEL}>
+                    <EmptyState title="No bracket yet" text="Generate the draw once entries are final. Players are placed at random."
+                        action={<button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>} />
+                </section>
+            );
+        }
+        const hint = !swapMode && <span className="text-[12.5px] text-fg-subtle">Click a match to score it</span>;
+        const entrants = (knockout[0]?.matches ?? []).reduce((n, m) =>
+            n + [getC1(m, competitorType), getC2(m, competitorType)].filter(c => !isPlaceholderSlot(c)).length, 0);
+        return (
+            <>
+                {loadError && <div role="alert"><Notice tone="red" icon={CircleAlert}>Couldn't refresh the bracket. {loadError}</Notice></div>}
+                {league.length > 0 && (
+                    <section className={PANEL} aria-label="League fixtures">
+                        <PanelHead title="League fixtures" meta={`${league[0].matches.filter(m => !isHiddenBye(m)).length} matches`} hint={hint} />
+                        <div className="grid grid-cols-1 gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                            {league[0].matches.filter(m => !isHiddenBye(m)).map(m => <MatchCard key={m._id} match={m} ctx={cardProps} />)}
+                        </div>
+                    </section>
                 )}
-            </div>
+                {knockout.length > 0 && (
+                    <section className={PANEL} aria-label="Knockout draw">
+                        <PanelHead
+                            title="Knockout draw"
+                            meta={`${league.length ? '' : `${entrants} ${competitorType === 'team' ? 'teams' : 'players'} · `}${knockout.length} round${knockout.length === 1 ? '' : 's'}`}
+                            hint={hint}
+                        />
+                        {/* A real, visible scrollbar: wide draws scroll sideways. */}
+                        <div className="overflow-x-auto p-4 [scrollbar-width:thin]">
+                            <KnockoutTree rounds={knockout} ctx={cardProps} />
+                        </div>
+                    </section>
+                )}
+            </>
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-5">
+            <PageHead
+                title="Brackets"
+                desc="The draw for each category. Click a match to score it, or swap players before results come in."
+                actions={actions}
+            />
+
+            {categories.length > 0 && (
+                <CategoryTabs
+                    categories={categories.map(c => ({ _id: c._id, name: c.name, meta: categoryMeta(c.bracketType, c.status) }))}
+                    value={selectedCat}
+                    onChange={setSelectedCat}
+                />
+            )}
+
+            {swapMode && (
+                <Notice tone="blue" icon={ArrowLeftRight}>
+                    <b className="font-medium">Swap mode.</b>{' '}
+                    {swapping ? 'Swapping…' : swapSelection ? (
+                        <>Picked <b className="font-medium">{swapSelection.name}</b>. Now click the player to swap with, or{' '}
+                            <button type="button" onClick={() => setSwapSelection(null)} className={cn('rounded underline underline-offset-2 hover:text-sky-200', FOCUS)}>cancel</button>.</>
+                    ) : 'Click a highlighted player, then click another to swap them. Players placed by a played result can\'t be moved.'}
+                </Notice>
+            )}
+            {swapError && <div role="alert"><Notice tone="red" icon={CircleAlert}>{swapError}</Notice></div>}
+
+            {confirm === 'generate' && (
+                <div className={cn(PANEL, 'overflow-hidden')}>
+                    <ConfirmBar
+                        className="border-t-0"
+                        message={`Generate the draw for ${category?.name}? Players are placed randomly. You can swap or reshuffle until the first result.${category?.status === 'auction' ? ' The category moves to Bracket ready.' : ''}`}
+                        confirmLabel="Generate bracket"
+                        busy={busy}
+                        onConfirm={generate}
+                        onCancel={() => { setConfirm(null); setActionError(null); }}
+                    />
+                </div>
+            )}
+            {confirm === 'reshuffle' && (
+                <div className={cn(PANEL, 'overflow-hidden')}>
+                    <ConfirmBar
+                        className="border-t-0"
+                        message="Reshuffle round 1? Every first-round pairing is redrawn at random."
+                        confirmLabel="Reshuffle"
+                        danger
+                        busy={busy}
+                        onConfirm={reshuffle}
+                        onCancel={() => { setConfirm(null); setActionError(null); }}
+                    />
+                </div>
+            )}
+            {actionError && <div role="alert"><Notice tone="red" icon={CircleAlert}>{actionError}</Notice></div>}
+
+            {body()}
+
+            {openMatch && !swapMode && (
+                <MatchDialog
+                    match={openMatch}
+                    competitorType={competitorType}
+                    ResultSection={ResultSection}
+                    onRecorded={refresh}
+                    onClose={() => setOpenMatchId(null)}
+                />
+            )}
         </div>
-        {score !== null && score !== undefined && (
-            <span className={`text-lg font-bold tabular-nums shrink-0 ml-3 ${isWinner ? 'text-emerald-400' : 'text-gray-400'}`}>{score}</span>
-        )}
-        {canSwap && !isSelected && (
-            <RefreshCw className="h-3 w-3 text-cyan-500/50 shrink-0 ml-2" />
-        )}
+    );
+};
+
+const PanelHead = ({ title, meta, hint }: { title: string; meta: string; hint: React.ReactNode }) => (
+    <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-line px-4 py-3">
+        <h2 className="flex items-baseline gap-2 text-sm font-semibold text-fg">
+            {title} <span className="text-[13px] font-normal text-fg-subtle">{meta}</span>
+        </h2>
+        {hint}
     </div>
 );
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KNOCKOUT TREE — absolutely positioned cards with SVG elbow connectors
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const HEAD_H = 32; // room for the round headers above the first card
+
+interface CardContext {
+    competitorType: CompetitorType;
+    swapMode: boolean;
+    swapSelection: SwapSelection | null;
+    allMatches: BracketMatch[];
+    onSwapClick: (match: BracketMatch, slot: Slot, name: string) => void;
+    onOpen: (matchId: string) => void;
+}
+
+const KnockoutTree = ({ rounds, ctx }: { rounds: LayoutRound[]; ctx: CardContext }) => {
+    // Byes stay in the layout — they hold the geometry every later card centres
+    // on — but they are never rendered, because a bye card only ever repeats the
+    // name already shown on the card it feeds.
+    const pos = computeCardPositions(rounds);
+    const width = rounds.length * CARD_W + (rounds.length - 1) * CONN_W;
+    const height = HEAD_H + bracketHeight(pos);
+    const left = (ri: number) => ri * (CARD_W + CONN_W);
+    const mid = (id: string) => HEAD_H + (pos.get(id) ?? 0) + CARD_H / 2;
+
+    // One elbow per visible card into the card it feeds. A hidden bye has no card to
+    // leave from; its sibling's elbow still lands on the next card's centre, because
+    // the bye's reserved slot was counted there.
+    const links = rounds.slice(0, -1).flatMap((round, ri) => round.matches
+        .filter(m => m.nextMatchId && !isHiddenBye(m) && rounds[ri + 1].matches.some(n => n._id === m.nextMatchId))
+        .map(m => {
+            const x1 = left(ri) + CARD_W;
+            return <path key={m._id} d={`M${x1} ${mid(m._id)} H${x1 + CONN_W / 2} V${mid(m.nextMatchId!)} H${left(ri + 1)}`} />;
+        }));
+
+    return (
+        <div className="relative" style={{ width, height }}>
+            <svg aria-hidden className="pointer-events-none absolute inset-0" width={width} height={height}
+                fill="none" stroke="var(--color-line)" strokeWidth={1.5}>
+                {links}
+            </svg>
+            {rounds.map((round, ri) => {
+                // A bye is not a match, so the two are reported separately.
+                const byes = round.matches.filter(isHiddenBye).length;
+                const playable = round.matches.length - byes;
+                return (
+                    <React.Fragment key={round.name}>
+                        <p className="absolute top-0 truncate text-xs text-fg-subtle" style={{ left: left(ri), width: CARD_W }}>
+                            <span className="font-medium text-fg-muted">{round.name}</span>
+                            {` · ${playable} match${playable === 1 ? '' : 'es'}`}
+                            {byes > 0 && ` · ${byes} bye${byes === 1 ? '' : 's'}`}
+                        </p>
+                        {round.matches.filter(m => !isHiddenBye(m)).map(m => (
+                            <MatchCard key={m._id} match={m as BracketMatch} ctx={ctx}
+                                style={{ position: 'absolute', left: left(ri), top: HEAD_H + (pos.get(m._id) ?? 0), width: CARD_W, height: CARD_H }} />
+                        ))}
+                    </React.Fragment>
+                );
+            })}
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATCH CARD — opens the match dialog; in swap mode its sides are the controls
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const MatchCard = ({ match, ctx, style }: { match: BracketMatch; ctx: CardContext; style?: React.CSSProperties }) => {
+    const { competitorType, swapMode, swapSelection, allMatches, onSwapClick, onOpen } = ctx;
+    const c1 = getC1(match, competitorType);
+    const c2 = getC2(match, competitorType);
+    const live = match.status === 'in_progress';
+    const done = isDone(match);
+    // Winning the final wins the whole category, so that card says so.
+    const champions = isDecidedFinal(match);
+    const status = champions ? { label: 'Champions', tone: 'amber' as Tone } : matchStatus(match, c1.isTBD || c2.isTBD);
+    const name = (c: typeof c1) => (c.isTBD ? 'to be decided' : c.name);
+
+    const side = (slot: Slot, c: typeof c1, score?: number) => {
+        const win = done && !!match.winnerId && match.winnerId === c.id;
+        // A name is movable where it is shown; resolveSwapSlot finds the first-round
+        // slot behind it, and null means it is not the organizer's to move.
+        const canSwap = swapMode && !!resolveSwapSlot(match, slot, allMatches, competitorType);
+        const picked = swapSelection?.clickedMatchId === match._id && swapSelection.clickedSlot === slot;
+        const cls = cn('flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px]', slot === 'player2' && 'border-t border-line');
+        const content = (
+            <>
+                <span title={c.teamName ? `${c.name} · ${c.teamName}` : undefined}
+                    className={cn('min-w-0 flex-1 truncate', c.isTBD ? 'italic text-fg-subtle' : win ? 'font-semibold text-fg' : 'text-fg-muted')}>
+                    {c.isTBD ? 'To be decided' : c.name}
+                </span>
+                {win && <WinnerMark />}
+                <span className={cn('min-w-3 text-right tabular-nums', win ? 'font-semibold text-fg' : 'text-fg-subtle')}>{score ?? ''}</span>
+            </>
+        );
+        if (!canSwap) return <span className={cls}>{content}</span>;
+        return (
+            <button type="button" aria-pressed={picked} aria-label={`${picked ? 'Picked' : 'Swap'} ${c.name}`}
+                onClick={() => onSwapClick(match, slot, c.name)}
+                className={cn(cls, FOCUS, picked ? 'bg-sky-400/[0.18] ring-1 ring-inset ring-sky-400/70' : 'bg-sky-400/[0.06] hover:bg-sky-400/[0.12]')}>
+                {content}
+            </button>
+        );
+    };
+
+    const sides = <>{side('player1', c1, match.result?.team1Total)}{side('player2', c2, match.result?.team2Total)}</>;
+    const open = swapMode ? undefined : () => onOpen(match._id);
+
+    return (
+        <div style={style}
+            className={cn('overflow-hidden rounded-[10px] border bg-canvas transition-colors',
+                live ? 'border-red-400/30' : champions ? 'border-amber-400/40' : 'border-line',
+                !swapMode && 'hover:border-white/20')}>
+            <div onClick={open} className={cn('flex h-8 items-center justify-between gap-2 border-b border-line px-2.5 text-[11.5px] text-fg-subtle', open && 'cursor-pointer')}>
+                <span className="truncate">Match {match.matchNumber}</span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                    <ToneBadge label={status.label} tone={status.tone} live={status.live} />
+                    {(live || done) && (
+                        <ScoreboardLink matchId={match._id} label={`${live ? 'Live scoreboard' : 'Scorecard'}, match ${match.matchNumber}`} className="text-fg-subtle hover:text-fg">
+                            <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+                        </ScoreboardLink>
+                    )}
+                </span>
+            </div>
+            {open ? (
+                <button type="button" onClick={open} aria-label={`Match ${match.matchNumber}: ${name(c1)} vs ${name(c2)}, ${status.label}. Open match`}
+                    className={cn('block w-full text-left', FOCUS, 'focus-visible:ring-inset')}>
+                    {sides}
+                </button>
+            ) : sides}
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MATCH DIALOG — the sport's scoring slot, plus the scoreboard link
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const MatchDialog = ({ match, competitorType, ResultSection, onRecorded, onClose }: {
+    match: BracketMatch; competitorType: CompetitorType; ResultSection?: ResultSlot; onRecorded: () => void; onClose: () => void;
+}) => {
+    const c1 = getC1(match, competitorType);
+    const c2 = getC2(match, competitorType);
+    const waiting = c1.isTBD || c2.isTBD;
+    const done = isDone(match);
+    const status = isDecidedFinal(match) ? { label: 'Champions', tone: 'amber' as Tone } : matchStatus(match, waiting);
+    const games = gamesText(match);
+
+    const row = (c: typeof c1, score?: number) => {
+        const win = done && !!match.winnerId && match.winnerId === c.id;
+        return (
+            <div className="flex items-center justify-between gap-3 py-2.5 first:pt-0">
+                <div className="min-w-0">
+                    <p className={cn('flex items-center gap-1.5 truncate text-sm', c.isTBD ? 'italic text-fg-subtle' : win ? 'font-semibold text-fg' : 'text-fg-muted')}>
+                        {c.isTBD ? 'To be decided' : c.name}{win && <WinnerMark />}
+                    </p>
+                    {competitorType === 'player' && c.teamName && !c.isTBD && <p className="truncate text-xs text-fg-subtle">{c.teamName}</p>}
+                </div>
+                <span className={cn('tabular-nums', win ? 'font-semibold text-fg' : 'text-fg-subtle')}>{score ?? ''}</span>
+            </div>
+        );
+    };
+
+    return (
+        <Dialog title={`Match ${match.matchNumber} · ${match.bracketRound}`} onClose={onClose}>
+            <div className="grid gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <ToneBadge label={status.label} tone={status.tone} live={status.live} />
+                    {games && <span className="text-[12.5px] tabular-nums text-fg-subtle">{games}</span>}
+                    {!games && done && match.result?.marginOfVictory && <span className="text-[12.5px] text-fg-subtle">{match.result.marginOfVictory}</span>}
+                </div>
+                <div className="divide-y divide-line">
+                    {row(c1, match.result?.team1Total)}
+                    {row(c2, match.result?.team2Total)}
+                </div>
+                {waiting ? (
+                    <p className="text-[13px] text-fg-muted">Waiting for players. Scoring opens once both sides are known.</p>
+                ) : ResultSection && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <ResultSection match={match} competitorType={competitorType} onRecorded={onRecorded} />
+                    </div>
+                )}
+                <ScoreboardLink matchId={match._id} label="Open live scoreboard" className="inline-flex w-fit items-center gap-1 text-[13px] text-fg-muted hover:text-fg">
+                    <ExternalLink aria-hidden className="h-3.5 w-3.5" />Open live scoreboard
+                </ScoreboardLink>
+            </div>
+        </Dialog>
+    );
+};
 
 export default BracketManagementSection;

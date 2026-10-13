@@ -16,7 +16,7 @@ export interface Category {
     maxRegistrations?: number;
     isPaidRegistration: boolean;
     registrationFee: number;
-    status: 'draft' | 'registration_open' | 'registration_closed' | 'auction_in_progress' | 'ongoing' | 'completed';
+    status: 'setup' | 'registration' | 'auction' | 'groups_configured' | 'bracket_configured' | 'ongoing' | 'completed';
     bracketType?: 'knockout' | 'round_robin' | 'group_knockout' | 'league' | 'hybrid' | 'team_league';
     teamLeagueConfig?: {
         subTeamSlots: { slotNumber: number; matchType: string; label: string }[];
@@ -236,6 +236,24 @@ export const rejectRegistration = createAsyncThunk(
     }
 );
 
+// Bulk approve (Organizer). The server approves each id on its own and answers with one
+// result per id, in request order: the approved registration, or { error, id } if that one failed.
+export const bulkApproveRegistrations = createAsyncThunk(
+    'registration/bulkApprove',
+    async (registrationIds: string[], { rejectWithValue }) => {
+        try {
+            const response = await API.post('/registrations/bulk-approve', { registrationIds });
+            const results = response.data?.data?.data || response.data?.data || [];
+            const failed = registrationIds
+                .map((id, i) => ({ id, error: results[i]?.error as string | undefined }))
+                .filter(r => r.error);
+            return { approved: registrationIds.filter(id => !failed.some(f => f.id === id)), failed };
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 // Manually assign (or reassign) a player to a team (Organizer)
 export const manualAssignPlayer = createAsyncThunk(
     'registration/manualAssign',
@@ -435,6 +453,14 @@ const registrationSlice = createSlice({
         builder.addCase(rejectRegistration.rejected, (state, action) => {
             state.isLoading = false;
             state.error = action.payload as string;
+        });
+
+        // BULK APPROVE — errors are reported per id in the payload, so only patch successes.
+        builder.addCase(bulkApproveRegistrations.fulfilled, (state, action) => {
+            const approved = new Set(action.payload.approved);
+            state.tournamentRegistrations = state.tournamentRegistrations.map(reg =>
+                approved.has(reg._id) ? { ...reg, status: 'approved' } : reg
+            );
         });
 
         // MANUAL ASSIGN

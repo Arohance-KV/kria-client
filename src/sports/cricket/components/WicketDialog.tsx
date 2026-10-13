@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { X, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import { BTN_DANGER_SOLID, BTN_SECONDARY, FOCUS } from '@/pages/organizer/shared';
+import { Dialog, Field, Segmented } from '@/pages/organizer/ui';
 import type { PlayerSlot } from '@/sports/cricket/lib/lineup';
+import { PickChips } from './NextPlayerPrompt';
 
 export interface WicketResult {
     wicketType: 'bowled' | 'caught' | 'lbw' | 'run_out' | 'stumped' | 'hit_wicket' | 'retired_hurt';
@@ -12,150 +15,103 @@ export interface WicketResult {
 interface Props {
     strikerId: string;
     nonStrikerId: string;
+    bowlerId: string;
+    /** "12.3", the delivery being recorded. */
+    ball: string;
     nameOf: (id: string) => string;
     fieldingXI: PlayerSlot[];
     onConfirm: (r: WicketResult) => void;
     onCancel: () => void;
 }
 
-const TYPES: Array<{ value: WicketResult['wicketType']; label: string }> = [
-    { value: 'bowled',        label: 'Bowled'       },
-    { value: 'caught',        label: 'Caught'       },
-    { value: 'lbw',           label: 'LBW'          },
-    { value: 'run_out',       label: 'Run Out'      },
-    { value: 'stumped',       label: 'Stumped'      },
-    { value: 'hit_wicket',    label: 'Hit Wicket'   },
-    { value: 'retired_hurt',  label: 'Retired Hurt' },
+type How = WicketResult['wicketType'];
+
+const TYPES: Array<[How, string]> = [
+    ['bowled', 'Bowled'], ['caught', 'Caught'], ['lbw', 'LBW'], ['run_out', 'Run out'],
+    ['stumped', 'Stumped'], ['hit_wicket', 'Hit wicket'], ['retired_hurt', 'Retired hurt'],
 ];
 
-const NEEDS_FIELDER = new Set<WicketResult['wicketType']>(['caught', 'run_out', 'stumped']);
+const NEEDS_FIELDER = new Set<How>(['caught', 'run_out', 'stumped']);
+// Every other dismissal can only happen to the batter on strike.
+const EITHER_END = new Set<How>(['run_out', 'retired_hurt']);
 
-export default function WicketDialog({ strikerId, nonStrikerId, nameOf, fieldingXI, onConfirm, onCancel }: Props) {
-    const [wicketType,         setWicketType]         = useState<WicketResult['wicketType']>('bowled');
-    const [dismissedPlayerId,  setDismissedPlayerId]  = useState(strikerId);
-    const [fielderId,          setFielderId]          = useState('');
-    const [runs,               setRuns]               = useState(0);
+export default function WicketDialog({ strikerId, nonStrikerId, bowlerId, ball, nameOf, fieldingXI, onConfirm, onCancel }: Props) {
+    const [how, setHow] = useState<How>('caught');
+    const [who, setWho] = useState(strikerId);
+    const [fielderId, setFielderId] = useState('');
+    const [runs, setRuns] = useState(0);
 
-    const needsFielder = NEEDS_FIELDER.has(wicketType);
-    const canConfirm   = !needsFielder || fielderId !== '';
+    const needsFielder = NEEDS_FIELDER.has(how);
+    // Runs, fielder and batter all depend on the mode of dismissal, so a change
+    // starts them over — a run-out's 2 runs must not ride along onto a catch.
+    const changeHow = (h: How) => {
+        setHow(h);
+        setFielderId('');
+        setRuns(0);
+        if (!EITHER_END.has(h)) setWho(strikerId);
+    };
+
+    // Same wording as the server's scorecard (dismissalLineFor), so this is what it will print.
+    const b = nameOf(bowlerId);
+    const f = fielderId ? nameOf(fielderId) : '?';
+    const line: Record<How, string> = {
+        bowled: `b ${b}`, lbw: `lbw b ${b}`, caught: `c ${f} b ${b}`, stumped: `st ${f} b ${b}`,
+        run_out: `run out (${f})`, hit_wicket: `hit wicket b ${b}`, retired_hurt: 'retired hurt',
+    };
+
+    // The bowler first and marked, so caught-and-bowled is one tap.
+    const fielders = [
+        ...fieldingXI.filter(p => p.registrationId === bowlerId),
+        ...fieldingXI.filter(p => p.registrationId !== bowlerId),
+    ];
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-            <div
-                className="w-full max-w-md flex flex-col gap-4 rounded-2xl overflow-hidden font-montserrat"
-                style={{ background: '#0c1526', border: '1px solid rgba(255,255,255,.09)' }}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8"
-                    style={{ background: 'rgba(220,38,38,.08)' }}>
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-red-400" />
-                        <h3 className="text-base font-bold text-white">Wicket</h3>
+        <Dialog title="Wicket" description={`${ball} · ${b} to ${nameOf(strikerId)}`} onClose={onCancel}
+            footer={<>
+                <button type="button" onClick={onCancel} className={BTN_SECONDARY}>Cancel</button>
+                <button type="button" disabled={needsFielder && !fielderId}
+                    onClick={() => onConfirm({ wicketType: how, dismissedPlayerId: who, fielderId: needsFielder ? fielderId : undefined, runs: how === 'run_out' ? runs : 0 })}
+                    className={BTN_DANGER_SOLID}>Record wicket</button>
+            </>}>
+            <div className="grid gap-5">
+                <Field label="How out?">
+                    <div role="radiogroup" aria-label="How out" className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {TYPES.map(([v, l]) => (
+                            <button key={v} type="button" role="radio" aria-checked={how === v} onClick={() => changeHow(v)}
+                                className={cn('h-11 rounded-lg text-[13px] font-medium ring-1 ring-inset transition-colors', FOCUS,
+                                    how === v ? 'bg-red-500/10 text-red-200 ring-red-400/50' : 'bg-canvas text-fg-muted ring-line hover:text-fg')}>
+                                {l}
+                            </button>
+                        ))}
                     </div>
-                    <button onClick={onCancel} className="text-gray-500 hover:text-white transition-colors">
-                        <X className="h-5 w-5" />
-                    </button>
-                </div>
+                </Field>
 
-                <div className="px-5 pb-5 flex flex-col gap-4">
+                <Field label="Who's out?" help={EITHER_END.has(how) ? 'Either batter can be out this way.' : 'Only the batter on strike can be out this way.'}>
+                    <Segmented<string> name="wk-who" label="Batter out" value={who} onChange={setWho}
+                        options={[
+                            { value: strikerId, label: `${nameOf(strikerId)} (on strike)` },
+                            ...(EITHER_END.has(how) ? [{ value: nonStrikerId, label: nameOf(nonStrikerId) }] : []),
+                        ]} />
+                </Field>
 
-                    {/* How out */}
-                    <div>
-                        <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mb-2">How out?</div>
-                        <div className="grid grid-cols-4 gap-1.5">
-                            {TYPES.map(t => (
-                                <button
-                                    key={t.value}
-                                    onClick={() => { setWicketType(t.value); setFielderId(''); }}
-                                    className="py-2 rounded-xl text-xs font-semibold transition-all"
-                                    style={{
-                                        background: wicketType === t.value ? '#dc2626' : 'rgba(255,255,255,.05)',
-                                        color:      wicketType === t.value ? '#fff'    : '#9ca3af',
-                                        border:     `1.5px solid ${wicketType === t.value ? '#dc2626' : 'rgba(255,255,255,.07)'}`,
-                                    }}
-                                >
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                {needsFielder && (
+                    <Field label={how === 'stumped' ? 'Keeper' : 'Fielder'}>
+                        <PickChips label="Fielder" options={fielders} value={fielderId} onChange={setFielderId}
+                            note={id => (id === bowlerId ? 'Bowler' : undefined)} />
+                    </Field>
+                )}
 
-                    {/* Batsman out */}
-                    <div>
-                        <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mb-2">Batsman out</div>
-                        <div className="grid grid-cols-2 gap-2">
-                            {[strikerId, nonStrikerId].map(id => (
-                                <button
-                                    key={id}
-                                    onClick={() => setDismissedPlayerId(id)}
-                                    className="px-3 py-3 rounded-xl text-sm font-semibold text-left transition-all"
-                                    style={{
-                                        background: dismissedPlayerId === id ? 'rgba(249,115,22,.15)' : 'rgba(255,255,255,.04)',
-                                        border:     `1.5px solid ${dismissedPlayerId === id ? 'rgba(249,115,22,.4)' : 'rgba(255,255,255,.07)'}`,
-                                        color:      dismissedPlayerId === id ? '#F97316' : '#d1d5db',
-                                    }}
-                                >
-                                    {nameOf(id)}
-                                    {id === strikerId && <span className="text-[10px] text-gray-500 block font-normal">On strike ★</span>}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                {how === 'run_out' && (
+                    <Field label="Runs completed before the run-out">
+                        <Segmented<number> name="wk-runs" label="Runs completed" value={runs} onChange={setRuns}
+                            options={[0, 1, 2, 3].map(v => ({ value: v, label: String(v) }))} />
+                    </Field>
+                )}
 
-                    {/* Fielder (for caught / run_out / stumped) */}
-                    {needsFielder && (
-                        <div>
-                            <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mb-2">Fielder</div>
-                            <select
-                                value={fielderId}
-                                onChange={e => setFielderId(e.target.value)}
-                                className="w-full h-10 rounded-xl px-3 text-sm text-white"
-                                style={{ background: '#111d33', border: '1.5px solid rgba(255,255,255,.09)', outline: 'none' }}
-                            >
-                                <option value="">— select fielder —</option>
-                                {fieldingXI.map(p => (
-                                    <option key={p.registrationId} value={p.registrationId}>{p.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Run-out runs */}
-                    {wicketType === 'run_out' && (
-                        <div>
-                            <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mb-2">
-                                Runs completed before run-out
-                            </div>
-                            <div className="flex gap-2">
-                                {[0, 1, 2, 3].map(r => (
-                                    <button
-                                        key={r}
-                                        onClick={() => setRuns(r)}
-                                        className="w-12 h-10 rounded-xl text-sm font-bold transition-all"
-                                        style={{
-                                            background: runs === r ? 'rgba(249,115,22,.15)' : 'rgba(255,255,255,.05)',
-                                            border:     `1.5px solid ${runs === r ? 'rgba(249,115,22,.4)' : 'rgba(255,255,255,.07)'}`,
-                                            color:      runs === r ? '#F97316' : '#9ca3af',
-                                        }}
-                                    >
-                                        {r}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Confirm */}
-                    <button
-                        disabled={!canConfirm}
-                        onClick={() => onConfirm({ wicketType, dismissedPlayerId, fielderId: fielderId || undefined, runs })}
-                        className="w-full py-3.5 rounded-xl font-oswald font-bold text-base tracking-wider transition-all disabled:opacity-40"
-                        style={{ background: canConfirm ? '#dc2626' : '#7f1d1d', color: '#fff', border: 'none', cursor: canConfirm ? 'pointer' : 'not-allowed' }}
-                    >
-                        Confirm Wicket
-                    </button>
-                </div>
+                <p className="rounded-lg bg-white/[0.04] px-3 py-2 text-[13px] text-fg-muted">
+                    Scorecard reads: <span className="text-fg">{nameOf(who)} {line[how]}</span>
+                </p>
             </div>
-        </div>
+        </Dialog>
     );
 }

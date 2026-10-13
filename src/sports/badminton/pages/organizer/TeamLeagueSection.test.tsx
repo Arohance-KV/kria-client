@@ -11,9 +11,9 @@ import TeamLeagueSection from './TeamLeagueSection';
 /**
  * Standings used to be fetched once by this section's mount effect and handed
  * to GroupStandingsTable as a prop. Opening the Standings tab therefore showed
- * whatever was true when the page first loaded — '0/3 ties completed' on a
- * finished group — and because the Advance button is gated on that same data,
- * it stayed hidden. Overview never had the bug: it is conditionally mounted
+ * whatever was true when the page first loaded — '0 of 3 ties played' on a
+ * finished group — and because advancing is gated on that same data, it
+ * stayed unavailable. Overview never had the bug: it is conditionally mounted
  * and fetches on its own mount.
  */
 
@@ -68,7 +68,7 @@ function mockApi() {
         }),
         http.get(`${BASE}/groups`, () => envelope(GROUPS)),
         http.get(`${BASE}/overview`, () => envelope({ stages: [{ stageNumber: 1 }] })),
-        http.get('https://api.kria.club/teams/tournament/tour1', () => envelope([])),
+        http.get('https://api.kria.club/tournaments/tour1/teams', () => envelope([])),
     );
     return counter;
 }
@@ -106,16 +106,17 @@ describe('TeamLeagueSection — standings freshness', () => {
         renderSection();
         await openTab(/standings/i);
 
-        expect(await screen.findByText('3/3 ties completed')).toBeTruthy();
+        expect(await screen.findByText('3 of 3 ties played')).toBeTruthy();
     });
 
-    it('offers Advance to Stage 2 once the refetched standings are complete', async () => {
-        // The button is gated on completedTies === totalTies, so a stale zero
-        // hid it on a group that had actually finished.
+    it('offers advancing to stage 2 once the refetched standings are complete', async () => {
+        // Advancing is gated on completedTies === totalTies, so a stale zero
+        // kept it disabled on a group that had actually finished.
         mockApi();
         renderSection();
         await openTab(/standings/i);
 
-        expect(await screen.findByRole('button', { name: /advance teams to stage 2/i })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: /advance to stage 2/i })).toBeTruthy();
+        await waitFor(() => expect(screen.getByRole('button', { name: /advance teams/i })).toBeEnabled());
     });
 });

@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
+import { MemoryRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
@@ -12,7 +13,8 @@ import CricketMatchSummary from './CricketMatchSummary';
 // this reuses the existing undo-last-ball endpoint, which already unwinds the
 // whole completion server-side: ledger rows, player stats, career profiles and
 // the advanced bracket winner.
-const UNDO = 'https://api.kria.club/sports/cricket/match/m1/balls/last';
+const API = 'https://api.kria.club/sports/cricket/match';
+const UNDO = `${API}/m1/balls/last`;
 
 const completedMatch = {
     _id: 'm1',
@@ -28,11 +30,14 @@ const completedMatch = {
 
 // A store holding only the cricket slice: the real app assembles plugin
 // reducers at module load, which a test should not depend on.
-const renderSummary = () => {
+// Fixtures are shaped ad hoc per case, and the component takes `match: any`.
+const renderSummary = (match: any = completedMatch) => {
     const store = configureStore({ reducer: { cricketLiveState: cricketLiveStateReducer } });
     render(
         <Provider store={store}>
-            <CricketMatchSummary match={completedMatch} />
+            <MemoryRouter>
+                <CricketMatchSummary match={match} />
+            </MemoryRouter>
         </Provider>,
     );
     return { store };
@@ -40,12 +45,15 @@ const renderSummary = () => {
 
 const correctBtn = () => screen.getByRole('button', { name: /correct result/i });
 
+// Re-reading the match after a correction reopens scoring in the console.
+let refetches = 0;
 beforeEach(() => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
-    vi.stubGlobal('alert', vi.fn());
+    refetches = 0;
+    server.use(
+        http.get(`${API}/m1`, () => { refetches += 1; return HttpResponse.json({ data: { data: { ...completedMatch, status: 'in_progress' } } }); }),
+        http.get(`${API}/m1/live`, () => HttpResponse.json({ data: { data: { liveState: { matchStatus: 'innings2' } } } })),
+    );
 });
-
-afterEach(() => vi.unstubAllGlobals());
 
 describe('CricketMatchSummary — correcting a completed match', () => {
     it('still shows the result it is offering to correct', () => {
@@ -54,7 +62,7 @@ describe('CricketMatchSummary — correcting a completed match', () => {
         expect(correctBtn()).toBeInTheDocument();
     });
 
-    it('undoes the final delivery once confirmed', async () => {
+    it('undoes the final delivery once confirmed, then reopens the match', async () => {
         let hits = 0;
         server.use(http.delete(UNDO, () => {
             hits += 1;
@@ -65,15 +73,15 @@ describe('CricketMatchSummary — correcting a completed match', () => {
 
         renderSummary();
         await userEvent.click(correctBtn());
+        // Asks inline first, explaining what a correction undoes.
+        expect(screen.getByText(/career stats it credited are removed/i)).toBeInTheDocument();
+        await userEvent.click(correctBtn());
 
         await waitFor(() => expect(hits).toBe(1));
+        await waitFor(() => expect(refetches).toBe(1));
     });
 
-    it('sends nothing if the confirm is dismissed', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => false));
-        // Counted rather than left unmocked: asserting only that confirm was
-        // called would pass even if the guard were removed, since confirm is
-        // called either way. The request count is the thing under test.
+    it('sends nothing if the organizer keeps the result', async () => {
         let hits = 0;
         server.use(http.delete(UNDO, () => {
             hits += 1;
@@ -82,9 +90,10 @@ describe('CricketMatchSummary — correcting a completed match', () => {
 
         renderSummary();
         await userEvent.click(correctBtn());
+        await userEvent.click(screen.getByRole('button', { name: 'Keep result' }));
 
-        expect(window.confirm).toHaveBeenCalled();
         expect(hits).toBe(0);
+        expect(correctBtn()).toBeInTheDocument();
     });
 
     // The realistic refusal: a match completed through the manual result endpoint
@@ -97,14 +106,15 @@ describe('CricketMatchSummary — correcting a completed match', () => {
 
         renderSummary();
         await userEvent.click(correctBtn());
+        await userEvent.click(correctBtn());
 
         expect(await screen.findByText(/No balls to undo\./i)).toBeInTheDocument();
     });
 
     // The undo succeeded but the bracket still lists the undone winner, so the
-    // organizer has manual work. The console swaps this phase out on success,
-    // which would discard an inline message — hence a blocking alert.
-    it('blocks on a bracket warning', async () => {
+    // organizer has manual work. Reopening the match would swap this screen out
+    // and take the message with it, so it waits until they have read it.
+    it('shows a bracket warning inline and waits before reopening', async () => {
         const warn = 'Bracket unchanged: Final match 3 is already under way and still lists the undone winner.';
         server.use(http.delete(UNDO, () =>
             HttpResponse.json({ data: { data: { liveState: { matchStatus: 'in_progress' }, bracketWarning: warn } } }),
@@ -112,8 +122,13 @@ describe('CricketMatchSummary — correcting a completed match', () => {
 
         renderSummary();
         await userEvent.click(correctBtn());
+        await userEvent.click(correctBtn());
 
-        await waitFor(() => expect(window.alert).toHaveBeenCalledWith(warn));
+        expect(await screen.findByText(warn)).toBeInTheDocument();
+        expect(refetches).toBe(0);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Continue scoring' }));
+        await waitFor(() => expect(refetches).toBe(1));
     });
 });
 
@@ -133,51 +148,47 @@ const tiedMatch = {
     ],
 };
 
-// Fixtures are shaped ad hoc per case, and the component takes `match: any`.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const renderTied = (match: any = tiedMatch) => {
-    const store = configureStore({ reducer: { cricketLiveState: cricketLiveStateReducer } });
-    render(
-        <Provider store={store}>
-            <CricketMatchSummary match={match} />
-        </Provider>,
-    );
-};
-
 describe('CricketMatchSummary — a tied match', () => {
     it('calls it a tie instead of inventing a winner', () => {
-        renderTied();
+        renderSummary(tiedMatch);
         expect(screen.getByText(/match tied/i)).toBeInTheDocument();
         expect(screen.queryByText(/Winner won/i)).not.toBeInTheDocument();
     });
 
     it('does not claim anyone advanced', () => {
-        renderTied();
+        renderSummary(tiedMatch);
         expect(screen.queryByText(/advanced in the bracket automatically/i)).not.toBeInTheDocument();
     });
 
     it('offers both sides so the organizer can name who goes through', () => {
-        renderTied();
-        expect(screen.getByRole('button', { name: /Konkan Titans/ })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /Deccan Dynamos/ })).toBeInTheDocument();
+        renderSummary(tiedMatch);
+        expect(screen.getByRole('radio', { name: /Konkan Titans/ })).toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: /Deccan Dynamos/ })).toBeInTheDocument();
     });
 
-    it('posts the chosen side to the tie-break endpoint', async () => {
+    it('posts the chosen side to the tie-break endpoint and re-reads the match', async () => {
         let body: Record<string, unknown> | null = null;
-        server.use(http.post('https://api.kria.club/sports/cricket/match/m2/resolve-tie', async ({ request }) => {
-            body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ data: { data: {} } });
-        }));
+        let reread = false;
+        server.use(
+            http.post(`${API}/m2/resolve-tie`, async ({ request }) => {
+                body = (await request.json()) as Record<string, unknown>;
+                return HttpResponse.json({ data: { data: {} } });
+            }),
+            http.get(`${API}/m2`, () => { reread = true; return HttpResponse.json({ data: { data: { ...tiedMatch, winnerId: 't2' } } }); }),
+        );
 
-        renderTied();
-        await userEvent.click(screen.getByRole('button', { name: /Deccan Dynamos/ }));
-        await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
+        const { store } = renderSummary(tiedMatch);
+        expect(screen.getByRole('button', { name: /record who advanced/i })).toBeDisabled();
+        await userEvent.click(screen.getByRole('radio', { name: /Deccan Dynamos/ }));
+        await userEvent.click(screen.getByRole('button', { name: /record who advanced/i }));
 
         await waitFor(() => expect(body).toEqual({ winnerTeamId: 't2' }));
+        await waitFor(() => expect(reread).toBe(true));
+        await waitFor(() => expect(store.getState().cricketLiveState.byMatchId.m2?.match?.winnerId).toBe('t2'));
     });
 
     it('leaves a decided match exactly as it was', () => {
-        renderTied(completedMatch);
+        renderSummary(completedMatch);
         expect(screen.getByText(/Alpha won by 3 wickets/i)).toBeInTheDocument();
         expect(screen.getByText(/advanced in the bracket automatically/i)).toBeInTheDocument();
     });
@@ -193,21 +204,21 @@ const wonFinal = {
 
 describe('CricketMatchSummary — winning the final', () => {
     it('crowns the winner instead of saying they advanced', () => {
-        renderTied(wonFinal);
+        renderSummary(wonFinal);
         expect(screen.getByText(/champions/i)).toBeInTheDocument();
-        expect(screen.getByText(/Alpha/)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /Alpha/ })).toBeInTheDocument();
         // There is no next round to advance into.
         expect(screen.queryByText(/advanced in the bracket automatically/i)).not.toBeInTheDocument();
     });
 
     it('still says "advanced" for a round that has one', () => {
-        renderTied({ ...completedMatch, bracketRound: 'Semi-Final', nextMatchId: 'f1' });
+        renderSummary({ ...completedMatch, bracketRound: 'Semi-Final', nextMatchId: 'f1' });
         expect(screen.getByText(/advanced in the bracket automatically/i)).toBeInTheDocument();
         expect(screen.queryByText(/champions/i)).not.toBeInTheDocument();
     });
 
     it('does not crown anyone when the final is still tied', () => {
-        renderTied({ ...tiedMatch, bracketRound: 'Final' });
+        renderSummary({ ...tiedMatch, bracketRound: 'Final' });
         expect(screen.queryByText(/champions/i)).not.toBeInTheDocument();
         expect(screen.getByText(/match tied/i)).toBeInTheDocument();
     });
