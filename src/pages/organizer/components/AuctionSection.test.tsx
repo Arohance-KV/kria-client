@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { Provider } from 'react-redux';
@@ -114,6 +114,16 @@ describe('AuctionSection', () => {
 
         act(() => sock.handlers['auction:update'](status({ liveBid: { currentPrice: 11000, highestBidderId: 't3', highestBidderName: 'HSR Hawks' } })));
         expect(screen.getByRole('button', { name: 'Sell to HSR Hawks · ₹11,000' })).toBeEnabled();
+    });
+
+    it('names the unsold players waiting for the next round', async () => {
+        current = status({ unsoldCount: 1 });
+        current = { ...current, unsold: [{ registrationId: 'r5', playerName: 'Vikram Shah', basePrice: 1000, skillLevel: 'beginner' }] } as typeof current;
+        mockApi();
+        renderSection();
+
+        await userEvent.click(await screen.findByRole('button', { name: /^Unsold/ }));
+        expect(screen.getByText('Vikram Shah')).toBeInTheDocument();
     });
 
     it('says why each team cannot bid', async () => {
@@ -283,7 +293,8 @@ describe('AuctionSection', () => {
         renderSection();
 
         expect(await screen.findByText(/The auction ended with 1 player unsold/)).toBeInTheDocument();
-        expect(screen.getByText('Top sale').nextSibling).toHaveTextContent('₹14,000');
+        // The sold log is a separate request and can land after /status.
+        await waitFor(() => expect(screen.getByText('Top sale').nextSibling).toHaveTextContent('₹14,000'));
         const hawks = within(screen.getByRole('region', { name: 'Team spending' })).getByText('HSR Hawks').closest('li');
         expect(hawks).toHaveTextContent('₹29,000'); // spent
         expect(hawks).toHaveTextContent('₹71,000'); // purse left

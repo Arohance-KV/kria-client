@@ -9,12 +9,15 @@
  * Both are shown only if the tournament has at least one team_league category.
  */
 
+import { lazy } from 'react';
 import { sportRegistry } from '@/sports/registry';
-import TeamLeagueSection from './pages/organizer/TeamLeagueSection';
-import TeamLeagueTab from './pages/player-tournament/TeamLeagueTab';
 import BadmintonCategoryForm from './pages/organizer/BadmintonCategoryForm';
 import BadmintonMatchResultSection from './pages/organizer/BadmintonMatchResultSection';
-import BadmintonLiveScoreboard from './pages/public/BadmintonLiveScoreboard';
+
+// Loaded on first visit. LiveScoreboardPage and the tournament pages hold the Suspense.
+const TeamLeagueSection = lazy(() => import('./pages/organizer/TeamLeagueSection'));
+const TeamLeagueTab = lazy(() => import('./pages/player-tournament/TeamLeagueTab'));
+const BadmintonLiveScoreboard = lazy(() => import('./pages/public/BadmintonLiveScoreboard'));
 
 sportRegistry.register({
     sportKey: 'badminton',

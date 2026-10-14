@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { BTN_GHOST, BTN_SM, MATCH_STATUS, ToneBadge } from '@/pages/organizer/shared';
 import { Notice, SegTabs, Spinner } from '@/pages/organizer/ui';
 import { fetchMatchAndLive, selectMatchEntry } from '@/sports/cricket/store/cricketLiveStateSlice';
+import { fetchTournamentTeams } from '@/store/slices/teamSlice';
 import { cricketCategoryApi } from '@/sports/cricket/api/cricketCategory';
 import { cricketMatchApi } from '@/sports/cricket/api/cricketMatch';
 import { xiSlots } from '@/sports/cricket/lib/lineup';
@@ -50,6 +51,11 @@ export default function CricketScoringConsole() {
         if (!match?.categoryId) return;
         cricketCategoryApi.getById(match.categoryId).then(setCategory).catch(() => {});
     }, [match?.categoryId]);
+
+    // Logos and colours for the team badges (CricketTeamLogo).
+    useEffect(() => {
+        if (match?.tournamentId) dispatch(fetchTournamentTeams(String(match.tournamentId)));
+    }, [match?.tournamentId, dispatch]);
 
     // Any delivery or undo moves this key, dot balls included, and the scorecard follows.
     const tallyKey = `${live?.runs ?? 0}|${live?.wickets ?? 0}|${live?.completedOvers ?? 0}|${live?.ballsInCurrentOver ?? 0}|${live?.currentInnings ?? 1}|${live?.matchStatus ?? ''}`;
@@ -101,7 +107,7 @@ export default function CricketScoringConsole() {
     const offline = socketStatus === 'reconnecting';
     const openersFor = (inningsNumber: number, note?: string) => (
         <StartInningsStep inningsNumber={inningsNumber} note={note} onReady={setOpeners}
-            battingTeam={teamName(match, batting)} bowlingTeam={teamName(match, bowling)}
+            battingTeamId={batting} battingTeam={teamName(match, batting)} bowlingTeam={teamName(match, bowling)}
             battingXI={xiSlots(match, batting)} bowlingXI={xiSlots(match, bowling)} />
     );
 

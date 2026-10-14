@@ -1,377 +1,307 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-    ArrowLeft, UserPlus, Share2, Settings, CalendarCheck, Bookmark, FileText,
-    Users, Newspaper, User, PlusCircle, Store, Pencil, Save, Loader2,
-    Trophy, TrendingUp, CheckCircle2, Building2, Camera,
-} from 'lucide-react';
-import HoverFooter from '@/components/HoverFooter';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
+import { ArrowRight, Camera, Check, Loader2, LogOut } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { logout, updateProfile, fetchOrganizerStats, OrganizerStats, uploadOrganizerProfileImage } from '../../store/slices/authSlice';
-import { fetchMyTournaments, Tournament } from '../../store/slices/tournamentSlice';
-import { Badge } from '@/components/ui/badge';
+import {
+    changePassword, fetchOrganizerStats, logout, updateOrganization, updateProfile, uploadOrganizerProfileImage,
+} from '../../store/slices/authSlice';
+import { cn } from '@/lib/utils';
+import { AccountMenu, Brand, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, OrganizerSidebar, TONE } from './shared';
+import { Avatar, Field, FormSection, INPUT, Notice, PageHead, PANEL, TEXTAREA } from './ui';
 
-// ─── Dashboard card ───────────────────────────────────────────────────────────
-const DashboardCard = ({ icon: Icon, title, onClick, badge }: { icon: any; title: string; onClick?: () => void; badge?: string | number }) => (
-    <div
-        onClick={onClick}
-        className="group relative flex flex-col items-center justify-center gap-4 p-8 rounded-3xl bg-white/5 border border-white/10 cursor-pointer transition-all duration-300 hover:bg-white/10 hover:border-primary/50 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 overflow-hidden aspect-square"
-    >
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        {badge !== undefined && (
-            <span className="absolute top-3 right-3 bg-primary text-white text-xs font-bold px-2 py-0.5 rounded-full z-10">
-                {badge}
-            </span>
-        )}
-        <Icon className="h-12 w-12 text-primary group-hover:scale-110 transition-transform duration-300 ease-out z-10" strokeWidth={1.5} />
-        <span className="text-lg font-bold font-oswald tracking-wide text-white z-10 group-hover:text-primary transition-colors">{title}</span>
-    </div>
-);
+// Server limit (profileImageMemoryUpload: 5 * 1000 * 1000 bytes); checked first so a big photo never uploads.
+const MAX_PHOTO = 5_000_000;
+const INVALID = 'border-red-400/50 hover:border-red-400/60';
 
-// ─── Stat chip ────────────────────────────────────────────────────────────────
-const StatChip = ({ icon: Icon, label, value, accent = false }: { icon: any; label: string; value: string | number; accent?: boolean }) => (
-    <div className="flex flex-col gap-1.5 p-4 rounded-2xl bg-white/5 border border-white/10">
-        <div className="flex items-center gap-2 text-gray-500">
-            <Icon className={`h-3.5 w-3.5 ${accent ? 'text-primary' : ''}`} />
-            <span className="text-xs uppercase tracking-wider font-oswald">{label}</span>
-        </div>
-        <span className={`text-xl font-bold font-oswald ${accent ? 'text-primary' : 'text-white'}`}>{value}</span>
-    </div>
-);
+type User = { firstName?: string; lastName?: string; phone?: string; organization?: { name?: string; description?: string } } | null;
+const detailsOf = (u: User) => ({ firstName: u?.firstName ?? '', lastName: u?.lastName ?? '', phone: u?.phone ?? '' });
+const orgOf = (u: User) => ({ name: u?.organization?.name ?? '', description: u?.organization?.description ?? '' });
+const same = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
 
-// ─── Tournament status badge colours ──────────────────────────────────────────
-const statusColor = (status: string) => {
-    if (status === 'ongoing' || status === 'registration_open')  return 'text-green-400 border-green-400/20 bg-green-400/10';
-    if (status === 'completed')                                   return 'text-blue-400  border-blue-400/20  bg-blue-400/10';
-    if (status === 'cancelled')                                   return 'text-red-400   border-red-400/20   bg-red-400/10';
-    if (status === 'draft')                                       return 'text-gray-400  border-gray-400/20  bg-gray-400/10';
-    return 'text-yellow-400 border-yellow-400/20 bg-yellow-400/10';
+// Error messages keyed by input id, in page order, so the first key is the field to focus.
+const detailErrors = (d: ReturnType<typeof detailsOf>) => {
+    const e: Record<string, string> = {};
+    if (!d.firstName.trim()) e['pf-first'] = 'Enter your first name.';
+    if (!d.lastName.trim()) e['pf-last'] = 'Enter your last name.';
+    const phone = d.phone.trim();
+    // The server requires a phone (model `required`, and it rejects an empty string).
+    if (!phone) e['pf-phone'] = 'Enter your mobile number.';
+    else if (!/^\+?[\d\s-]+$/.test(phone) || !/^\d{10,15}$/.test(phone.replace(/\D/g, ''))) e['pf-phone'] = 'Enter a 10-digit mobile number.';
+    return e;
 };
+const orgErrors = (o: ReturnType<typeof orgOf>) =>
+    !o.name.trim() && o.description.trim() ? { 'pf-org': 'Add a name for the organization you describe.' } : {};
 
-// ─── Sport emoji ──────────────────────────────────────────────────────────────
-const sportEmoji = (sport?: string) => {
-    const map: Record<string, string> = { badminton: '🏸', cricket: '🏏', football: '⚽', tennis: '🎾', table_tennis: '🏓', kabaddi: '🤼' };
-    return sport ? (map[sport.toLowerCase()] ?? '🏅') : '🏅';
-};
+const EMPTY_PWD = { current: '', next: '', confirm: '' };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 const OrganizerProfilePage = () => {
-    const navigate  = useNavigate();
-    const dispatch  = useAppDispatch();
-    const { user, role, isLoading, organizerStats, statsLoading } = useAppSelector(s => s.auth);
-    const { myTournaments, isLoading: isTournamentLoading } = useAppSelector(s => s.tournament);
+    const navigate = useNavigate();
+    const dispatch = useAppDispatch();
+    const { user, organizerStats } = useAppSelector(s => s.auth);
+    const isStaff = user?.role === 'staff';
 
-    const [isEditing,  setIsEditing]  = useState(false);
-    const [editData,   setEditData]   = useState({ firstName: '', lastName: '', phone: '' });
-    const [activeView, setActiveView] = useState<'dashboard' | 'tournaments'>('dashboard');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [details, setDetails] = useState(() => detailsOf(user));
+    const [org, setOrg] = useState(() => orgOf(user));
+    const [tried, setTried] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [savedMsg, setSavedMsg] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [photoError, setPhotoError] = useState<string | null>(null);
+    const [pwd, setPwd] = useState(EMPTY_PWD);
+    const [pwdErrors, setPwdErrors] = useState<Record<string, string>>({});
+    const [pwdBusy, setPwdBusy] = useState(false);
+    const [pwdDone, setPwdDone] = useState(false);
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        await dispatch(uploadOrganizerProfileImage(file));
-        e.target.value = '';
-    };
-
-    React.useEffect(() => {
-        dispatch(fetchOrganizerStats());
-        dispatch(fetchMyTournaments());
-    }, [dispatch]);
+    useEffect(() => { dispatch(fetchOrganizerStats()); }, [dispatch]);
+    // Reset the forms only when a different account loads, not on every user update (photo, save).
+    useEffect(() => { setDetails(detailsOf(user)); setOrg(orgOf(user)); }, [user?._id]);
+    useEffect(() => {
+        if (!savedMsg) return;
+        const timer = setTimeout(() => setSavedMsg(null), 2500);
+        return () => clearTimeout(timer);
+    }, [savedMsg]);
 
     const handleLogout = () => { dispatch(logout()); navigate('/login'); };
 
-    const startEditing = () => {
-        setEditData({ firstName: user?.firstName || '', lastName: user?.lastName || '', phone: user?.phone || '' });
-        setIsEditing(true);
+    const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Organizer';
+    const orgName = user?.organization?.name;
+    const since = user?.createdAt ? format(new Date(user.createdAt), 'MMMM yyyy') : null;
+
+    const detailsDirty = !same(details, detailsOf(user));
+    const orgDirty = !same(org, orgOf(user));
+    const dirty = detailsDirty || orgDirty;
+    // Only the sections being saved are checked, so an untouched one never blocks a save.
+    const errors: Record<string, string> = { ...(detailsDirty && detailErrors(details)), ...(orgDirty && orgErrors(org)) };
+    const err = (id: string) => (tried ? errors[id] : undefined);
+    const invalid = (id: string) => (err(id) ? { 'aria-invalid': true as const } : {});
+
+    const discard = () => { setDetails(detailsOf(user)); setOrg(orgOf(user)); setTried(false); setSaveError(null); };
+
+    const handleSave = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!dirty || saving) return;
+        setTried(true);
+        const firstBad = Object.keys(errors)[0];
+        if (firstBad) { document.getElementById(firstBad)?.focus(); return; }
+
+        setSaving(true);
+        setSaveError(null);
+        const parts: string[] = [];
+        let failure: string | null = null;
+        if (detailsDirty) {
+            const data = { firstName: details.firstName.trim(), lastName: details.lastName.trim(), phone: details.phone.trim() };
+            const result = await dispatch(updateProfile({ role: 'organizer', data }));
+            if (updateProfile.fulfilled.match(result)) { setDetails(data); parts.push('details'); }
+            else failure = String(result.payload ?? 'Couldn’t save your details.');
+        }
+        if (orgDirty) {
+            const data = { name: org.name.trim(), description: org.description.trim() };
+            // The server replaces the whole organization: resend the logo, and drop empty fields it would reject.
+            const body = Object.fromEntries(Object.entries({ ...data, logo: user?.organization?.logo }).filter(([, v]) => v));
+            const result = await dispatch(updateOrganization(body));
+            if (updateOrganization.fulfilled.match(result)) { setOrg(data); parts.push('organization'); }
+            else failure = String(result.payload ?? 'Couldn’t save your organization.');
+        }
+        setSaving(false);
+        if (failure) { setSaveError(failure); return; }
+        setTried(false);
+        setSavedMsg(`Saved your ${parts.join(' and ')}.`);
     };
 
-    const handleSave = async () => {
-        if (!role) return;
-        const result = await dispatch(updateProfile({ role, data: editData }));
-        if (updateProfile.fulfilled.match(result)) setIsEditing(false);
+    const handlePhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (!/^image\/(png|jpeg|gif)$/.test(file.type)) { setPhotoError('Use a PNG, JPG or GIF image.'); return; }
+        if (file.size > MAX_PHOTO) {
+            setPhotoError(`That image is ${(Math.ceil(file.size / 100_000) / 10).toFixed(1)} MB. Use one under 5 MB.`);
+            return;
+        }
+        setPhotoError(null);
+        setUploading(true);
+        const result = await dispatch(uploadOrganizerProfileImage(file));
+        setUploading(false);
+        if (uploadOrganizerProfileImage.rejected.match(result)) setPhotoError(String(result.payload ?? 'Couldn’t upload the photo.'));
     };
 
-    // Compute quick stats from already-loaded tournaments
-    const activeTournaments = myTournaments.filter(t =>
-        ['registration_open', 'registration_closed', 'auction_in_progress', 'ongoing'].includes(t.status)
+    const handlePassword = async (e: FormEvent) => {
+        e.preventDefault();
+        setPwdDone(false);
+        const errs: Record<string, string> = {};
+        if (!pwd.current) errs['pw-current'] = 'Enter your current password.';
+        if (!pwd.next) errs['pw-new'] = 'Enter a new password.';
+        else if (pwd.next === pwd.current) errs['pw-new'] = 'Choose a password different from your current one.';
+        if (pwd.confirm !== pwd.next) errs['pw-confirm'] = 'The passwords don’t match.';
+        setPwdErrors(errs);
+        const firstBad = Object.keys(errs)[0];
+        if (firstBad) { document.getElementById(firstBad)?.focus(); return; }
+
+        setPwdBusy(true);
+        const result = await dispatch(changePassword({ role: 'organizer', data: { currentPassword: pwd.current, newPassword: pwd.next } }));
+        setPwdBusy(false);
+        if (changePassword.fulfilled.match(result)) { setPwd(EMPTY_PWD); setPwdDone(true); return; }
+        // e.g. "Current password is incorrect."
+        setPwdErrors({ 'pw-current': String(result.payload ?? 'Couldn’t change your password.') });
+        document.getElementById('pw-current')?.focus();
+    };
+
+    const stat = (n?: number) => n ?? '—';
+    const pwdInput = (id: string, key: keyof typeof EMPTY_PWD, autoComplete: string) => (
+        <input id={id} type="password" autoComplete={autoComplete} value={pwd[key]} aria-invalid={pwdErrors[id] ? true : undefined}
+            onChange={e => setPwd(p => ({ ...p, [key]: e.target.value }))} className={cn(INPUT, pwdErrors[id] && INVALID)} />
     );
 
     return (
-        <div className="min-h-screen bg-[#111] text-white font-montserrat flex flex-col items-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-primary/20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/3 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-primary/10 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/3 pointer-events-none" />
+        <div className="min-h-screen bg-canvas font-ui text-fg antialiased">
+            <OrganizerSidebar isStaff={isStaff} />
 
-            {/* Header */}
-            <header className="w-full flex items-center justify-between px-8 py-6 max-w-7xl z-10">
-                <button
-                    onClick={() => navigate('/organizer/home')}
-                    className="flex items-center gap-2 px-6 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-primary/20 hover:border-primary hover:text-primary transition-all text-white font-medium"
-                >
-                    <ArrowLeft className="h-4 w-4" /> Back
-                </button>
-            </header>
+            <div className="md:pl-16 lg:pl-60">
+                <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-canvas/95 px-4 sm:px-6 lg:px-8">
+                    <Brand className="md:hidden" />
+                    <p className="hidden text-sm text-fg-muted md:block">
+                        Organizer <span aria-hidden className="mx-1.5 text-fg-subtle">/</span>
+                        <span className="text-fg">Profile</span>
+                    </p>
+                    <AccountMenu name={fullName} email={user?.email} image={user?.profileImage} onLogout={handleLogout} />
+                </header>
 
-            {/* Main grid */}
-            <main className="w-full max-w-7xl px-8 mt-4 mb-24 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10 z-10">
+                <main className="mx-auto max-w-[960px] space-y-6 px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+                    <PageHead title="Profile" desc="Your account, your organization and how you sign in." />
 
-                {/* ── LEFT: Profile Card ────────────────────────────────────── */}
-                <div className="w-full bg-zinc-900/80 backdrop-blur-xl border border-white/10 rounded-[40px] p-8 flex flex-col shadow-2xl relative overflow-hidden h-fit">
-                    <div className="flex items-center justify-between mb-8">
-                        <h2 className="text-2xl font-oswald font-bold tracking-widest text-white">ORGANIZER</h2>
-                        <div className="flex gap-4 text-gray-400">
-                            <UserPlus className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
-                            <Share2   className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
-                            <Settings className="h-5 w-5 hover:text-white cursor-pointer transition-colors" />
-                        </div>
-                    </div>
-
-                    {/* Avatar + name */}
-                    <div className="flex flex-col items-center gap-4 mb-8">
-                        {/* Hidden file input */}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/png,image/jpg,image/jpeg,image/gif"
-                            className="hidden"
-                            onChange={handleImageUpload}
-                        />
-
-                        <div className="relative group">
-                            <div className="h-28 w-28 rounded-full border-2 border-primary bg-black flex items-center justify-center">
-                                <div className="h-full w-full rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center font-bold text-4xl">
-                                    {user?.profileImage ? (
-                                        <img src={user.profileImage} alt="Profile" className="h-full w-full object-cover" />
-                                    ) : (
-                                        user ? user.firstName[0].toUpperCase() : 'O'
-                                    )}
-                                </div>
+                    <section aria-label="Account" className={cn(PANEL, 'grid gap-4 p-5')}>
+                        <div className="flex flex-wrap items-center gap-4">
+                            <Avatar size="xl" name={fullName} src={user?.profileImage} />
+                            <div className="min-w-0 flex-[1_1_200px]">
+                                <p className="text-[17px] font-semibold text-fg">{fullName}</p>
+                                <p className="text-[13px] text-fg-muted [overflow-wrap:anywhere]">
+                                    {user?.email}{orgName && ` · ${orgName}`}
+                                </p>
+                                {since && <p className="mt-0.5 text-xs text-fg-subtle">Organizer since {since}</p>}
                             </div>
-
-                            {/* Camera upload overlay */}
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isLoading}
-                                className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
-                                title="Change photo"
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="h-6 w-6 text-white animate-spin" />
-                                ) : (
-                                    <Camera className="h-6 w-6 text-white" />
-                                )}
-                            </button>
+                            <div className="max-md:basis-full">
+                                <input id="pf-photo" type="file" accept="image/png,image/jpeg,image/gif" hidden onChange={handlePhoto} />
+                                <button type="button" disabled={uploading} onClick={() => document.getElementById('pf-photo')?.click()}
+                                    className={cn(BTN_SECONDARY, BTN_SM)}>
+                                    {uploading
+                                        ? <><Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />Uploading…</>
+                                        : <><Camera aria-hidden className="h-3.5 w-3.5" />Change photo</>}
+                                </button>
+                            </div>
                         </div>
-
-                        {isEditing ? (
-                            <div className="flex flex-col gap-2.5 w-full">
-                                {[
-                                    { key: 'firstName', placeholder: 'First Name' },
-                                    { key: 'lastName',  placeholder: 'Last Name'  },
-                                    { key: 'phone',     placeholder: 'Phone'      },
-                                ].map(({ key, placeholder }) => (
-                                    <input
-                                        key={key}
-                                        value={(editData as any)[key]}
-                                        onChange={e => setEditData(p => ({ ...p, [key]: e.target.value }))}
-                                        placeholder={placeholder}
-                                        className="w-full px-4 py-2.5 rounded-full bg-black/50 border border-white/10 text-white text-center focus:outline-none focus:border-primary text-sm"
-                                    />
+                        {photoError && <p role="alert" className="text-xs text-red-300">{photoError}</p>}
+                        <div className="flex flex-wrap items-center gap-x-7 gap-y-2 border-t border-line pt-4">
+                            <dl className="grid flex-auto grid-cols-[repeat(3,auto)] justify-start gap-x-5 gap-y-2 md:gap-x-7">
+                                {([
+                                    ['Tournaments run', organizerStats?.totalTournaments],
+                                    ['Completed', organizerStats?.completedTournaments],
+                                    ['Players hosted', organizerStats?.totalPlayersHosted],
+                                ] as const).map(([label, n]) => (
+                                    <div key={label}>
+                                        <dt className="text-xs text-fg-subtle">{label}</dt>
+                                        <dd className="text-lg font-semibold tabular-nums text-fg">{stat(n)}</dd>
+                                    </div>
                                 ))}
-                            </div>
-                        ) : (
-                            <div className="text-center">
-                                <h3 className="text-2xl font-bold font-oswald tracking-wide text-white">
-                                    {user ? `${user.firstName} ${user.lastName}` : 'Organizer Name'}
-                                </h3>
-                                <p className="text-sm text-gray-400 mt-1">{user?.email}</p>
-                                {user?.organization?.name && (
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1">
-                                        <Building2 className="h-3 w-3" /> {user.organization.name}
-                                    </p>
+                            </dl>
+                            <Link to="/organizer/home" className="inline-flex items-center gap-1.5 rounded-md text-[13px] text-fg-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70">
+                                All tournaments <ArrowRight aria-hidden className="h-3.5 w-3.5" />
+                            </Link>
+                        </div>
+                    </section>
+
+                    <div className={cn(PANEL, 'px-4 pt-4 sm:px-6')}>
+                        <form id="profile-form" onSubmit={handleSave} noValidate>
+                            <FormSection title="Personal details" desc="Your name and number, as your staff see them.">
+                                <div className="grid gap-x-3 gap-y-4 md:grid-cols-2">
+                                    <Field id="pf-first" label="First name" error={err('pf-first')}>
+                                        <input id="pf-first" autoComplete="given-name" value={details.firstName} {...invalid('pf-first')}
+                                            onChange={e => setDetails(d => ({ ...d, firstName: e.target.value }))} className={cn(INPUT, err('pf-first') && INVALID)} />
+                                    </Field>
+                                    <Field id="pf-last" label="Last name" error={err('pf-last')}>
+                                        <input id="pf-last" autoComplete="family-name" value={details.lastName} {...invalid('pf-last')}
+                                            onChange={e => setDetails(d => ({ ...d, lastName: e.target.value }))} className={cn(INPUT, err('pf-last') && INVALID)} />
+                                    </Field>
+                                    <Field id="pf-phone" label="Mobile" error={err('pf-phone')}>
+                                        <input id="pf-phone" type="tel" inputMode="tel" autoComplete="tel" value={details.phone} {...invalid('pf-phone')}
+                                            onChange={e => setDetails(d => ({ ...d, phone: e.target.value }))} className={cn(INPUT, err('pf-phone') && INVALID)} />
+                                    </Field>
+                                    <Field id="pf-email" label="Email" help="You sign in with this.">
+                                        <input id="pf-email" type="email" readOnly value={user?.email ?? ''}
+                                            className={cn(INPUT, 'border-dashed bg-transparent text-fg-muted hover:border-line')} />
+                                    </Field>
+                                </div>
+                            </FormSection>
+
+                            <FormSection title="Organization" desc="The club, academy or company that runs your tournaments.">
+                                <div className="grid gap-4">
+                                    <Field id="pf-org" label="Name" error={err('pf-org')}>
+                                        <input id="pf-org" autoComplete="organization" value={org.name} {...invalid('pf-org')}
+                                            onChange={e => setOrg(o => ({ ...o, name: e.target.value }))} className={cn(INPUT, err('pf-org') && INVALID)} />
+                                    </Field>
+                                    <Field id="pf-about" label="About" count={`${org.description.length} characters`}>
+                                        <textarea id="pf-about" rows={3} value={org.description} className={TEXTAREA}
+                                            onChange={e => setOrg(o => ({ ...o, description: e.target.value }))} />
+                                    </Field>
+                                </div>
+                            </FormSection>
+                        </form>
+
+                        <FormSection title="Password" desc="Change the password you sign in with.">
+                            <form onSubmit={handlePassword} noValidate aria-label="Change password" className="grid gap-4">
+                                <Field id="pw-current" label="Current password" error={pwdErrors['pw-current']}>
+                                    {pwdInput('pw-current', 'current', 'current-password')}
+                                </Field>
+                                <div className="grid gap-x-3 gap-y-4 md:grid-cols-2">
+                                    <Field id="pw-new" label="New password" error={pwdErrors['pw-new']}>
+                                        {pwdInput('pw-new', 'next', 'new-password')}
+                                    </Field>
+                                    <Field id="pw-confirm" label="Confirm new password" error={pwdErrors['pw-confirm']}>
+                                        {pwdInput('pw-confirm', 'confirm', 'new-password')}
+                                    </Field>
+                                </div>
+                                {pwdDone && (
+                                    <div role="status">
+                                        <Notice tone="neutral" icon={Check} className={TONE.green.badge}>
+                                            Password changed. Use the new one next time you sign in.
+                                        </Notice>
+                                    </div>
                                 )}
-                            </div>
-                        )}
-
-                        <div className="flex flex-col gap-2 w-full mt-1">
-                            {isEditing ? (
-                                <div className="flex gap-2">
-                                    <button onClick={() => setIsEditing(false)} className="flex-1 py-2 rounded-full border border-white/20 text-sm font-medium hover:bg-white/10 transition-colors">
-                                        Cancel
-                                    </button>
-                                    <button onClick={handleSave} disabled={isLoading} className="flex-1 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+                                <div className="flex justify-end">
+                                    <button type="submit" disabled={pwdBusy} className={BTN_SECONDARY}>
+                                        {pwdBusy && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
+                                        {pwdBusy ? 'Changing…' : 'Change password'}
                                     </button>
                                 </div>
-                            ) : (
-                                <button onClick={startEditing} className="w-full py-2 rounded-full border border-white/20 text-sm font-medium hover:bg-white/10 transition-colors flex items-center justify-center gap-2">
-                                    <Pencil className="h-3.5 w-3.5" /> Edit Profile
-                                </button>
-                            )}
-                            <button onClick={handleLogout} className="w-full py-2 rounded-full border border-red-500/50 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors">
-                                Logout
+                            </form>
+                        </FormSection>
+
+                        <FormSection title="Sign out" desc="End your session on this device.">
+                            <button type="button" onClick={handleLogout} className={BTN_SECONDARY}>
+                                <LogOut aria-hidden className="h-4 w-4" />Sign out
                             </button>
-                        </div>
+                        </FormSection>
                     </div>
 
-                    <div className="h-px w-full bg-white/10 mb-6" />
-
-                    {/* ── Dynamic stats ─────────────────────────────────────── */}
-                    {statsLoading ? (
-                        <div className="flex justify-center py-4">
-                            <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                            <StatChip
-                                icon={Trophy}
-                                label="Total Events"
-                                value={organizerStats?.totalTournaments ?? myTournaments.length}
-                            />
-                            <StatChip
-                                icon={TrendingUp}
-                                label="Active"
-                                value={organizerStats?.activeTournaments ?? activeTournaments.length}
-                                accent
-                            />
-                            <StatChip
-                                icon={CheckCircle2}
-                                label="Completed"
-                                value={organizerStats?.completedTournaments ?? myTournaments.filter(t => t.status === 'completed').length}
-                            />
-                            <StatChip
-                                icon={Users}
-                                label="Players Hosted"
-                                value={organizerStats?.totalPlayersHosted ?? '—'}
-                            />
-                        </div>
-                    )}
-
-                    <div className="h-px w-full bg-white/10 my-6" />
-
-                    {/* Static profile fields */}
-                    <div className="flex flex-col gap-4">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-primary font-medium text-sm">Mobile</span>
-                            <div className="bg-white/5 border border-white/10 rounded-full px-5 py-2.5 text-white font-medium">
-                                {user?.phone || '—'}
-                            </div>
-                        </div>
-                        {user?.organization?.description && (
-                            <div className="flex flex-col gap-1">
-                                <span className="text-primary font-medium text-sm">About</span>
-                                <div className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white font-medium text-sm leading-relaxed">
-                                    {user.organization.description}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── RIGHT: Tabs + Content ─────────────────────────────────── */}
-                <div className="w-full flex flex-col gap-6">
-                    {/* Tabs */}
-                    <div className="flex gap-2 p-1.5 bg-white/5 border border-white/10 rounded-2xl w-fit">
-                        {(['dashboard', 'tournaments'] as const).map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveView(tab)}
-                                className={`px-5 py-2.5 rounded-xl capitalize font-medium text-sm transition-all focus:outline-none ${
-                                    activeView === tab
-                                        ? 'bg-white/10 text-white shadow-sm'
-                                        : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                }`}
-                            >
-                                {tab === 'tournaments' ? 'My Tournaments' : 'Dashboard'}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* ── Dashboard ───────────────────────────────────────── */}
-                    {activeView === 'dashboard' && (
-                        <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <DashboardCard
-                                icon={CalendarCheck} title="Tournaments"
-                                badge={activeTournaments.length || undefined}
-                                onClick={() => setActiveView('tournaments')}
-                            />
-                            <DashboardCard icon={Bookmark}      title="Drafts"            badge={organizerStats?.draftTournaments || undefined} />
-                            <DashboardCard icon={FileText}      title="Invoice" />
-                            <DashboardCard icon={Users}         title="Organizers" />
-                            <DashboardCard icon={UserPlus}      title="Partners" />
-                            <DashboardCard icon={Newspaper}     title="Notices" />
-                            <DashboardCard icon={User}          title="Profile"            onClick={startEditing} />
-                            <DashboardCard icon={PlusCircle}    title="Create Tournament"  onClick={() => navigate('/organizer/tournament/create')} />
-                            <DashboardCard icon={Store}         title="Sponsors" />
-                        </div>
-                    )}
-
-                    {/* ── My Tournaments ──────────────────────────────────── */}
-                    {activeView === 'tournaments' && (
-                        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-2xl font-oswald font-bold tracking-wide">My Tournaments</h3>
-                                <button
-                                    onClick={() => navigate('/organizer/tournament/create')}
-                                    className="flex items-center gap-2 px-5 py-2 bg-primary hover:bg-primary/90 text-white rounded-full text-sm font-medium transition-colors"
-                                >
-                                    <PlusCircle className="h-4 w-4" /> Create New
-                                </button>
-                            </div>
-
-                            {isTournamentLoading ? (
-                                <div className="flex justify-center py-10">
-                                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                                </div>
-                            ) : myTournaments.length === 0 ? (
-                                <div className="bg-white/5 border border-white/10 rounded-3xl p-10 text-center flex flex-col items-center gap-4">
-                                    <Trophy className="h-10 w-10 text-gray-500" />
-                                    <p className="text-gray-400">You haven't created any tournaments yet.</p>
-                                    <button
-                                        onClick={() => navigate('/organizer/tournament/create')}
-                                        className="mt-2 px-6 py-2 bg-primary hover:bg-primary/90 text-white rounded-full transition-colors font-medium"
-                                    >
-                                        Create Tournament
-                                    </button>
-                                </div>
+                    {(dirty || savedMsg) && (
+                        <div role="status" className="sticky bottom-4 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-raised py-2.5 pl-4 pr-2.5 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.5)] ring-1 ring-line">
+                            {dirty ? (
+                                <>
+                                    <span className={cn(saveError && 'text-red-300')}>{saveError ?? 'You have unsaved changes'}</span>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={discard} disabled={saving} className={cn(BTN_SECONDARY, BTN_SM)}>Discard</button>
+                                        <button type="submit" form="profile-form" disabled={saving} className={cn(BTN_PRIMARY, BTN_SM)}>
+                                            {saving && <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />}{saving ? 'Saving…' : 'Save changes'}
+                                        </button>
+                                    </div>
+                                </>
                             ) : (
-                                <div className="grid grid-cols-1 gap-4">
-                                    {myTournaments.map((t: Tournament) => (
-                                        <div
-                                            key={t._id}
-                                            className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-white/20 transition-colors"
-                                        >
-                                            <div className="flex gap-4 items-start">
-                                                <span className="text-3xl mt-0.5">{sportEmoji(t.sport)}</span>
-                                                <div className="flex flex-col gap-1.5">
-                                                    <h4 className="text-xl font-bold font-oswald tracking-wide text-white">{t.name}</h4>
-                                                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
-                                                        <span>📍 {t.venue?.city || 'TBD'}</span>
-                                                        <span className="text-gray-600">•</span>
-                                                        <span>🗓 {new Date(t.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                                    </div>
-                                                    <Badge variant="outline" className={`w-fit text-[10px] uppercase font-bold px-2 py-0.5 ${statusColor(t.status)}`}>
-                                                        {t.status.replace(/_/g, ' ')}
-                                                    </Badge>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-3 w-full md:w-auto shrink-0">
-                                                <button
-                                                    onClick={() => navigate(`/organizer/tournament/${t._id}`)}
-                                                    className="flex-1 md:flex-none px-5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition-colors text-center"
-                                                >
-                                                    Manage
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                <span className="flex items-center gap-2 py-1 text-fg-muted"><Check aria-hidden className="h-4 w-4 text-emerald-400" />{savedMsg}</span>
                             )}
                         </div>
                     )}
-                </div>
-            </main>
-
-            <HoverFooter />
+                </main>
+            </div>
         </div>
     );
 };

@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
+import { ReadOnlyContext } from '@/pages/organizer/ui';
 import GroupConfigPanel from './GroupConfigPanel';
 import GroupStandingsTable from './GroupStandingsTable';
 import LineupAssignmentModal from './LineupAssignmentModal';
@@ -66,6 +67,14 @@ describe('GroupConfigPanel', () => {
             groups={GROUPS} teams={TEAMS} onRefresh={vi.fn()} setError={vi.fn()} />);
         expect(screen.queryByRole('button', { name: 'Randomize groups' })).not.toBeInTheDocument();
     });
+
+    it('hides the group controls when the tournament is locked', () => {
+        render(<ReadOnlyContext.Provider value><GroupConfigPanel categoryId="cat1" categoryStatus="groups_configured" stageNumber={1}
+            groups={GROUPS} teams={TEAMS} onRefresh={vi.fn()} setError={vi.fn()} /></ReadOnlyContext.Provider>);
+        expect(screen.getByRole('region', { name: 'Group A' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Randomize groups' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Edit groups' })).not.toBeInTheDocument();
+    });
 });
 
 describe('GroupStandingsTable', () => {
@@ -105,6 +114,12 @@ describe('GroupStandingsTable', () => {
         render(<GroupStandingsTable categoryId="cat1" stageNumber={1} standings={partial} teams={TEAMS} topNPerGroup={1} onAdvanced={vi.fn()} />);
         expect(screen.getByRole('button', { name: 'Advance teams' })).toBeDisabled();
         expect(screen.getByText(/5 ties left/)).toBeInTheDocument();
+    });
+
+    it('shows standings without advancing when the tournament is locked', () => {
+        render(<ReadOnlyContext.Provider value><GroupStandingsTable categoryId="cat1" stageNumber={1} standings={COMPLETE} teams={TEAMS} topNPerGroup={1} onAdvanced={vi.fn()} /></ReadOnlyContext.Provider>);
+        expect(screen.getByText('Baseline Blazers')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Advance teams' })).not.toBeInTheDocument();
     });
 });
 
@@ -164,10 +179,13 @@ describe('TieManagementPanel', () => {
         subMatches: [{ _id: 'm1', status: 'scheduled', subMatchSlotNumber: 1 }],
     };
     const CONFIG = { subTeamSlots: [{ slotNumber: 1, label: 'Singles 1', matchType: 'singles' }] };
+    const READY = { ...TIE.subMatches[0], player1: { teamId: 't3', teamName: 'Baseline Blazers', name: 'Asha K' }, player2: { teamId: 't4', teamName: 'Net Ninjas', name: 'Ravi P' } };
 
-    const renderPanel = (onRefresh = vi.fn()) => render(
-        <TieManagementPanel categoryId="cat1" groups={GROUPS} teams={TEAMS} tieCounts={{ g1: 0, g2: 0 }}
-            categoryConfig={CONFIG} onRefresh={onRefresh} setError={vi.fn()} />,
+    const renderPanel = (onRefresh = vi.fn(), readOnly = false) => render(
+        <ReadOnlyContext.Provider value={readOnly}>
+            <TieManagementPanel categoryId="cat1" groups={GROUPS} teams={TEAMS} tieCounts={{ g1: 0, g2: 0 }}
+                categoryConfig={CONFIG} onRefresh={onRefresh} setError={vi.fn()} />
+        </ReadOnlyContext.Provider>,
     );
 
     it('keeps the selected group after creating a tie', async () => {
@@ -226,10 +244,9 @@ describe('TieManagementPanel', () => {
     });
 
     it('closes only the result dialog on Escape, leaving the tie open', async () => {
-        const ready = { ...TIE.subMatches[0], player1: { teamId: 't3', teamName: 'Baseline Blazers', name: 'Asha K' }, player2: { teamId: 't4', teamName: 'Net Ninjas', name: 'Ravi P' } };
         server.use(
             http.get(`${TL}/groups/g1/ties`, () => envelope([TIE])),
-            http.get(`${TL}/ties/tie1`, () => envelope({ tie: TIE, subMatches: [ready], lineups: [], subTeamSlots: CONFIG.subTeamSlots })),
+            http.get(`${TL}/ties/tie1`, () => envelope({ tie: TIE, subMatches: [READY], lineups: [], subTeamSlots: CONFIG.subTeamSlots })),
         );
         renderPanel();
 
@@ -240,6 +257,20 @@ describe('TieManagementPanel', () => {
         await userEvent.keyboard('{Escape}');
         expect(screen.queryByRole('dialog', { name: 'Enter result' })).not.toBeInTheDocument();
         expect(screen.getByRole('dialog', { name: 'Baseline Blazers vs Net Ninjas' })).toBeInTheDocument();
+    });
+
+    it('opens ties read-only when the tournament is locked', async () => {
+        server.use(
+            http.get(`${TL}/groups/g1/ties`, () => envelope([TIE])),
+            http.get(`${TL}/ties/tie1`, () => envelope({ tie: TIE, subMatches: [READY], lineups: [], subTeamSlots: CONFIG.subTeamSlots })),
+        );
+        renderPanel(vi.fn(), true);
+
+        await userEvent.click(await screen.findByRole('button', { name: /Baseline Blazers vs Net Ninjas/ }));
+        const drawer = screen.getByRole('dialog', { name: 'Baseline Blazers vs Net Ninjas' });
+        expect(await within(drawer).findByText('Asha K vs Ravi P')).toBeInTheDocument();
+        expect(within(drawer).queryByRole('button', { name: /Edit lineup|Score live|Enter result|Delete tie/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Add tie|Generate round robin/ })).not.toBeInTheDocument();
     });
 });
 

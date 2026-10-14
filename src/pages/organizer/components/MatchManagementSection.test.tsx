@@ -7,7 +7,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import registrationReducer from '@/store/slices/registrationSlice';
 import { sportRegistry } from '@/sports/registry';
 import { server } from '@/test/server';
-import { SectionNavContext } from '../ui';
+import { ReadOnlyContext, SectionNavContext } from '../ui';
 import MatchManagementSection from './MatchManagementSection';
 
 const API = 'https://api.kria.club';
@@ -33,7 +33,7 @@ const payload = (ms: { bracketRound: string }[], competitorType = 'player') => (
     data: { matches: ms, rounds: ms.reduce<Record<string, unknown[]>>((r, m) => ({ ...r, [m.bracketRound]: [...(r[m.bracketRound] || []), m] }), {}), competitorType },
 });
 
-const renderMatches = (categories: Cat[], goTo = vi.fn()) => {
+const renderMatches = (categories: Cat[], goTo = vi.fn(), readOnly = false) => {
     const store = configureStore({
         reducer: { registration: registrationReducer },
         preloadedState: { registration: { ...registrationReducer(undefined, { type: 'init' }), categories: categories as never } },
@@ -41,7 +41,9 @@ const renderMatches = (categories: Cat[], goTo = vi.fn()) => {
     render(
         <Provider store={store}>
             <SectionNavContext.Provider value={goTo}>
-                <MatchManagementSection tournamentId="t1" sports={['matchsport']} categories={categories} />
+                <ReadOnlyContext.Provider value={readOnly}>
+                    <MatchManagementSection tournamentId="t1" sports={['matchsport']} categories={categories} />
+                </ReadOnlyContext.Provider>
             </SectionNavContext.Provider>
         </Provider>,
     );
@@ -106,5 +108,14 @@ describe('MatchManagementSection', () => {
         renderMatches([cat()]);
         expect(await screen.findByText(/Couldn't load matches\. Database unavailable/)).toBeInTheDocument();
         expect(screen.queryByText('No fixtures yet')).toBeNull();
+    });
+
+    it('drops the scoring slot but keeps the scoreboards when the tournament is locked', async () => {
+        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(matches))));
+        renderMatches([cat()], vi.fn(), true);
+
+        expect(await screen.findAllByRole('listitem')).toHaveLength(3);
+        expect(screen.queryByRole('button', { name: /Score match/ })).toBeNull();
+        expect(screen.getAllByRole('link', { name: 'Open live scoreboard' })).toHaveLength(2);
     });
 });

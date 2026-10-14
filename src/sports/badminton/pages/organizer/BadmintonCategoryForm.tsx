@@ -167,7 +167,7 @@ export default function BadmintonCategoryForm({ tournamentId, category, onSucces
 
             <FormGroup title="Format">
                 <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })}
-                    formats={['knockout', 'league', 'hybrid', 'team_league']} />
+                    formats={['knockout', 'league', 'team_league']} />
 
                 {formData.bracketType === 'hybrid' && (
                     <div className="grid gap-3 sm:grid-cols-2">

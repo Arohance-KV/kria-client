@@ -8,10 +8,12 @@ import { Route } from 'react-router-dom';
 import { sportRegistry } from '@/sports/registry';
 import CricketCategoryForm from './pages/organizer/CricketCategoryForm';
 import CricketScoreButton from './pages/organizer/CricketScoreButton';
-import CricketScoringConsole from './pages/organizer/CricketScoringConsole';
-import CricketLiveScoreboard from './pages/public/CricketLiveScoreboard';
 import CricketLeaderboard from './pages/public/CricketLeaderboard';
 import cricketLiveStateReducer from './store/cricketLiveStateSlice';
+
+// Full-page, so they load on first visit; App and LiveScoreboardPage hold the Suspense.
+const CricketScoringConsole = React.lazy(() => import('./pages/organizer/CricketScoringConsole'));
+const CricketLiveScoreboard = React.lazy(() => import('./pages/public/CricketLiveScoreboard'));
 
 sportRegistry.register({
     sportKey: 'cricket',

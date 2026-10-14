@@ -6,6 +6,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
 import tournamentReducer from '@/store/slices/tournamentSlice';
+import { ReadOnlyContext } from '../ui';
 import CategoryAnalyticsModal from './CategoryAnalyticsModal';
 
 const BASE = 'https://api.kria.club';
@@ -20,7 +21,7 @@ const AISHA = {
 };
 const BEN = { _id: 'r2', playerId: 'p2', profile: { firstName: 'Ben', lastName: 'Joseph' }, stats: { matchesPlayed: 3, matchesWon: 1, pointsContributed: 41 } };
 
-function renderModal({ status = 'ongoing', award = () => envelope({ _id: 'a1' }) as Response } = {}) {
+function renderModal({ status = 'ongoing', award = () => envelope({ _id: 'a1' }) as Response, readOnly = false } = {}) {
     const posted: unknown[] = [];
     server.use(
         http.get(`${BASE}/categories/cat1/analytics`, () => envelope({ analytics: [AISHA, BEN] })),
@@ -34,12 +35,14 @@ function renderModal({ status = 'ongoing', award = () => envelope({ _id: 'a1' })
     const store = configureStore({ reducer: { tournament: tournamentReducer } });
     render(
         <Provider store={store}>
-            <CategoryAnalyticsModal
-                isOpen
-                onClose={() => {}}
-                category={{ _id: 'cat1', name: 'Mens Singles', status }}
-                tournamentId="t1"
-            />
+            <ReadOnlyContext.Provider value={readOnly}>
+                <CategoryAnalyticsModal
+                    isOpen
+                    onClose={() => {}}
+                    category={{ _id: 'cat1', name: 'Mens Singles', status }}
+                    tournamentId="t1"
+                />
+            </ReadOnlyContext.Provider>
         </Provider>,
     );
     return { posted };
@@ -103,5 +106,13 @@ describe('CategoryAnalyticsModal — grant with a badge', () => {
         renderModal({ status: 'completed' });
         expect(await screen.findByText('Category champion')).toBeInTheDocument();
         expect(screen.getByText('3 wins · 60 points')).toBeInTheDocument();
+    });
+
+    // Awards come after a category finishes, often after the whole tournament has, so the lock leaves them open.
+    it('still gives awards when the tournament is locked', async () => {
+        renderModal({ status: 'completed', readOnly: true });
+        expect(await screen.findByRole('table', { name: 'Leaderboard' })).toHaveTextContent('Ben Joseph');
+        expect(screen.getAllByRole('button', { name: /Give award/ }).length).toBeGreaterThan(0);
+        expect(screen.getByRole('region', { name: 'Award' })).toBeInTheDocument();
     });
 });

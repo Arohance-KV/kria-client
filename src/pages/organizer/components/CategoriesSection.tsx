@@ -19,7 +19,7 @@ import { sportRegistry } from '@/sports/registry';
 import { cn } from '@/lib/utils';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, inr, sportLabel, StatusBadge, statusOf } from '../shared';
 import {
-    CHOICE, COLHEAD, ConfirmBar, Dialog, Drawer, EmptyState, FormGroup, MoreMenu, Notice, PageHead, PANEL, ROW, Segmented, Spinner, useSectionNav,
+    CHOICE, COLHEAD, ConfirmBar, Dialog, Drawer, EmptyState, FormGroup, MoreMenu, Notice, PageHead, PANEL, ROW, Segmented, Spinner, useReadOnly, useSectionNav,
 } from '../ui';
 import CategoryAnalyticsModal from './CategoryAnalyticsModal';
 
@@ -80,6 +80,7 @@ interface Props {
 export default function CategoriesSection({ tournamentId, sports }: Props) {
     const dispatch = useAppDispatch();
     const goTo = useSectionNav();
+    const readOnly = useReadOnly();
     const { categories, error } = useAppSelector(state => state.category) as { categories: Cat[]; error: string | null };
 
     const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
@@ -140,7 +141,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
         ? sportRegistry.get((form.category ? form.category.sport : createSport) ?? '')?.categoryForm
         : undefined;
 
-    const addButton = creatable.length > 0 && (
+    const addButton = !readOnly && creatable.length > 0 && (
         <button type="button" onClick={() => setForm({ category: null })} className={BTN_PRIMARY}>
             <Plus aria-hidden className="h-4 w-4" />Add category
         </button>
@@ -177,7 +178,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                     </div>
                 ) : categories.length === 0 ? (
                     <EmptyState title="No categories yet" text="Add the events players can register for, like singles or doubles."
-                        action={creatable.length > 0 && <button type="button" onClick={() => setForm({ category: null })} className={BTN_SECONDARY}>Add category</button>} />
+                        action={!readOnly && creatable.length > 0 && <button type="button" onClick={() => setForm({ category: null })} className={BTN_SECONDARY}>Add category</button>} />
                 ) : (
                     <>
                         <div className={cn(COLHEAD, 'hidden xl:grid', COLS)}>
@@ -188,7 +189,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                                 const next = teamLeagueStep(c) ? undefined : NEXT[c.status];
                                 const fmt = FORMAT[c.bracketType] ?? c.bracketType ?? '—';
                                 const fee = feeOf(c);
-                                const canEdit = !!sportRegistry.get(c.sport ?? '')?.categoryForm;
+                                const canEdit = !readOnly && !!sportRegistry.get(c.sport ?? '')?.categoryForm;
                                 const hasAwards = c.status === 'completed' || (c.status === 'groups_configured' && c.bracketType === 'team_league');
                                 const lateStage = c.status === 'ongoing' || c.status === 'completed';
                                 const rowBusy = busy === c._id || busy === `del:${c._id}`;
@@ -212,7 +213,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                                             </span>
                                             <span className="hidden xl:block"><StatusBadge status={c.status} /></span>
                                             <div className="flex items-center gap-1.5 sm:justify-end">
-                                                {next ? (
+                                                {readOnly ? null : next ? (
                                                     <button type="button" disabled={rowBusy} onClick={() => { setErrorAt(null); setConfirm({ id: c._id, kind: 'next' }); }}
                                                         className={cn(BTN_SECONDARY, BTN_SM)}>{next.label}</button>
                                                 ) : teamLeagueStep(c) ? (
@@ -223,9 +224,11 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
                                                 <MoreMenu label={`More actions for ${c.name}`} items={[
                                                     ...(canEdit ? [{ label: 'Edit', icon: Pencil, onSelect: () => setForm({ category: c }) }] : []),
                                                     ...(hasAwards ? [{ label: 'Analytics & awards', icon: Trophy, onSelect: () => setAnalyticsFor(c) }] : []),
-                                                    ...(earlierStages(c.status).length ? [{ label: 'Move to an earlier stage…', icon: RotateCcw, onSelect: () => setStageFor(c) }] : []),
-                                                    'separator',
-                                                    { label: 'Delete category', icon: Trash2, danger: true, onSelect: () => { setErrorAt(null); setConfirm({ id: c._id, kind: 'delete' }); } },
+                                                    ...(readOnly ? [] : [
+                                                        ...(earlierStages(c.status).length ? [{ label: 'Move to an earlier stage…', icon: RotateCcw, onSelect: () => setStageFor(c) }] : []),
+                                                        'separator' as const,
+                                                        { label: 'Delete category', icon: Trash2, danger: true, onSelect: () => { setErrorAt(null); setConfirm({ id: c._id, kind: 'delete' }); } },
+                                                    ]),
                                                 ]} />
                                             </div>
                                         </div>

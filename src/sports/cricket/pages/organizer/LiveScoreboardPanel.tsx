@@ -1,6 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { CircleDot } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAppSelector } from '@/store/hooks';
 import { PANEL, SegTabs, TeamLogo } from '@/pages/organizer/ui';
 import { buildPlayerNameMap, nameOf, oversDisplay, xiSlots } from '@/sports/cricket/lib/lineup';
 
@@ -22,6 +23,12 @@ export function sidesOf(match: any, live: any): { batting: string; bowling: stri
 export const teamName = (match: any, id?: string) =>
     String(id) === String(match?.teams?.team1Id) ? (match?.teams?.team1Name || 'Team 1')
         : String(id) === String(match?.teams?.team2Id) ? (match?.teams?.team2Name || 'Team 2') : '—';
+
+/** TeamLogo in the team's logo or colour. Match docs carry neither; the console loads the tournament's teams. */
+export function CricketTeamLogo({ id, ...rest }: { id?: string; name: string; size?: 'sm' | 'md' | 'lg' }) {
+    const team = useAppSelector(s => s.team?.teams.find(t => String(t._id) === String(id)));
+    return <TeamLogo {...rest} logo={team?.logo} color={team?.primaryColor} />;
+}
 
 const isExtra = (label: string) => /^(wd|nb)/.test(label);
 
@@ -89,7 +96,7 @@ export default function LiveScoreboardPanel({ match, live, scorecard, strikerId,
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="flex items-center gap-2 text-[13px] text-fg-muted">
-                        <TeamLogo size="sm" name={battingName} />{battingName} · {innings === 2 ? '2nd' : '1st'} innings
+                        <CricketTeamLogo size="sm" id={batting} name={battingName} />{battingName} · {innings === 2 ? '2nd' : '1st'} innings
                     </p>
                     <p className="mt-2 flex items-baseline gap-2">
                         <span className="text-[44px] font-semibold leading-none tracking-tight tabular-nums">{runs}/{wickets}</span>
@@ -143,9 +150,7 @@ export default function LiveScoreboardPanel({ match, live, scorecard, strikerId,
     };
     const needed = (label: string) => <div className="px-4 py-2.5 text-[13px] text-amber-300 sm:px-5">{label}</div>;
     const bowler = bowlingCard.find(x => x.registrationId === bowlerId);
-    // The server's partnership falls back to the whole innings when the last
-    // ball was a wicket, so a fresh pair would show the innings total.
-    const part = live?.nextBatsmanNeeded ? { runs: 0, balls: 0 } : card?.currentPartnership;
+    const part = card?.currentPartnership;
     const lastWicket = fow[fow.length - 1];
 
     const crease = (

@@ -7,6 +7,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import registrationReducer from '@/store/slices/registrationSlice';
 import teamReducer from '@/store/slices/teamSlice';
 import { server } from '@/test/server';
+import { ReadOnlyContext } from '../ui';
 import RegistrationsSection from './RegistrationsSection';
 
 const API = 'https://api.kria.club';
@@ -24,9 +25,9 @@ const mockApi = (regs: object[]) => server.use(
     http.get(`${API}/tournaments/t1/teams`, () => HttpResponse.json({ data: [team] })),
 );
 
-const renderSection = () => {
+const renderSection = (readOnly = false) => {
     const store = configureStore({ reducer: { registration: registrationReducer, team: teamReducer } });
-    return render(<Provider store={store}><RegistrationsSection tournamentId="t1" /></Provider>);
+    return render(<Provider store={store}><ReadOnlyContext.Provider value={readOnly}><RegistrationsSection tournamentId="t1" /></ReadOnlyContext.Provider></Provider>);
 };
 
 describe('RegistrationsSection', () => {
@@ -110,5 +111,16 @@ describe('RegistrationsSection', () => {
         expect(body.registrationIds).toEqual(['r1', 'r3']);
         expect(within(screen.getByRole('listitem', { name: 'Aditya Rao' })).getAllByText('Approved').length).toBeGreaterThan(0);
         expect(screen.getByText('1 selected')).toBeInTheDocument(); // the failed one stays selected to retry
+    });
+
+    it('offers no review or team actions when the tournament is locked', async () => {
+        mockApi([reg('r1', 'Aditya', 'pending'), reg('r2', 'Kiran', 'approved')]);
+        renderSection(true);
+
+        await screen.findByRole('listitem', { name: 'Kiran Rao' });
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        for (const name of ['Approve Aditya Rao', 'Reject Aditya Rao', 'Assign to team', 'More actions for Kiran Rao']) {
+            expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+        }
     });
 });

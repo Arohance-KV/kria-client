@@ -7,6 +7,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import registrationReducer from '@/store/slices/registrationSlice';
 import { sportRegistry } from '@/sports/registry';
 import { server } from '@/test/server';
+import { ReadOnlyContext } from '../ui';
 import BracketManagementSection from './BracketManagementSection';
 
 const API = 'https://api.kria.club';
@@ -36,13 +37,18 @@ const payload = (matches: { bracketRound: string }[]) => ({
     },
 });
 
-const renderBrackets = (categories: Cat[]) => {
+const renderBrackets = (categories: Cat[], readOnly = false) => {
     const store = configureStore({
         reducer: { registration: registrationReducer },
         preloadedState: { registration: { ...registrationReducer(undefined, { type: 'init' }), categories: categories as never } },
     });
-    const view = render(<Provider store={store}><BracketManagementSection tournamentId="t1" sports={['testsport']} categories={categories} /></Provider>);
-    return { ...view, rerenderWith: (next: Cat[]) => view.rerender(<Provider store={store}><BracketManagementSection tournamentId="t1" sports={['testsport']} categories={next} /></Provider>) };
+    const tree = (cats: Cat[]) => (
+        <Provider store={store}>
+            <ReadOnlyContext.Provider value={readOnly}><BracketManagementSection tournamentId="t1" sports={['testsport']} categories={cats} /></ReadOnlyContext.Provider>
+        </Provider>
+    );
+    const view = render(tree(categories));
+    return { ...view, rerenderWith: (next: Cat[]) => view.rerender(tree(next)) };
 };
 
 /** Matches start empty and fill in once a generate endpoint is hit. Counts each endpoint. */
@@ -172,6 +178,26 @@ describe('BracketManagementSection', () => {
     it('sends team league categories to Team league', async () => {
         renderBrackets([cat({ bracketType: 'team_league', status: 'groups_configured' })]);
         expect(screen.getByText(/Team league categories are run from/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Generate bracket' })).toBeNull();
+    });
+
+    it('opens matches without draw or scoring actions when the tournament is locked', async () => {
+        server.use(
+            http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(draw()))),
+            http.get(`${API}/matches/categories/c2`, () => HttpResponse.json(payload([]))),
+        );
+        renderBrackets([cat({ status: 'bracket_configured' }), cat({ _id: 'c2', name: 'Open Singles' })], true);
+
+        await userEvent.click(await screen.findByRole('button', { name: /^Match 1: Karan Patel vs Rohit Iyer/ }));
+        const dialog = screen.getByRole('dialog', { name: 'Match 1 · Semi Final' });
+        expect(within(dialog).queryByRole('button', { name: /Score match/ })).toBeNull();
+        expect(within(dialog).getByRole('link', { name: 'Open live scoreboard' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Swap players' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'More bracket actions' })).toBeNull();
+
+        await userEvent.keyboard('{Escape}');
+        await userEvent.click(screen.getByRole('tab', { name: /Open Singles/ }));
+        expect(await screen.findByText('No bracket yet')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Generate bracket' })).toBeNull();
     });
 });

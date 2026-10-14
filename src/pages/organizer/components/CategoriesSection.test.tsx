@@ -7,7 +7,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import categoryReducer from '@/store/slices/categorySlice';
 import registrationReducer from '@/store/slices/registrationSlice';
 import { server } from '@/test/server';
-import { SectionNavContext } from '../ui';
+import { ReadOnlyContext, SectionNavContext } from '../ui';
 import CategoriesSection from './CategoriesSection';
 
 const API = 'https://api.kria.club';
@@ -20,7 +20,7 @@ const cat = (patch = {}) => ({
     ...patch,
 });
 
-function setup(categories: unknown[]) {
+function setup(categories: unknown[], readOnly = false) {
     let list = categories;
     const calls: string[] = [];
     server.use(
@@ -31,7 +31,9 @@ function setup(categories: unknown[]) {
     render(
         <Provider store={store}>
             <SectionNavContext.Provider value={goTo}>
-                <CategoriesSection tournamentId="t1" sports={['badminton']} />
+                <ReadOnlyContext.Provider value={readOnly}>
+                    <CategoriesSection tournamentId="t1" sports={['badminton']} />
+                </ReadOnlyContext.Provider>
             </SectionNavContext.Provider>
         </Provider>,
     );
@@ -148,5 +150,15 @@ describe('CategoriesSection', () => {
         expect(await screen.findByText('Couldn’t load categories')).toBeInTheDocument();
         expect(screen.getByText('Server unavailable.')).toBeInTheDocument();
         expect(screen.queryByText('No categories yet')).not.toBeInTheDocument();
+    });
+
+    it('leaves only analytics when the tournament is locked', async () => {
+        setup([cat({ status: 'ongoing' }), cat({ _id: 'c2', name: "Women's Doubles", status: 'completed' })], true);
+
+        await userEvent.click(await screen.findByRole('button', { name: "More actions for Women's Doubles" }));
+        expect(screen.getAllByRole('menuitem').map(i => i.textContent)).toEqual(['Analytics & awards']);
+        expect(screen.queryByRole('button', { name: "More actions for Men's Singles Open" })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Complete category' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Add category/ })).not.toBeInTheDocument();
     });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, ChevronRight, Info, Loader2, Plus, Radio, Shuffle, Trash2 } from 'lucide-react';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
-import { COLHEAD, ConfirmBar, Dialog, Drawer, EmptyState, Field, INPUT, Notice, PANEL, ROW, SegTabs, Spinner, TeamLogo } from '@/pages/organizer/ui';
+import { COLHEAD, ConfirmBar, Dialog, Drawer, EmptyState, Field, INPUT, Notice, PANEL, ROW, SegTabs, Spinner, TeamLogo, useReadOnly } from '@/pages/organizer/ui';
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, MATCH_STATUS, ToneBadge } from '@/pages/organizer/shared';
 import { cn } from '@/lib/utils';
 import LineupAssignmentModal from './LineupAssignmentModal';
@@ -53,6 +53,7 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
     const [lineupFor, setLineupFor] = useState<{ teamId: string; teamName: string } | null>(null);
     const [resultFor, setResultFor] = useState<any>(null);
     const [liveFor, setLiveFor] = useState<any>(null);
+    const readOnly = useReadOnly();
 
     // Keep the chosen group across refreshes; fall back to the first when it's gone (new stage, regrouped).
     useEffect(() => {
@@ -150,7 +151,7 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
 
     const groupTeams = (group?.teamIds ?? []).map(id => ({ _id: id, name: teamOf(id)?.name ?? 'Unknown team' }));
     const pairings = (groupTeams.length * (groupTeams.length - 1)) / 2;
-    const canGenerate = ties?.length === 0 && groupTeams.length >= 2;
+    const canGenerate = !readOnly && ties?.length === 0 && groupTeams.length >= 2;
 
     return (
         <div className="space-y-4">
@@ -163,9 +164,11 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
                             <Shuffle aria-hidden className="h-4 w-4" />Generate round robin
                         </button>
                     )}
-                    <button type="button" onClick={() => setAdding(true)} disabled={groupTeams.length < 2} className={BTN_SECONDARY}>
-                        <Plus aria-hidden className="h-4 w-4" />Add tie
-                    </button>
+                    {!readOnly && (
+                        <button type="button" onClick={() => setAdding(true)} disabled={groupTeams.length < 2} className={BTN_SECONDARY}>
+                            <Plus aria-hidden className="h-4 w-4" />Add tie
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -266,10 +269,12 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
                                                             <TeamLogo size="sm" name={side.name} logo={side.logo} color={side.color} />
                                                             <span className="truncate">{side.name}</span>
                                                         </span>
-                                                        <button type="button" onClick={() => setLineupFor({ teamId: side.id, teamName: side.name })}
-                                                            className={cn(BTN_SECONDARY, BTN_SM)}>
-                                                            Edit lineup<span className="sr-only"> for {side.name}</span>
-                                                        </button>
+                                                        {!readOnly && (
+                                                            <button type="button" onClick={() => setLineupFor({ teamId: side.id, teamName: side.name })}
+                                                                className={cn(BTN_SECONDARY, BTN_SM)}>
+                                                                Edit lineup<span className="sr-only"> for {side.name}</span>
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <ul className="divide-y divide-line">
                                                         {slots.map(s => {
@@ -310,7 +315,7 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
                                                             )}
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            {done ? <ToneBadge {...MATCH_STATUS.completed} /> : ready ? <>
+                                                            {done ? <ToneBadge {...MATCH_STATUS.completed} /> : ready && !readOnly ? <>
                                                                 <button type="button" onClick={() => setLiveFor(m)} className={cn(BTN_SECONDARY, BTN_SM)}>
                                                                     <Radio aria-hidden className="h-3.5 w-3.5" />
                                                                     {m.status === 'in_progress' ? 'Continue live' : 'Score live'}<span className="sr-only"> for {label}</span>
@@ -327,7 +332,7 @@ export default function TieManagementPanel({ categoryId, groups, teams, tieCount
                                     )}
                                 </section>
 
-                                {tie.status !== 'completed' && (confirmDelete ? (
+                                {tie.status !== 'completed' && !readOnly && (confirmDelete ? (
                                     <div className={cn(PANEL, 'overflow-hidden')}>
                                         <ConfirmBar className="border-t-0" danger message="Delete this tie and its sub-matches?"
                                             confirmLabel="Delete tie" cancelLabel="Keep tie" busy={deleting}

@@ -28,6 +28,8 @@ export function useMatchSocket(matchId: string | undefined): MatchSocketStatus {
                 dispatch(liveStateReceived({ matchId, liveState: payload.liveState }));
             }
         };
+        // An undo can reopen a completed match, so refetch the whole thing.
+        const onUndo = () => dispatch(fetchMatchAndLive(matchId));
         const join = () => socket.emit('join:match', { matchId });
         const onConnect = () => {
             join();
@@ -40,12 +42,14 @@ export function useMatchSocket(matchId: string | undefined): MatchSocketStatus {
         if (!socket.connected) socket.connect();
         join();
         socket.on('ball:recorded', onBall);
+        socket.on('ball:undone', onUndo);
         socket.on('connect', onConnect);
         socket.on('disconnect', onDisconnect);
 
         return () => {
             socket.emit('leave:match', { matchId });
             socket.off('ball:recorded', onBall);
+            socket.off('ball:undone', onUndo);
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
         };

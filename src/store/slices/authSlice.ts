@@ -237,6 +237,33 @@ export const updateProfile = createAsyncThunk(
     }
 );
 
+// Organization Update (organizer only). The server replaces the whole `organization`
+// object and rejects empty strings, so callers send only the fields that are set.
+export const updateOrganization = createAsyncThunk(
+    'auth/updateOrganization',
+    async (data: { name?: string; description?: string; logo?: string }, { rejectWithValue }) => {
+        try {
+            const response = await API.patch('/organizer/auth/organization', data);
+            return response.data?.data?.data || response.data?.data;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
+// Password Change (signed in)
+export const changePassword = createAsyncThunk(
+    'auth/changePassword',
+    async ({ role, data }: { role: Role; data: { currentPassword: string; newPassword: string } }, { rejectWithValue }) => {
+        try {
+            await API.post(`/${role}/auth/change-password`, data);
+            return true;
+        } catch (error) {
+            return rejectWithValue(extractError(error));
+        }
+    }
+);
+
 export const authSlice = createSlice({
     name: 'auth',
     initialState,
@@ -318,6 +345,11 @@ export const authSlice = createSlice({
             }
         });
         builder.addCase(updateProfile.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
+
+        // UPDATE ORGANIZATION: take it as returned (a cleared organization comes back empty or missing)
+        builder.addCase(updateOrganization.fulfilled, (state, action) => {
+            if (state.user) state.user.organization = action.payload?.organization;
+        });
 
         // PLAYER STATS
         builder.addCase(fetchPlayerStats.pending,    (state) => { state.statsLoading = true; });

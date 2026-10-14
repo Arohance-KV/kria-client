@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, Suspense, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { differenceInCalendarDays, format } from 'date-fns';
 import {
@@ -31,7 +31,7 @@ import {
     AccountMenu, Brand, BTN_DANGER, BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, formatRange, inDays, inr,
     sportLabel, sportsOf, statusOf, StatusBadge, TONE,
 } from './shared';
-import { Field, FormSection, Notice, PageHead, SectionNavContext } from './ui';
+import { Field, FormSection, Notice, PageHead, ReadOnlyContext, SectionNavContext, Spinner } from './ui';
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
@@ -86,6 +86,9 @@ const NEXT: Record<string, { label: string; text: string; thunk: typeof openRegi
 };
 
 const READ_ONLY_STATUSES = ['completed', 'cancelled'];
+// Sections that go view-only with the tournament. Announcements stay open; Details and
+// Settings lock themselves; Auction is hidden and Payments has nothing to change.
+const LOCKABLE: SectionKey[] = ['categories', 'registrations', 'teams', 'brackets', 'matches', 'team_league', 'staff'];
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
@@ -350,6 +353,7 @@ const TournamentDetailPage = () => {
 
     const s = statusOf(status);
     const ownSection = section === 'overview' || section === 'details' || section === 'settings';
+    const locked = readOnly && LOCKABLE.includes(section);
 
     return (
         <div className="min-h-screen bg-canvas font-ui text-fg antialiased">
@@ -443,7 +447,10 @@ const TournamentDetailPage = () => {
 
                 <main className={cn('mx-auto px-4 py-7 sm:px-6 lg:px-8 lg:py-9', ownSection ? 'max-w-6xl space-y-6' : 'max-w-[1600px]')}>
                     {error && <div className={ownSection ? '' : 'mb-6'}><Notice tone="red" icon={AlertCircle}><span role="alert">{error}</span></Notice></div>}
-                    <SectionNavContext.Provider value={s => goTo(toSection(s))}>{renderSection()}</SectionNavContext.Provider>
+                    {locked && <div className="mb-6">{lockNotice()}</div>}
+                    <SectionNavContext.Provider value={s => goTo(toSection(s))}>
+                        <ReadOnlyContext.Provider value={locked}>{renderSection()}</ReadOnlyContext.Provider>
+                    </SectionNavContext.Provider>
                 </main>
             </div>
         </div>
@@ -468,7 +475,7 @@ const TournamentDetailPage = () => {
             case 'team_league': {
                 if (!teamLeagueSection) return null;
                 const SectionComponent = teamLeagueSection.component;
-                return <SectionComponent tournamentId={id} categories={leagueCategories} />;
+                return <Suspense fallback={<Spinner />}><SectionComponent tournamentId={id} categories={leagueCategories} /></Suspense>;
             }
             case 'staff': return <StaffSection tournamentId={id} staffIds={t!.staffIds || []} />;
             default: return null;
@@ -588,7 +595,7 @@ const TournamentDetailPage = () => {
                             <div className="px-6 py-10 text-center">
                                 <p className="text-sm font-medium text-fg">No categories yet</p>
                                 <p className="mt-1 text-sm text-fg-muted">Add the events players can register for, like singles or doubles.</p>
-                                <button type="button" onClick={() => goTo('categories')} className={cn(BTN_SECONDARY, 'mt-4')}>Add a category</button>
+                                {!readOnly && <button type="button" onClick={() => goTo('categories')} className={cn(BTN_SECONDARY, 'mt-4')}>Add a category</button>}
                             </div>
                         ) : (
                             <>

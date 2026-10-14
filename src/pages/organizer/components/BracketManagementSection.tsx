@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { useAppDispatch } from '@/store/hooks';
 import { fetchTournamentCategories } from '@/store/slices/registrationSlice';
 import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, FOCUS, MATCH_STATUS, ToneBadge, type Tone } from '../shared';
-import { CategoryTabs, ConfirmBar, Dialog, EmptyState, MoreMenu, Notice, PageHead, PANEL, Spinner, categoryMeta, useSectionNav } from '../ui';
+import { CategoryTabs, ConfirmBar, Dialog, EmptyState, MoreMenu, Notice, PageHead, PANEL, Spinner, categoryMeta, useReadOnly, useSectionNav } from '../ui';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES & HELPERS (shared with MatchManagementSection)
@@ -93,6 +93,7 @@ interface SwapSelection {
 
 const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categories }) => {
     const goTo = useSectionNav();
+    const readOnly = useReadOnly();
     const dispatch = useAppDispatch();
 
     const [selectedCat, setSelectedCat] = useState('');
@@ -119,8 +120,9 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
     const category = categories.find(c => c._id === selectedCat);
     const isTeamLeague = category?.bracketType === 'team_league';
     // The selected category's own sport picks the plugin; the tournament's first sport
-    // is only a fallback for a category that doesn't say.
-    const ResultSection = sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
+    // is only a fallback for a category that doesn't say. Every scoring path (and cricket's
+    // "View match", whose page can correct a result) goes through it, so a locked tournament gets none.
+    const ResultSection = readOnly ? undefined : sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
 
     const { matches, rounds, competitorType } = data;
     const hasBracket = matches.length > 0;
@@ -230,6 +232,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
     };
 
     const ready = !!category && !isTeamLeague && !loading && !loadError;
+    const editable = ready && !readOnly;
     const actions = (
         <>
             {selectedCat && (
@@ -237,10 +240,10 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                     <ExternalLink aria-hidden className="h-4 w-4" />Public bracket
                 </a>
             )}
-            {ready && !hasBracket && (
+            {editable && !hasBracket && (
                 <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>
             )}
-            {ready && hasBracket && !hasResults && (
+            {editable && hasBracket && !hasResults && (
                 <>
                     <button type="button" onClick={toggleSwap} className={swapMode ? BTN_PRIMARY : BTN_SECONDARY}>
                         <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : 'Swap players'}
@@ -287,11 +290,11 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
             return (
                 <section className={PANEL}>
                     <EmptyState title="No bracket yet" text="Generate the draw once entries are final. Players are placed at random."
-                        action={<button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>} />
+                        action={!readOnly && <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>} />
                 </section>
             );
         }
-        const hint = !swapMode && <span className="text-[12.5px] text-fg-subtle">Click a match to score it</span>;
+        const hint = !swapMode && !readOnly && <span className="text-[12.5px] text-fg-subtle">Click a match to score it</span>;
         const entrants = (knockout[0]?.matches ?? []).reduce((n, m) =>
             n + [getC1(m, competitorType), getC2(m, competitorType)].filter(c => !isPlaceholderSlot(c)).length, 0);
         return (

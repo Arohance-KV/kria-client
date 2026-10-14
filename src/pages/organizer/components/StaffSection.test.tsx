@@ -7,6 +7,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import tournamentReducer from '@/store/slices/tournamentSlice';
 import { useAppSelector } from '@/store/hooks';
 import { server } from '@/test/server';
+import { ReadOnlyContext } from '../ui';
 import StaffSection from './StaffSection';
 
 const API = 'https://api.kria.club';
@@ -22,14 +23,14 @@ const Section = () => {
     return <StaffSection tournamentId="t1" staffIds={ids} />;
 };
 
-function setup(staff: unknown[], staffIds: string[] = []) {
+function setup(staff: unknown[], staffIds: string[] = [], readOnly = false) {
     let list = staff;
     server.use(http.get(`${API}/organizer/auth/staff`, () => envelope(list)));
     const store = configureStore({
         reducer: { tournament: tournamentReducer },
         preloadedState: { tournament: { ...tournamentReducer(undefined, { type: 'init' }), currentTournament: { _id: 't1', staffIds } as never } },
     });
-    render(<Provider store={store}><Section /></Provider>);
+    render(<Provider store={store}><ReadOnlyContext.Provider value={readOnly}><Section /></ReadOnlyContext.Provider></Provider>);
     return { store, setList: (l: unknown[]) => { list = l; } };
 }
 
@@ -105,5 +106,12 @@ describe('StaffSection', () => {
 
         expect(await screen.findByText('No staff on this tournament yet')).toBeInTheDocument();
         expect(removed).toBe(true);
+    });
+
+    it('lists staff without add or remove when the tournament is locked', async () => {
+        setup([member()], ['s1'], true);
+        expect(await screen.findByText('Ananya Rao')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Add staff/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Remove Ananya Rao' })).not.toBeInTheDocument();
     });
 });

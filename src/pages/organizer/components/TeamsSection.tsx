@@ -8,7 +8,7 @@ import { fetchRegistrationsByTournament, Registration } from '@/store/slices/reg
 import { uploadImage } from '@/api/upload';
 import { cn } from '@/lib/utils';
 import { BTN_DANGER_SOLID, BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, inr } from '../shared';
-import { Avatar, Drawer, EmptyState, Field, FormGroup, INPUT, MoreMenu, Notice, PageHead, PANEL, Spinner, TeamLogo, useSectionNav } from '../ui';
+import { Avatar, Drawer, EmptyState, Field, FormGroup, INPUT, MoreMenu, Notice, PageHead, PANEL, Spinner, TeamLogo, useReadOnly, useSectionNav } from '../ui';
 import { RoleChip } from './RegistrationsSection';
 
 interface TeamsSectionProps {
@@ -46,6 +46,7 @@ const Budget = ({ team, label, startLabel }: { team: Team; label: string; startL
 
 const TeamsSection = ({ tournamentId, defaultBudget }: TeamsSectionProps) => {
     const dispatch = useAppDispatch();
+    const readOnly = useReadOnly();
     const teams = useAppSelector(s => s.team.teams);
     const maxTeams = useAppSelector(s => s.tournament.currentTournament?.settings?.maxTeams);
     const { tournamentRegistrations: regs, categories } = useAppSelector(s => s.registration);
@@ -82,7 +83,7 @@ const TeamsSection = ({ tournamentId, defaultBudget }: TeamsSectionProps) => {
         if (!teams.length) return (
             <div className={PANEL}>
                 <EmptyState title="No teams yet" text="Add the teams taking part, with their owners and auction budgets."
-                    action={<button type="button" onClick={() => setView({ kind: 'form' })} className={BTN_PRIMARY}><Plus aria-hidden className="h-4 w-4" />Add team</button>} />
+                    action={!readOnly && <button type="button" onClick={() => setView({ kind: 'form' })} className={BTN_PRIMARY}><Plus aria-hidden className="h-4 w-4" />Add team</button>} />
             </div>
         );
         return (
@@ -121,7 +122,7 @@ const TeamsSection = ({ tournamentId, defaultBudget }: TeamsSectionProps) => {
             <PageHead title="Teams" desc="Teams, their owners and auction budgets. Open a team to see its roster."
                 actions={<>
                     <span className="text-[13px] text-fg-subtle">{maxTeams ? `${teams.length} of ${maxTeams} teams` : `${teams.length} teams`}</span>
-                    <button type="button" onClick={() => setView({ kind: 'form' })} className={BTN_PRIMARY}><Plus aria-hidden className="h-4 w-4" />Add team</button>
+                    {!readOnly && <button type="button" onClick={() => setView({ kind: 'form' })} className={BTN_PRIMARY}><Plus aria-hidden className="h-4 w-4" />Add team</button>}
                 </>} />
             {loadError && teams.length > 0 && (
                 <Notice tone="red" icon={AlertCircle}>
@@ -150,6 +151,7 @@ const TeamDrawer = ({ team, roster, categoryName, onClose, onEdit }: {
     const dispatch = useAppDispatch();
     const goTo = useSectionNav();
     const isStaff = useAppSelector(s => s.auth.user?.role === 'staff');
+    const readOnly = useReadOnly();
     const [confirm, setConfirm] = useState<'reset' | 'delete' | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -180,7 +182,7 @@ const TeamDrawer = ({ team, roster, categoryName, onClose, onEdit }: {
 
     return (
         <Drawer title={team.name} description={`Owner: ${team.owner?.name} · ${team.owner?.phone}`} onClose={onClose}
-            footer={<>
+            footer={!readOnly && <>
                 <div className="mr-auto">
                     <MoreMenu side="top" label="More team actions" items={[
                         { label: 'Reset budget', icon: RotateCcw, onSelect: () => setConfirm('reset') },

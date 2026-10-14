@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Loader2, Pencil, Plus, Shuffle, X } from 'lucide-react';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
-import { CHOICE, ConfirmBar, Drawer, EmptyState, INPUT, INPUT_SM, Notice, PANEL, Spinner, TeamLogo } from '@/pages/organizer/ui';
+import { CHOICE, ConfirmBar, Drawer, EmptyState, INPUT, INPUT_SM, Notice, PANEL, Spinner, TeamLogo, useReadOnly } from '@/pages/organizer/ui';
 import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, FOCUS } from '@/pages/organizer/shared';
 import { cn } from '@/lib/utils';
 
@@ -42,8 +42,9 @@ export default function GroupConfigPanel({ categoryId, categoryStatus, stageNumb
     const [groupCount, setGroupCount] = useState('2');
     const [randomizing, setRandomizing] = useState(false);
     const [editing, setEditing] = useState(false);
+    const readOnly = useReadOnly();
 
-    const canConfigure = EDITABLE_STATUSES.includes(categoryStatus) && stageNumber === 1;
+    const canConfigure = !readOnly && EDITABLE_STATUSES.includes(categoryStatus) && stageNumber === 1;
 
     const randomize = async () => {
         setRandomizing(true);

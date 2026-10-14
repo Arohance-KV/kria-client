@@ -428,7 +428,7 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
                     </div>
                     <aside className="space-y-4" aria-label="Teams and sales">
                         <Purses teams={teams} flash={sold ? r?.teamId : undefined} />
-                        <SalesLog log={log} upcoming={s.upcoming ?? []} remaining={a.remainingCount} />
+                        <SalesLog log={log} upcoming={s.upcoming ?? []} unsold={s.unsold ?? []} remaining={a.remainingCount} />
                     </aside>
                 </div>
 
@@ -532,9 +532,9 @@ function Purses({ teams, flash }: { teams: Team[]; flash?: string }) {
     );
 }
 
-/** Sold players and pre-assigned captains/icons; with `upcoming`, also the queue. */
-function SalesLog({ log, upcoming, remaining }: { log: SoldLog | null; upcoming?: AuctionState['upcoming']; remaining?: number }) {
-    const [tab, setTab] = useState<'sold' | 'next'>('sold');
+/** Sold players and pre-assigned captains/icons; with `upcoming`, also the queue and the unsold. */
+function SalesLog({ log, upcoming, unsold, remaining }: { log: SoldLog | null; upcoming?: AuctionState['upcoming']; unsold?: AuctionState['unsold']; remaining?: number }) {
+    const [tab, setTab] = useState<'sold' | 'next' | 'unsold'>('sold');
     const sold = [...(log?.logs ?? [])].reverse();
     const pre = log?.preAssigned ?? [];
     const queued = remaining ?? upcoming?.length ?? 0;
@@ -550,8 +550,8 @@ function SalesLog({ log, upcoming, remaining }: { log: SoldLog | null; upcoming?
         <section aria-label="Sales" className={PANEL}>
             {upcoming ? (
                 <div className="border-b border-line p-2.5">
-                    <SegTabs<'sold' | 'next'> label="Lists" value={tab} onChange={setTab}
-                        items={[{ key: 'sold', label: 'Sold', count: sold.length }, { key: 'next', label: 'Up next', count: queued }]} />
+                    <SegTabs<'sold' | 'next' | 'unsold'> label="Lists" value={tab} onChange={setTab}
+                        items={[{ key: 'sold', label: 'Sold', count: sold.length }, { key: 'next', label: 'Up next', count: queued }, { key: 'unsold', label: 'Unsold', count: unsold?.length ?? 0 }]} />
                 </div>
             ) : (
                 <header className="flex items-baseline gap-2 border-b border-line px-4 py-3">
@@ -570,6 +570,10 @@ function SalesLog({ log, upcoming, remaining }: { log: SoldLog | null; upcoming?
                     {!upcoming?.length && note('No one else is queued in this round.')}
                     {queued > (upcoming?.length ?? 0) && note(`${queued - (upcoming?.length ?? 0)} more after these.`)}
                     {note('Players marked unsold come back in the next round.')}
+                </>}
+                {tab === 'unsold' && <>
+                    {unsold?.map(x => row(x.registrationId, x.playerName, cap(x.skillLevel), <span className="text-fg-muted">base {inr(x.basePrice)}</span>, x.playerPhoto))}
+                    {unsold?.length ? note('They open the next round, in this order.') : note('No one has gone unsold this round.')}
                 </>}
             </ul>
         </section>

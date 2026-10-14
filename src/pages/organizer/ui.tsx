@@ -14,6 +14,10 @@ import { BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, initials, 
 export const SectionNavContext = createContext<(section: string) => void>(() => {});
 export const useSectionNav = () => useContext(SectionNavContext);
 
+/** True inside a section of a completed or cancelled tournament: hide every action that changes data. */
+export const ReadOnlyContext = createContext(false);
+export const useReadOnly = () => useContext(ReadOnlyContext);
+
 // ─── Surfaces & text ──────────────────────────────────────────────────────────
 
 export const PANEL = 'rounded-xl border border-line bg-panel';

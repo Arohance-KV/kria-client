@@ -8,6 +8,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import authReducer from '@/store/slices/authSlice';
 import tournamentReducer from '@/store/slices/tournamentSlice';
 import registrationReducer from '@/store/slices/registrationSlice';
+import teamReducer from '@/store/slices/teamSlice';
 import { server } from '@/test/server';
 import TournamentDetailPage from './TournamentDetailPage';
 
@@ -21,15 +22,15 @@ const tournament = (patch = {}) => ({
     ...patch,
 });
 
-const mockApi = () => server.use(
+const mockApi = (patch = {}) => server.use(
     // The detail endpoint includes the computed counts; status/update responses don't.
-    http.get(`${API}/tournament/t1`, () => HttpResponse.json({ data: { ...tournament(), registeredPlayersCount: 48, teamsCount: 6 } })),
+    http.get(`${API}/tournament/t1`, () => HttpResponse.json({ data: { ...tournament(patch), registeredPlayersCount: 48, teamsCount: 6 } })),
     http.get(`${API}/tournaments/t1/categories`, () => HttpResponse.json({ data: [] })),
 );
 
 const renderPage = (section = 'overview', role = 'organizer') => {
     const store = configureStore({
-        reducer: { auth: authReducer, tournament: tournamentReducer, registration: registrationReducer },
+        reducer: { auth: authReducer, tournament: tournamentReducer, registration: registrationReducer, team: teamReducer },
         preloadedState: { auth: { ...authReducer(undefined, { type: 'init' }), user: { firstName: 'Rohan', role } as never } },
     });
     return render(
@@ -86,5 +87,31 @@ describe('TournamentDetailPage', () => {
         expect(await screen.findByLabelText('Maximum teams')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Delete tournament' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Payments' })).not.toBeInTheDocument();
+    });
+
+    it('makes Teams view-only on a completed tournament and says why', async () => {
+        mockApi({ status: 'completed' });
+        server.use(
+            http.get(`${API}/tournaments/t1/teams`, () => HttpResponse.json({ data: [
+                { _id: 'tm1', name: 'Net Ninjas', owner: { name: 'Priya Nair', phone: '99001 23456' }, budget: 0, initialBudget: 100000, tournamentId: 't1' },
+            ] })),
+            http.get(`${API}/registrations/tournaments/t1`, () => HttpResponse.json({ data: [] })),
+        );
+        renderPage('teams');
+
+        expect(await screen.findByText("Completed tournaments can't be edited.")).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Add team/ })).not.toBeInTheDocument();
+        await userEvent.click(await screen.findByRole('button', { name: /Net Ninjas/ })); // browsing still works
+        expect(screen.getByRole('dialog', { name: 'Net Ninjas' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Edit team' })).not.toBeInTheDocument();
+    });
+
+    it('keeps Announcements open on a completed tournament', async () => {
+        mockApi({ status: 'completed' });
+        server.use(http.get(`${API}/tournaments/t1/announcements`, () => HttpResponse.json({ data: { data: [] } })));
+        renderPage('announcements');
+
+        expect((await screen.findAllByRole('button', { name: /New announcement/ })).length).toBeGreaterThan(0);
+        expect(screen.queryByText(/can't be edited/)).not.toBeInTheDocument();
     });
 });

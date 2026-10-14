@@ -8,7 +8,7 @@ import { staffApi, StaffMember } from '../../../api/staff';
 import { cn } from '@/lib/utils';
 import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, ToneBadge } from '../shared';
 import {
-    Avatar, COLHEAD, ConfirmBar, Drawer, EmptyState, Field, INPUT, Notice, PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, Switch,
+    Avatar, COLHEAD, ConfirmBar, Drawer, EmptyState, Field, INPUT, Notice, PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, Switch, useReadOnly,
 } from '../ui';
 
 interface StaffSectionProps {
@@ -39,6 +39,7 @@ const COLS = 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_6rem_7rem]';
 
 const StaffSection = ({ tournamentId, staffIds = [] }: StaffSectionProps) => {
     const dispatch = useAppDispatch();
+    const readOnly = useReadOnly();
     const [staff, setStaff] = useState<StaffMember[]>([]);
     const [listState, setListState] = useState<ListState>('loading');
     const [listError, setListError] = useState('');
@@ -73,7 +74,7 @@ const StaffSection = ({ tournamentId, staffIds = [] }: StaffSectionProps) => {
         }
     };
 
-    const addButton = (
+    const addButton = !readOnly && (
         <button type="button" onClick={() => setAdding(true)} className={BTN_PRIMARY}>
             <Plus aria-hidden className="h-4 w-4" />Add staff
         </button>
@@ -87,7 +88,7 @@ const StaffSection = ({ tournamentId, staffIds = [] }: StaffSectionProps) => {
             <section aria-label="Assigned staff" className={cn(PANEL, 'overflow-hidden')}>
                 {staffIds.length === 0 ? (
                     <EmptyState title="No staff on this tournament yet" text="Add people who can help you run it. Each gets their own login."
-                        action={<button type="button" onClick={() => setAdding(true)} className={BTN_SECONDARY}>Add staff</button>} />
+                        action={!readOnly && <button type="button" onClick={() => setAdding(true)} className={BTN_SECONDARY}>Add staff</button>} />
                 ) : listState === 'loading' ? <Spinner label="Loading staff" /> : (
                     <>
                         {listState === 'error' && (
@@ -125,10 +126,12 @@ const StaffSection = ({ tournamentId, staffIds = [] }: StaffSectionProps) => {
                                             <span className="hidden text-sm tabular-nums text-fg-muted xl:block">{s?.phone ?? '—'}</span>
                                             <span className="hidden xl:block">{status}</span>
                                             <div className="flex justify-end">
-                                                <button type="button" onClick={() => { setRowError(null); setConfirmRemove(id); }}
-                                                    disabled={removing === id} className={cn(BTN_GHOST, BTN_SM)}>
-                                                    Remove<span className="sr-only"> {name}</span>
-                                                </button>
+                                                {!readOnly && (
+                                                    <button type="button" onClick={() => { setRowError(null); setConfirmRemove(id); }}
+                                                        disabled={removing === id} className={cn(BTN_GHOST, BTN_SM)}>
+                                                        Remove<span className="sr-only"> {name}</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                         {rowError?.id === id && (

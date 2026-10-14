@@ -143,7 +143,7 @@ export default function CricketCategoryForm({ tournamentId, category, onSuccess,
             </FormGroup>
 
             <FormGroup title="Format">
-                <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })} formats={['knockout', 'league', 'hybrid']} />
+                <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })} formats={['knockout', 'league']} />
                 {formData.bracketType === 'hybrid' && (
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field id="ck-group-size" label="Teams per group" error={errors.leagueSize}>

@@ -5,7 +5,7 @@ import { getC1, getC2, isHiddenBye } from '@/lib/bracketLayout';
 import { cn } from '@/lib/utils';
 import { useAppSelector } from '@/store/hooks';
 import { BTN_GHOST, BTN_SECONDARY, ToneBadge } from '../shared';
-import { CategoryTabs, COLHEAD, EmptyState, Notice, PageHead, PANEL, ROW, SegTabs, Spinner, Toolbar, categoryMeta, useSectionNav } from '../ui';
+import { CategoryTabs, COLHEAD, EmptyState, Notice, PageHead, PANEL, ROW, SegTabs, Spinner, Toolbar, categoryMeta, useReadOnly, useSectionNav } from '../ui';
 import {
     ScoreboardLink, errorMessage, fetchCategoryMatches, gamesText, isDone, matchStatus, sortedRounds,
     type BracketMatch, type CompetitorType, type MatchesPayload, type ResultSlot,
@@ -32,6 +32,7 @@ const EMPTY: MatchesPayload = { matches: [], rounds: {}, competitorType: 'player
 
 const MatchManagementSection: React.FC<Props> = ({ sports, categories }) => {
     const goTo = useSectionNav();
+    const readOnly = useReadOnly();
     // The host passes no bracketType here; the same store it reads categories from has it.
     const bracketTypes = useAppSelector(s => s.registration.categories);
     const bracketTypeOf = (id: string) => bracketTypes.find(c => c._id === id)?.bracketType;
@@ -51,7 +52,8 @@ const MatchManagementSection: React.FC<Props> = ({ sports, categories }) => {
     }, [eligible, selectedCat]);
 
     const category = categories.find(c => c._id === selectedCat);
-    const ResultSection = sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
+    // The sport's slot holds every scoring and correction path, so a locked tournament gets none.
+    const ResultSection = readOnly ? undefined : sportRegistry.get(category?.sport || sports[0])?.matchResultSection;
 
     const current = useRef(selectedCat);
     current.current = selectedCat;

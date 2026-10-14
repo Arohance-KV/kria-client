@@ -3,7 +3,8 @@ import { CircleAlert, Info, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppDispatch } from '@/store/hooks';
 import { BTN_PRIMARY } from '@/pages/organizer/shared';
-import { CHOICE, Field, Notice, PANEL, Segmented, TeamLogo } from '@/pages/organizer/ui';
+import { CHOICE, Field, Notice, PANEL, Segmented } from '@/pages/organizer/ui';
+import { CricketTeamLogo } from './LiveScoreboardPanel';
 import { recordToss } from '@/sports/cricket/store/cricketLiveStateSlice';
 
 interface Props {
@@ -44,7 +45,7 @@ export default function TossSetup({ matchId, team1, team2 }: Props) {
                         {[team1, team2].map(t => (
                             <label key={t.id} className={cn(CHOICE, 'items-center')}>
                                 <input type="radio" name="toss" className="sr-only" checked={winnerTeamId === t.id} onChange={() => setWinnerTeamId(t.id)} />
-                                <TeamLogo name={t.name} />
+                                <CricketTeamLogo id={t.id} name={t.name} />
                                 <span className="text-sm font-medium">{t.name}</span>
                             </label>
                         ))}

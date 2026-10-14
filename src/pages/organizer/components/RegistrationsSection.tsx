@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, inr, Tone, ToneBadge } from '../shared';
 import {
     Avatar, CHOICE, COLHEAD, ConfirmBar, Dialog, EmptyState, Field, INPUT, INPUT_SM, MenuItem, MoreMenu, Notice,
-    PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, TeamLogo, Toolbar, useSectionNav,
+    PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, TeamLogo, Toolbar, useReadOnly, useSectionNav,
 } from '../ui';
 
 type Reg = Registration & { createdAt?: string };
@@ -59,6 +59,7 @@ const StatusBadge = ({ status }: { status: Status }) => {
 
 const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
     const dispatch = useAppDispatch();
+    const readOnly = useReadOnly();
     const { tournamentRegistrations, categories } = useAppSelector(s => s.registration);
     const teams = useAppSelector(s => s.team.teams);
     const regs = tournamentRegistrations as Reg[];
@@ -199,11 +200,11 @@ const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
         const team = teamOf(r);
         const price = r.auctionData?.soldPrice;
         const rowBusy = busy.includes(r._id);
-        const acts = actions(r);
+        const acts = readOnly ? null : actions(r);
         return (
             <li key={r._id} aria-label={name}>
                 <div className={cn(ROW, COLS, 'gap-x-3.5')}>
-                    {r.status === 'pending'
+                    {r.status === 'pending' && !readOnly
                         ? <input type="checkbox" aria-label={`Select ${name}`} checked={sel.includes(r._id)} disabled={rowBusy}
                             onChange={() => toggle(r._id)} className={cn('h-4 w-4 accent-primary', FOCUS)} />
                         : <span />}

@@ -119,9 +119,11 @@ const FORMATS: Record<string, { label: string; text: string }> = {
 
 /** Bracket format as radio cards. Each sport passes the formats it supports. */
 export function FormatChoice({ value, onChange, formats }: { value: string; onChange: (v: string) => void; formats: string[] }) {
+    // A category keeps its current format on screen even once it is no longer offered (hybrid).
+    const shown = formats.includes(value) || !FORMATS[value] ? formats : [...formats, value];
     return (
         <div role="radiogroup" aria-label="Format" className="grid gap-2 sm:grid-cols-2">
-            {formats.map(k => (
+            {shown.map(k => (
                 <label key={k} className={CHOICE}>
                     <input type="radio" name="cat-format" className="mt-0.5 accent-primary" checked={value === k} onChange={() => onChange(k)} />
                     <span>

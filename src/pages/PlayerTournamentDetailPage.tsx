@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchTournament } from '../store/slices/tournamentSlice';
@@ -412,7 +412,11 @@ const PlayerTournamentDetailPage = () => {
                                 const pluginTab = plugin?.playerTournamentTabs?.find(t => t.key === 'team_league');
                                 if (!pluginTab) return null;
                                 const TabComponent = pluginTab.component;
-                                return <TabComponent tournamentId={id} categories={categories} />;
+                                return (
+                                    <Suspense fallback={<div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}>
+                                        <TabComponent tournamentId={id} categories={categories} />
+                                    </Suspense>
+                                );
                             })()}
                             {activeTab === 'leaderboard' && id && tournament && (
                                 <LeaderboardTab

@@ -3,14 +3,15 @@ import { CircleAlert, Undo2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppDispatch } from '@/store/hooks';
 import { BTN_GHOST, BTN_PRIMARY, BTN_SM, ToneBadge } from '@/pages/organizer/shared';
-import { ConfirmBar, Field, Notice, PANEL, TeamLogo } from '@/pages/organizer/ui';
+import { ConfirmBar, Field, Notice, PANEL } from '@/pages/organizer/ui';
 import { undoLastBall } from '@/sports/cricket/store/cricketLiveStateSlice';
 import type { PlayerSlot } from '@/sports/cricket/lib/lineup';
 import { PickChips } from '@/sports/cricket/components/NextPlayerPrompt';
-import { teamName } from './LiveScoreboardPanel';
+import { CricketTeamLogo, teamName } from './LiveScoreboardPanel';
 
 interface Props {
     inningsNumber: number;
+    battingTeamId?: string;
     battingTeam: string;
     bowlingTeam: string;
     battingXI: PlayerSlot[];
@@ -21,7 +22,7 @@ interface Props {
 }
 
 /** Openers and the first bowler. Local only: they are posted with the first ball. */
-export default function StartInningsStep({ inningsNumber, battingTeam, bowlingTeam, battingXI, bowlingXI, note, onReady }: Props) {
+export default function StartInningsStep({ inningsNumber, battingTeamId, battingTeam, bowlingTeam, battingXI, bowlingXI, note, onReady }: Props) {
     const [strikerId, setStrikerId] = useState('');
     const [nonStrikerId, setNonStrikerId] = useState('');
     const [bowlerId, setBowlerId] = useState('');
@@ -32,7 +33,7 @@ export default function StartInningsStep({ inningsNumber, battingTeam, bowlingTe
             <div className="grid gap-5 p-5 sm:p-6">
                 <div>
                     <h1 className="flex items-center gap-2 text-lg font-semibold">
-                        <TeamLogo size="sm" name={battingTeam} />{inningsNumber === 2 ? '2nd' : '1st'} innings: {battingTeam} bat
+                        <CricketTeamLogo size="sm" id={battingTeamId} name={battingTeam} />{inningsNumber === 2 ? '2nd' : '1st'} innings: {battingTeam} bat
                     </h1>
                     <p className="mt-1 text-[13px] text-fg-muted">{note ? `${note} ` : ''}Pick the openers and who bowls the first over.</p>
                 </div>

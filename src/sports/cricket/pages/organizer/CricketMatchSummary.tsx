@@ -4,10 +4,10 @@ import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppDispatch } from '@/store/hooks';
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, ToneBadge } from '@/pages/organizer/shared';
-import { CHOICE, ConfirmBar, Field, Notice, PANEL, TeamLogo } from '@/pages/organizer/ui';
+import { CHOICE, ConfirmBar, Field, Notice, PANEL } from '@/pages/organizer/ui';
 import { fetchMatchAndLive, resolveTie, undoLastBall } from '@/sports/cricket/store/cricketLiveStateSlice';
 import { isDecidedFinal } from '@/lib/champion';
-import { sidesOf, teamName } from './LiveScoreboardPanel';
+import { CricketTeamLogo, sidesOf, teamName } from './LiveScoreboardPanel';
 
 interface Props {
     match: any;       // completed match (has inningsScores, winnerId, teams, result)
@@ -83,10 +83,11 @@ export default function CricketMatchSummary({ match }: Props) {
                 {innings.length > 0 && (
                     <ul className="mt-5 divide-y divide-line rounded-[10px] ring-1 ring-inset ring-line">
                         {innings.map((inn, i) => {
-                            const name = teamName(match, inn.battingTeamId ?? (inn.inningsNumber === 2 ? firstBat.bowling : firstBat.batting));
+                            const id = inn.battingTeamId ?? (inn.inningsNumber === 2 ? firstBat.bowling : firstBat.batting);
+                            const name = teamName(match, id);
                             return (
                                 <li key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
-                                    <TeamLogo size="sm" name={name} />
+                                    <CricketTeamLogo size="sm" id={id} name={name} />
                                     <span className="min-w-0 flex-1 truncate">{name}<span className="text-fg-subtle"> · {inn.inningsNumber === 2 ? '2nd' : '1st'} innings</span></span>
                                     <span className="font-semibold tabular-nums">{inn.runs}/{inn.wickets}</span>
                                     <span className="w-14 text-right text-xs tabular-nums text-fg-subtle">{inn.overs}.{inn.balls ?? 0} ov</span>
@@ -103,7 +104,7 @@ export default function CricketMatchSummary({ match }: Props) {
                                 {[team1, team2].map(t => (
                                     <label key={t.id} className={cn(CHOICE, 'items-center')}>
                                         <input type="radio" name="tie" className="sr-only" checked={advancing === t.id} disabled={busy} onChange={() => setAdvancing(t.id)} />
-                                        <TeamLogo size="sm" name={t.name} />
+                                        <CricketTeamLogo size="sm" id={t.id} name={t.name} />
                                         <span className="text-sm font-medium">{t.name}</span>
                                     </label>
                                 ))}

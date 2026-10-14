@@ -11,6 +11,8 @@ export interface AuctionState {
     currentPlayer: Player | null;
     /** The next 10 players in queue order. */
     upcoming?: { registrationId: string; playerName: string; playerPhoto?: string | null; basePrice: number; skillLevel?: string | null; queueIndex: number }[];
+    /** Passed over this round, in the order they return next round. */
+    unsold?: Omit<NonNullable<AuctionState['upcoming']>[number], 'queueIndex'>[];
     teams: Team[];
     category?: { _id: string; name: string } | null;
     tournament?: { _id: string; name: string } | null;

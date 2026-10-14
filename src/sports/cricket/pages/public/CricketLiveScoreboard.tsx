@@ -1808,7 +1808,6 @@ function BroadcastMode({
             setCurrentIndex(i => (i + 1) % slides.length);
         }, slide.duration);
         return () => { clearInterval(tick); clearTimeout(advance); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentIndex, isPaused, slides.length]);
 
     // Keyboard: Esc=exit, Space=pause, ←/→ skip

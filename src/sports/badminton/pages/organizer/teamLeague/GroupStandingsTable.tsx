@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertCircle, Trophy } from 'lucide-react';
 import { teamLeagueApi } from '@/sports/badminton/api/teamLeague';
-import { CHOICE, ConfirmBar, EmptyState, Field, INPUT, Notice, PANEL, Spinner, TeamLogo } from '@/pages/organizer/ui';
+import { CHOICE, ConfirmBar, EmptyState, Field, INPUT, Notice, PANEL, Spinner, TeamLogo, useReadOnly } from '@/pages/organizer/ui';
 import { BTN_PRIMARY, BTN_SECONDARY } from '@/pages/organizer/shared';
 import { cn } from '@/lib/utils';
 
@@ -116,6 +116,7 @@ export default function GroupStandingsTable({ categoryId, stageNumber, standings
     const [confirming, setConfirming] = useState(false);
     const [advancing, setAdvancing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const readOnly = useReadOnly();
 
     if (!standings) return <Spinner label="Loading standings" />;
     if (standings.length === 0) {
@@ -182,7 +183,7 @@ export default function GroupStandingsTable({ categoryId, stageNumber, standings
                 ))}
             </div>
 
-            {!isFinal && (
+            {!isFinal && !readOnly && (
                 <section aria-label={`Advance to stage ${next}`} className={cn(PANEL, 'overflow-hidden')}>
                     <div className="flex flex-wrap items-center justify-between gap-3 p-4">
                         <div className="min-w-0">

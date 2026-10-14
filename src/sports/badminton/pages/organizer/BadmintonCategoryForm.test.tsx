@@ -18,6 +18,20 @@ function renderForm() {
 }
 
 describe('BadmintonCategoryForm', () => {
+    // The server never builds a hybrid category's knockout stage, so it is no longer offered.
+    it('offers no groups-plus-knockout format to a new category', () => {
+        renderForm();
+        expect(screen.getByRole('radio', { name: /League/ })).toBeInTheDocument();
+        expect(screen.queryByRole('radio', { name: /Groups \+ knockout/ })).not.toBeInTheDocument();
+    });
+
+    it('still shows the format of an existing hybrid category', () => {
+        const store = configureStore({ reducer: { category: categoryReducer } });
+        render(<Provider store={store}><BadmintonCategoryForm tournamentId="t1" sport="badminton" onSuccess={() => {}} onCancel={() => {}}
+            category={{ _id: 'c1', name: 'Open', bracketType: 'hybrid', hybridConfig: { leagueSize: 4, topN: 2 } }} /></Provider>);
+        expect(screen.getByRole('radio', { name: /Groups \+ knockout/ })).toBeChecked();
+    });
+
     it('keeps a typed slot label when the slot type changes', async () => {
         renderForm();
         const user = userEvent.setup();

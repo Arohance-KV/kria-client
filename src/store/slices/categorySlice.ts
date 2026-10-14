@@ -159,17 +159,6 @@ export const startCategoryAuction = createAsyncThunk(
     }
 );
 
-export const configureCategoryBracket = createAsyncThunk(
-    'category/configureBracket',
-    async (id: string, { rejectWithValue }) => {
-        try {
-            return await performStatusAction(`/categories/${id}/configure-bracket`);
-        } catch (error) {
-            return rejectWithValue(extractError(error));
-        }
-    }
-);
-
 export const startCategory = createAsyncThunk(
     'category/startCategory',
     async (id: string, { rejectWithValue }) => {
@@ -272,7 +261,7 @@ const categorySlice = createSlice({
         });
         builder.addCase(deleteCategory.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
 
-        const statusThunks = [openCategoryRegistration, startCategoryAuction, configureCategoryBracket, startCategory, completeCategory, setCategoryStatus];
+        const statusThunks = [openCategoryRegistration, startCategoryAuction, startCategory, completeCategory, setCategoryStatus];
         statusThunks.forEach(thunk => {
             builder.addCase(thunk.pending, (state) => { state.isLoading = true; state.error = null; });
             builder.addCase(thunk.fulfilled, handleStatusActionSuccess);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import API from '@/api/axios';
@@ -45,11 +45,13 @@ export default function LiveScoreboardPage() {
 
     if (!matchId) return null;
     if (error) return <div className="min-h-screen bg-[#111] flex items-center justify-center text-red-400">{error}</div>;
-    if (!sport) return <div className="min-h-screen bg-[#111] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    const spinner = <div className="min-h-screen bg-[#111] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    if (!sport) return spinner;
 
     const Renderer = sportRegistry.get(sport)?.liveScoreboardRenderer;
     if (!Renderer) {
         return <div className="min-h-screen bg-[#111] flex items-center justify-center text-gray-400">Live view is not available for this sport.</div>;
     }
-    return <Renderer matchId={matchId} />;
+    // Renderers are lazy-loaded by their plugin.
+    return <Suspense fallback={spinner}><Renderer matchId={matchId} /></Suspense>;
 }
