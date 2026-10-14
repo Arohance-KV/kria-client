@@ -30,6 +30,7 @@ export interface Team {
     totalSpent: number;
     primaryColor?: string;
     secondaryColor?: string;
+    logo?: string;
 }
 
 export interface AuctionStatus {
