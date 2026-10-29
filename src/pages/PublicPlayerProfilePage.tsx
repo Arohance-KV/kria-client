@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Award, Loader2 } from 'lucide-react';
 import API from '../api/axios';
 import TournamentHistoryView, { sportEmoji } from '../components/TournamentHistoryView';
 import { TournamentHistoryEntry } from '../store/slices/registrationSlice';
+import { titleLabel, type Title } from '@/lib/titles';
 
 interface PublicPlayer {
     _id: string;
@@ -12,7 +13,7 @@ interface PublicPlayer {
     sport?: string;
     location?: string;
     profileImage?: string;
-    titles: string[];
+    titles: Title[];
 }
 
 const PublicPlayerProfilePage = () => {
@@ -97,7 +98,7 @@ const PublicPlayerProfilePage = () => {
                             <div className="flex flex-wrap gap-2 mt-2 justify-center sm:justify-start">
                                 {player.titles.map((t, i) => (
                                     <span key={i} className="flex items-center gap-1.5 bg-gradient-to-r from-primary/20 to-transparent border border-primary/30 px-3 py-1 rounded-full text-xs font-semibold text-white">
-                                        <Award className="h-3.5 w-3.5 text-primary" /> {t}
+                                        <Award className="h-3.5 w-3.5 text-primary" /> {titleLabel(t)}
                                     </span>
                                 ))}
                             </div>

@@ -12,6 +12,7 @@ import { fetchMyRegistrations, withdrawRegistration, fetchPlayerTournamentHistor
 import { Badge } from '@/components/ui/badge';
 import { getMyPayments } from '@/api/payment';
 import TournamentHistoryView, { sportEmoji } from '../components/TournamentHistoryView';
+import { titleLabel, type Title } from '@/lib/titles';
 
 // ─── Dashboard card ──────────────────────────────────────────────────────────
 const DashboardCard = ({ icon: Icon, title, onClick }: { icon: any; title: string; onClick?: () => void }) => (
@@ -314,10 +315,10 @@ const PlayerProfilePage = () => {
                         <div className="flex flex-col gap-3 mt-6">
                             <span className="text-sm uppercase tracking-wider font-oswald text-gray-400">Honors & Titles</span>
                             <div className="flex flex-col gap-2">
-                                {user.titles.map((t: string, idx: number) => (
+                                {user.titles.map((t: string | Title, idx: number) => (
                                     <div key={idx} className="flex items-center gap-3 bg-gradient-to-r from-primary/20 to-transparent border border-primary/30 p-3 rounded-xl shadow-inner shadow-primary/10">
                                         <Award className="h-5 w-5 text-primary shrink-0" />
-                                        <span className="text-sm font-semibold text-white tracking-wide">{t}</span>
+                                        <span className="text-sm font-semibold text-white tracking-wide">{titleLabel(t)}</span>
                                     </div>
                                 ))}
                             </div>

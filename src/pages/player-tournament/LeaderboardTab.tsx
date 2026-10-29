@@ -16,6 +16,12 @@ interface LeaderboardEntry {
     totalPointsConceded?: number;
     pointDiff?: number;
     winPercentage: number;
+    // A team-mode category's board (see boardFrom) carries these instead.
+    played?: number;
+    won?: number;
+    lost?: number;
+    drawn?: number;
+    points?: number;
 }
 
 interface Slot {
@@ -38,6 +44,35 @@ interface Column {
     label: string;
     align: 'left' | 'center';
     render?: (entry: LeaderboardEntry) => React.ReactNode;
+}
+
+/** A team table: the server ranks it by league points, then wins, then fewer losses. */
+const TEAM_COLUMNS: Column[] = [
+    { key: 'rank', label: '#', align: 'left' },
+    { key: 'playerName', label: 'Team', align: 'left' },
+    { key: 'played', label: 'P', align: 'center' },
+    { key: 'won', label: 'W', align: 'center' },
+    { key: 'lost', label: 'L', align: 'center' },
+    { key: 'drawn', label: 'D', align: 'center' },
+    { key: 'points', label: 'Pts', align: 'center' },
+];
+
+/**
+ * A team-mode category's board arrives as ranked team rows
+ * ({ teamId, name, played, won, lost, drawn, points }), not player rows. Fit them
+ * to the table — the team in the name column, ranked in the order sent — and
+ * say so, so the tab shows team columns rather than empty player ones.
+ */
+export function boardFrom(rows: any[]): { team: boolean; entries: LeaderboardEntry[] } {
+    const team = rows.length > 0 && rows[0].played !== undefined && rows[0].playerName === undefined;
+    if (!team) return { team: false, entries: rows };
+    return {
+        team: true,
+        entries: rows.map((r, i) => ({
+            ...r, _id: r.teamId, rank: i + 1, playerName: r.name, teamName: '',
+            matchesPlayed: r.played, matchesWon: r.won, winPercentage: 0,
+        })),
+    };
 }
 
 function getColumns(sportType: string): Column[] {
@@ -88,6 +123,7 @@ function getColumns(sportType: string): Column[] {
 const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
     const [selectedCat, setSelectedCat] = useState<string>(categories[0]?._id || '');
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+    const [teamBoard, setTeamBoard] = useState(false);
     const [slots, setSlots] = useState<Slot[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
     const [sportType, setSportType] = useState<string>(sport);
@@ -103,7 +139,7 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
         if (!selectedCat) return;
         // Sport with its own renderer → don't fetch the generic leaderboard.
         if (sportRegistry.get(sportKey)?.leaderboardRenderer) {
-            setSlots([]); setLeaderboard([]); setSelectedSlot(null);
+            setSlots([]); setLeaderboard([]); setSelectedSlot(null); setTeamBoard(false);
             return;
         }
         // Seed the column layout from the selected category's own sport (falling back to the
@@ -117,12 +153,15 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
                 const payload = res.data?.data?.data || res.data?.data || {};
                 const nextSlots: Slot[] = payload.slots || [];
                 setSlots(nextSlots);
-                setLeaderboard(payload.leaderboard || []);
+                const board = boardFrom(payload.leaderboard || []);
+                setTeamBoard(board.team);
+                setLeaderboard(board.entries);
                 setSelectedSlot(nextSlots.length ? nextSlots[0].slotNumber : null);
                 setSportType(payload.sportType || selectedCategory?.sport || sport);
             } catch {
                 setSlots([]);
                 setLeaderboard([]);
+                setTeamBoard(false);
                 setSelectedSlot(null);
             } finally {
                 setIsLoading(false);
@@ -131,7 +170,8 @@ const LeaderboardTab: React.FC<Props> = ({ categories, sport }) => {
         fetchLeaderboard();
     }, [selectedCat, sport, categories]);
 
-    const columns = getColumns(sportType);
+    // Per-slot boards are always player boards; only the flat board can be a team table.
+    const columns = teamBoard && !slots.length ? TEAM_COLUMNS : getColumns(sportType);
     const activeSlot = slots.find(s => s.slotNumber === selectedSlot);
     const activeEntries = slots.length ? (activeSlot?.leaderboard || []) : leaderboard;
 
