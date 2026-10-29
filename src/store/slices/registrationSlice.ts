@@ -18,6 +18,8 @@ export interface Category {
     registrationFee: number;
     status: 'setup' | 'registration' | 'auction' | 'groups_configured' | 'bracket_configured' | 'ongoing' | 'completed';
     bracketType?: 'knockout' | 'round_robin' | 'group_knockout' | 'league' | 'hybrid' | 'team_league';
+    /** Badminton: 'singles' | 'doubles' | 'team'. A doubles draw is built from pairs. */
+    matchType?: string;
     teamLeagueConfig?: {
         subTeamSlots: { slotNumber: number; matchType: string; label: string }[];
         numberOfGroups: number;

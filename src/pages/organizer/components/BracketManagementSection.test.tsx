@@ -201,3 +201,135 @@ describe('BracketManagementSection', () => {
         expect(screen.queryByRole('button', { name: 'Generate bracket' })).toBeNull();
     });
 });
+
+// ── Doubles: the draw is built from pairs ──────────────────────────────────────
+const pl = (registrationId: string, name: string, teamId: string, partnerRegistrationId: string | null = null) =>
+    ({ registrationId, name, teamId, partnerRegistrationId });
+const pairState = (over: Record<string, unknown> = {}) => ({
+    players: [
+        pl('a', 'Asha Rao', 't1', 'b'), pl('b', 'Priya Nair', 't1', 'a'),
+        pl('d', 'Rohan Desai', 't2', 'e'), pl('e', 'Vikram Rao', 't2', 'd'),
+        pl('g', 'Rahul Pillai', 't2'),
+    ],
+    teams: [{ _id: 't1', name: 'Smashers' }, { _id: 't2', name: 'Kings' }],
+    drawn: false, locked: false, sideIds: [],
+    ...over,
+});
+const doubles = (over: Partial<Cat> & { matchType?: string } = {}) => cat({ name: "Men's Doubles", status: 'registration', matchType: 'doubles', ...over } as Partial<Cat>);
+
+describe('BracketManagementSection, doubles before the draw', () => {
+    it('shows the pairing panel instead of the empty draw', async () => {
+        server.use(
+            http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload([]))),
+            http.get(`${API}/registrations/categories/c1/pairs`, () => HttpResponse.json({ data: { data: pairState() } })),
+        );
+        renderBrackets([doubles()]);
+        expect(await screen.findByRole('region', { name: 'Smashers' })).toBeInTheDocument();
+        expect(screen.queryByText('No bracket yet')).toBeNull();
+    });
+
+    it('keeps Generate off with fewer than two pairs', async () => {
+        server.use(
+            http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload([]))),
+            http.get(`${API}/registrations/categories/c1/pairs`, () => HttpResponse.json({ data: { data: pairState({
+                players: [pl('a', 'Asha Rao', 't1', 'b'), pl('b', 'Priya Nair', 't1', 'a'), pl('g', 'Rahul Pillai', 't2')],
+            }) } })),
+        );
+        renderBrackets([doubles()]);
+        await screen.findByRole('region', { name: 'Smashers' });
+        expect(screen.getByRole('button', { name: 'Generate bracket' })).toBeDisabled();
+    });
+
+    it('names the unpaired players when asking to generate', async () => {
+        server.use(
+            http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload([]))),
+            http.get(`${API}/registrations/categories/c1/pairs`, () => HttpResponse.json({ data: { data: pairState() } })),
+        );
+        renderBrackets([doubles()]);
+        await screen.findByRole('region', { name: 'Smashers' });
+        await userEvent.click(screen.getByRole('button', { name: 'Generate bracket' }));
+        expect(within(screen.getByRole('alertdialog', { name: 'Generate bracket' }))
+            .getByText("Generate the draw for Men's Doubles? 2 pairs are placed at random. Unpaired, so not in the draw: Rahul Pillai (Kings).")).toBeInTheDocument();
+    });
+});
+
+describe('BracketManagementSection, doubles after the draw', () => {
+    /** A doubles draw with no results; counts bracket loads, pair writes and redraws. */
+    const mockDrawn = (pairs = pairState({ drawn: true, sideIds: ['a', 'd'] }), matches = draw()) => {
+        const hits = { loads: 0, generate: 0, writes: 0, categories: 0 };
+        server.use(
+            http.get(`${API}/matches/categories/c1`, () => { hits.loads += 1; return HttpResponse.json(payload(matches)); }),
+            http.get(`${API}/registrations/categories/c1/pairs`, () => HttpResponse.json({ data: { data: pairs } })),
+            http.put(`${API}/registrations/:id/partner`, () => { hits.writes += 1; return HttpResponse.json({ data: { data: pairs } }); }),
+            http.post(`${API}/matches/generate/c1`, () => { hits.generate += 1; return HttpResponse.json({ data: {} }); }),
+            http.get(`${API}/tournaments/t1/categories`, () => { hits.categories += 1; return HttpResponse.json({ data: [] }); }),
+        );
+        return hits;
+    };
+
+    it('Edit pairs opens the pairing panel above the draw', async () => {
+        mockDrawn();
+        renderBrackets([doubles({ status: 'bracket_configured' })]);
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit pairs' }));
+        expect(await screen.findByRole('region', { name: 'Smashers' })).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Knockout draw' })).toBeInTheDocument();
+    });
+
+    it('calls the swap toggle Swap pairs', async () => {
+        mockDrawn();
+        renderBrackets([doubles({ status: 'bracket_configured' })]);
+        expect(await screen.findByRole('button', { name: 'Swap pairs' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Swap players' })).toBeNull();
+    });
+
+    it('redoes the draw from the More menu after asking, then reloads it', async () => {
+        const hits = mockDrawn();
+        renderBrackets([doubles({ status: 'bracket_configured' })]);
+        await userEvent.click(await screen.findByRole('button', { name: 'More bracket actions' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Redo draw' }));
+        const bar = screen.getByRole('alertdialog', { name: 'Redo draw' });
+        expect(within(bar).getByText("Redo the draw for Men's Doubles? It's rebuilt from the current pairs and placed at random.")).toBeInTheDocument();
+        expect(hits.generate).toBe(0);
+        const before = hits.loads;
+        await userEvent.click(within(bar).getByRole('button', { name: 'Redo draw' }));
+        await waitFor(() => expect(hits.generate).toBe(1));
+        await waitFor(() => expect(hits.loads).toBeGreaterThan(before));
+        // The category's status is the server's call; the tabs must re-read it.
+        await waitFor(() => expect(hits.categories).toBe(1));
+    });
+
+    it('says so when the pairs no longer match the draw, with its own Redo draw', async () => {
+        mockDrawn(pairState({ drawn: true, sideIds: ['a', 'd', 'g'] }));
+        renderBrackets([doubles({ status: 'bracket_configured' })]);
+        const notice = await screen.findByText("The draw doesn't match the pairs any more. Redo draw to rebuild it.");
+        await userEvent.click(within(notice.parentElement!).getByRole('button', { name: 'Redo draw' }));
+        expect(screen.getByRole('alertdialog', { name: 'Redo draw' })).toBeInTheDocument();
+    });
+
+    it('reloads the draw after a partner change, since its names change', async () => {
+        const hits = mockDrawn();
+        renderBrackets([doubles({ status: 'bracket_configured' })]);
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit pairs' }));
+        await screen.findByRole('region', { name: 'Kings' });
+        const before = hits.loads;
+        await userEvent.click(screen.getByRole('button', { name: 'Rohan Desai' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Rahul Pillai' }));
+        await waitFor(() => expect(hits.writes).toBe(1));
+        await waitFor(() => expect(hits.loads).toBeGreaterThan(before));
+    });
+
+    it('offers neither Edit pairs nor Redo draw once a result is in', async () => {
+        mockDrawn(pairState({ drawn: true, locked: true, sideIds: ['a', 'd'] }), draw('completed'));
+        renderBrackets([doubles({ status: 'ongoing' })]);
+        await screen.findByRole('region', { name: 'Knockout draw' });
+        expect(screen.queryByRole('button', { name: 'Edit pairs' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'More bracket actions' })).toBeNull();
+    });
+
+    it('leaves singles as it was', async () => {
+        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(draw()))));
+        renderBrackets([cat({ status: 'bracket_configured' })]);
+        expect(await screen.findByRole('button', { name: 'Swap players' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Edit pairs' })).toBeNull();
+    });
+});

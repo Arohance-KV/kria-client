@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, CircleAlert, ExternalLink, Info, Lock, Shuffle } from 'lucide-react';
+import { ArrowLeftRight, Check, CircleAlert, ExternalLink, Info, Lock, RefreshCw, Shuffle, Users } from 'lucide-react';
 import API from '../../../api/axios';
 import { sportRegistry } from '@/sports/registry';
 import type { MatchResultSectionProps } from '@/sports/_contracts/SportPlugin';
@@ -12,14 +12,17 @@ import {
 import { cn } from '@/lib/utils';
 import { useAppDispatch } from '@/store/hooks';
 import { fetchTournamentCategories } from '@/store/slices/registrationSlice';
-import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, FOCUS, MATCH_STATUS, ToneBadge, type Tone } from '../shared';
+import { BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, FOCUS, MATCH_STATUS, ToneBadge, type Tone } from '../shared';
 import { CategoryTabs, ConfirmBar, Dialog, EmptyState, MoreMenu, Notice, PageHead, PANEL, Spinner, categoryMeta, useReadOnly, useSectionNav } from '../ui';
+import { drawMatchesPairs, pairSummary, type PairingState } from '@/lib/pairs';
+import { getPairs } from '@/api/pairs';
+import PairingPanel from './PairingPanel';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES & HELPERS (shared with MatchManagementSection)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string; sport?: string }
+interface CategoryInfo { _id: string; name: string; status: string; bracketType?: string; sport?: string; matchType?: string }
 
 export type BracketMatch = LayoutMatch & {
     positionInRound?: number;
@@ -100,10 +103,17 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
     const [data, setData] = useState<MatchesPayload>({ matches: [], rounds: {}, competitorType: 'player' });
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [confirm, setConfirm] = useState<'generate' | 'reshuffle' | null>(null);
+    const [confirm, setConfirm] = useState<'generate' | 'reshuffle' | 'redo' | null>(null);
     const [busy, setBusy] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
     const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+
+    // Doubles: the last pairing state gates Generate, names who sits out, and
+    // tells a draw that no longer matches its pairs. `pairsKey` remounts the
+    // panel after a redraw so it reloads the draw's sides.
+    const [pairs, setPairs] = useState<PairingState | null>(null);
+    const [editPairs, setEditPairs] = useState(false);
+    const [pairsKey, setPairsKey] = useState(0);
 
     const [swapMode, setSwapMode] = useState(false);
     const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(null);
@@ -119,6 +129,8 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
 
     const category = categories.find(c => c._id === selectedCat);
     const isTeamLeague = category?.bracketType === 'team_league';
+    const isDoubles = category?.matchType === 'doubles';
+    const pairCount = pairs ? pairSummary(pairs) : null;
     // The selected category's own sport picks the plugin; the tournament's first sport
     // is only a fallback for a category that doesn't say. Every scoring path (and cricket's
     // "View match", whose page can correct a result) goes through it, so a locked tournament gets none.
@@ -149,6 +161,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
     }, [selectedCat, isTeamLeague]);
 
     useEffect(() => {
+        setPairs(null); setEditPairs(false);
         setSwapMode(false); setSwapSelection(null); setSwapError(null);
         setConfirm(null); setActionError(null); setOpenMatchId(null); setLoadError(null);
         setLoading(false); // a team league never loads; don't inherit a spinner from the last category
@@ -156,6 +169,30 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
     }, [load]);
 
     const refresh = useCallback(() => load(true), [load]);
+
+    // A drawn doubles category still open to edits: know its pairs even with the
+    // panel closed, so a draw left stale by an unpair or a team change says so.
+    const drawnOpenDoubles = isDoubles && hasBracket && !hasResults;
+    useEffect(() => {
+        if (!drawnOpenDoubles) return;
+        const cat = selectedCat;
+        getPairs(cat).then(s => { if (current.current === cat) setPairs(s); }, () => undefined);
+    }, [drawnOpenDoubles, selectedCat, data]);
+    const stale = drawnOpenDoubles && !!pairs && !drawMatchesPairs(pairs);
+
+    const redo = async () => {
+        setBusy(true); setActionError(null);
+        try {
+            // generate rebuilds over a draw nobody has played, from the current pairs.
+            await API.post(`/matches/generate/${selectedCat}`);
+            setConfirm(null);
+            setPairsKey(k => k + 1);
+            dispatch(fetchTournamentCategories(tournamentId)); // as generate: the server owns the status
+            await refresh();
+        } catch (err) {
+            setActionError(errorMessage(err, 'Could not redo the draw.'));
+        } finally { setBusy(false); }
+    };
 
     const generate = async () => {
         setBusy(true); setActionError(null);
@@ -241,14 +278,23 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 </a>
             )}
             {editable && !hasBracket && (
-                <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}>Generate bracket</button>
+                <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}
+                    disabled={isDoubles && (pairCount?.pairs ?? 0) < 2}>Generate bracket</button>
             )}
             {editable && hasBracket && !hasResults && (
                 <>
+                    {isDoubles && (
+                        <button type="button" onClick={() => setEditPairs(on => !on)} className={editPairs ? BTN_PRIMARY : BTN_SECONDARY}>
+                            <Users aria-hidden className="h-4 w-4" />{editPairs ? 'Done editing pairs' : 'Edit pairs'}
+                        </button>
+                    )}
                     <button type="button" onClick={toggleSwap} className={swapMode ? BTN_PRIMARY : BTN_SECONDARY}>
-                        <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : 'Swap players'}
+                        <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : isDoubles ? 'Swap pairs' : 'Swap players'}
                     </button>
-                    <MoreMenu label="More bracket actions" items={[{ label: 'Reshuffle round 1', icon: Shuffle, onSelect: () => setConfirm('reshuffle') }]} />
+                    <MoreMenu label="More bracket actions" items={[
+                        { label: 'Reshuffle round 1', icon: Shuffle, onSelect: () => setConfirm('reshuffle') },
+                        ...(isDoubles ? [{ label: 'Redo draw', icon: RefreshCw, onSelect: () => setConfirm('redo') }] : []),
+                    ]} />
                 </>
             )}
             {ready && hasResults && (
@@ -286,6 +332,9 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 </section>
             );
         }
+        if (!hasBracket && isDoubles) {
+            return <PairingPanel categoryId={selectedCat} readOnly={readOnly} onChange={setPairs} />;
+        }
         if (!hasBracket) {
             return (
                 <section className={PANEL}>
@@ -300,6 +349,15 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
         return (
             <>
                 {loadError && <div role="alert"><Notice tone="red" icon={CircleAlert}>Couldn't refresh the bracket. {loadError}</Notice></div>}
+                {stale && !readOnly && (
+                    <Notice tone="amber" icon={CircleAlert}>
+                        <span>The draw doesn't match the pairs any more. Redo draw to rebuild it.</span>{' '}
+                        <button type="button" onClick={() => setConfirm('redo')} className={cn(BTN_SECONDARY, BTN_SM, 'ml-1')}>Redo draw</button>
+                    </Notice>
+                )}
+                {editPairs && (
+                    <PairingPanel key={pairsKey} categoryId={selectedCat} readOnly={readOnly} onChange={setPairs} onWrite={refresh} />
+                )}
                 {league.length > 0 && (
                     <section className={PANEL} aria-label="League fixtures">
                         <PanelHead title="League fixtures" meta={`${league[0].matches.filter(m => !isHiddenBye(m)).length} matches`} hint={hint} />
@@ -356,10 +414,25 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 <div className={cn(PANEL, 'overflow-hidden')}>
                     <ConfirmBar
                         className="border-t-0"
-                        message={`Generate the draw for ${category?.name}? Players are placed randomly. You can swap or reshuffle until the first result.${category?.status === 'auction' ? ' The category moves to Bracket ready.' : ''}`}
+                        message={`Generate the draw for ${category?.name}? ${isDoubles
+                            ? `${pairCount?.pairs ?? 0} pairs are placed at random.${pairCount?.unpaired.length ? ` Unpaired, so not in the draw: ${pairCount.unpaired.join(', ')}.` : ''}`
+                            : 'Players are placed randomly. You can swap or reshuffle until the first result.'}${category?.status === 'auction' ? ' The category moves to Bracket ready.' : ''}`}
                         confirmLabel="Generate bracket"
                         busy={busy}
                         onConfirm={generate}
+                        onCancel={() => { setConfirm(null); setActionError(null); }}
+                    />
+                </div>
+            )}
+            {confirm === 'redo' && (
+                <div className={cn(PANEL, 'overflow-hidden')}>
+                    <ConfirmBar
+                        className="border-t-0"
+                        message={`Redo the draw for ${category?.name}? It's rebuilt from the current pairs and placed at random.`}
+                        confirmLabel="Redo draw"
+                        danger
+                        busy={busy}
+                        onConfirm={redo}
                         onCancel={() => { setConfirm(null); setActionError(null); }}
                     />
                 </div>
