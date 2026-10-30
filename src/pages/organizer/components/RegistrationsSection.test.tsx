@@ -77,6 +77,24 @@ describe('RegistrationsSection', () => {
         expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     });
 
+    // SERVER-GAPS #18: the player sees the reason on their entry. It's optional.
+    it('sends the reason typed in the reject bar, trimmed', async () => {
+        mockApi([reg('r1', 'Aditya', 'pending')]);
+        let body: unknown = null;
+        server.use(http.post(`${API}/registrations/r1/reject`, async ({ request }) => {
+            body = await request.json();
+            return HttpResponse.json({ data: reg('r1', 'Aditya', 'rejected') });
+        }));
+        renderSection();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Reject Aditya Rao' }));
+        const bar = screen.getByRole('alertdialog');
+        await userEvent.type(within(bar).getByLabelText('Reason for the player (optional)'), '  Squad is full ');
+        await userEvent.click(within(bar).getByRole('button', { name: 'Reject' }));
+
+        await waitFor(() => expect(body).toEqual({ reason: 'Squad is full' }));
+    });
+
     it('shows an assignment error inside the dialog and keeps it open', async () => {
         mockApi([reg('r2', 'Sanya', 'approved')]);
         server.use(http.post(`${API}/registrations/r2/manual-assign`, () =>

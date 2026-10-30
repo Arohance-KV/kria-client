@@ -5,6 +5,8 @@ import API from '../../api/axios';
 export interface Team {
     _id: string;
     name: string;
+    /** Where the full name won't fit in the player app (SERVER-GAPS #21). */
+    shortName?: string;
     logo?: string;
     primaryColor?: string;
     secondaryColor?: string;

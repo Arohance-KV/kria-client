@@ -225,12 +225,13 @@ export const approveRegistration = createAsyncThunk(
     }
 );
 
-// Reject a registration (Organizer)
+// Reject a registration (Organizer). The optional reason is shown to the player.
 export const rejectRegistration = createAsyncThunk(
     'registration/reject',
-    async (registrationId: string, { rejectWithValue }) => {
+    async ({ registrationId, reason }: { registrationId: string; reason?: string }, { rejectWithValue }) => {
         try {
-            const response = await API.post(`/registrations/${registrationId}/reject`);
+            const trimmed = reason?.trim();
+            const response = await API.post(`/registrations/${registrationId}/reject`, trimmed ? { reason: trimmed } : undefined);
             return response.data?.data?.data || response.data?.data || registrationId;
         } catch (error) {
             return rejectWithValue(extractError(error));

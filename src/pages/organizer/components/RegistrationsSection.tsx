@@ -73,6 +73,7 @@ const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
     const [moreOpen, setMoreOpen] = useState(false);
     const [selected, setSelected] = useState<string[]>([]);
     const [confirm, setConfirm] = useState<{ kind: 'reject' | 'remove'; id: string } | null>(null);
+    const [reason, setReason] = useState('');
     const [assignFor, setAssignFor] = useState<Reg | null>(null);
     const [roleFor, setRoleFor] = useState<{ reg: Reg; kind: 'captain' | 'icon' } | null>(null);
 
@@ -135,7 +136,7 @@ const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
         if (approveRegistration.rejected.match(res)) setActionError(`Couldn't approve ${playerName(r)}. ${errText(res.payload)}`);
     });
     const reject = (r: Reg) => guard(r._id, async () => {
-        const res = await dispatch(rejectRegistration(r._id));
+        const res = await dispatch(rejectRegistration({ registrationId: r._id, reason }));
         setConfirm(null);
         if (rejectRegistration.rejected.match(res)) setActionError(`Couldn't reject ${playerName(r)}. ${errText(res.payload)}`);
     });
@@ -175,7 +176,7 @@ const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
                         : <Check aria-hidden className="h-3.5 w-3.5 text-emerald-400" />}
                     Approve
                 </button>
-                <button type="button" onClick={() => setConfirm({ kind: 'reject', id: r._id })} disabled={rowBusy} aria-label={`Reject ${playerName(r)}`} className={cn(BTN_GHOST, BTN_SM)}>Reject</button>
+                <button type="button" onClick={() => { setReason(''); setConfirm({ kind: 'reject', id: r._id }); }} disabled={rowBusy} aria-label={`Reject ${playerName(r)}`} className={cn(BTN_GHOST, BTN_SM)}>Reject</button>
             </>
         );
         if (!ASSIGNABLE.includes(r.status)) return null;
@@ -244,7 +245,12 @@ const RegistrationsSection = ({ tournamentId }: { tournamentId: string }) => {
                     {acts && <div className="col-start-2 flex flex-wrap items-center gap-1.5 pl-[46px] @md:col-start-auto @md:justify-end @md:pl-0">{acts}</div>}
                 </div>
                 {confirm?.id === r._id && (confirm.kind === 'reject' ? (
-                    <ConfirmBar message={`Reject ${name}? Their entry will show as rejected, and this can't be undone.`}
+                    <ConfirmBar message={<>
+                        {`Reject ${name}? Their entry will show as rejected, and this can't be undone.`}
+                        <input aria-label="Reason for the player (optional)" placeholder="Reason for the player (optional)"
+                            maxLength={300} value={reason} onChange={e => setReason(e.target.value)}
+                            className={cn(INPUT_SM, 'mt-2 block w-full max-w-sm')} />
+                    </>}
                         confirmLabel="Reject" danger busy={rowBusy} onConfirm={() => reject(r)} onCancel={() => setConfirm(null)} />
                 ) : (
                     <ConfirmBar message={removeMessage(r)} confirmLabel="Remove" danger busy={rowBusy}

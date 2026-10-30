@@ -46,12 +46,14 @@ describe('TeamsSection', () => {
         expect(body).toBeNull();
 
         await userEvent.type(screen.getByLabelText('Team name'), 'Smash Kings');
+        // SERVER-GAPS #21: what the player app shows where the full name won't fit.
+        await userEvent.type(screen.getByLabelText('Short name'), ' Smash K ');
         await userEvent.type(screen.getByLabelText('Owner name'), 'Arjun Mehta');
         await userEvent.type(screen.getByLabelText('Owner phone'), '98450 12345');
         await userEvent.click(screen.getByRole('button', { name: 'Create team' }));
 
         expect(await screen.findByText('2 of 8 teams')).toBeInTheDocument();
-        expect(body).toMatchObject({ name: 'Smash Kings', owner: { name: 'Arjun Mehta', phone: '98450 12345' }, initialBudget: 100000 });
+        expect(body).toMatchObject({ name: 'Smash Kings', shortName: 'Smash K', owner: { name: 'Arjun Mehta', phone: '98450 12345' }, initialBudget: 100000 });
         expect(body).not.toHaveProperty('logo');
         expect(body).not.toHaveProperty('whatsappGroupLink');
         expect(body!.owner).not.toHaveProperty('email');

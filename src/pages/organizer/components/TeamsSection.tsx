@@ -270,7 +270,7 @@ const TeamDrawer = ({ team, roster, categoryName, onClose, onEdit }: {
 };
 
 type Form = {
-    name: string; logo: string; primaryColor: string; secondaryColor: string;
+    name: string; shortName: string; logo: string; primaryColor: string; secondaryColor: string;
     ownerName: string; ownerPhone: string; ownerEmail: string; whatsappGroupLink: string; budget: string;
 };
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -280,7 +280,7 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
 }) => {
     const dispatch = useAppDispatch();
     const [f, setF] = useState<Form>({
-        name: team?.name ?? '', logo: team?.logo ?? '',
+        name: team?.name ?? '', shortName: team?.shortName ?? '', logo: team?.logo ?? '',
         primaryColor: team?.primaryColor || '#F97316', secondaryColor: team?.secondaryColor || '#0A0A0B',
         ownerName: team?.owner?.name ?? '', ownerPhone: team?.owner?.phone ?? '', ownerEmail: team?.owner?.email ?? '',
         whatsappGroupLink: team?.whatsappGroupLink ?? '', budget: String(team ? team.budget ?? 0 : defaultBudget),
@@ -335,9 +335,10 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
         setError('');
         // The server rejects empty strings for these optional fields (422), so leave them out when blank.
         // Omitting logo or WhatsApp link on edit keeps the saved value: the API has no way to clear them.
+        // A short name can be cleared: the server takes "" and the app then shows the full name.
         const blank = (v: string) => v.trim() || undefined;
         const data = {
-            name: f.name.trim(), logo: blank(f.logo),
+            name: f.name.trim(), shortName: team ? f.shortName.trim() : blank(f.shortName), logo: blank(f.logo),
             primaryColor: f.primaryColor, secondaryColor: f.secondaryColor,
             owner: { name: f.ownerName.trim(), phone: f.ownerPhone.trim(), email: blank(f.ownerEmail) },
             whatsappGroupLink: blank(f.whatsappGroupLink),
@@ -385,6 +386,9 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
                 <FormGroup title="Team">
                     <Field id="team-name" label="Team name" error={errors.name}>
                         <input {...bind('name')} maxLength={100} placeholder="e.g. Smash Kings" aria-invalid={!!errors.name} className={INPUT} />
+                    </Field>
+                    <Field id="team-shortName" label="Short name" help="Where the full name won't fit in the player app. Optional.">
+                        <input {...bind('shortName')} maxLength={12} placeholder="e.g. Smash K" className={INPUT} />
                     </Field>
                     <Field label="Logo" error={uploadError}
                         help={team?.logo && !f.logo ? "A saved logo can't be removed yet, so the current one stays. Upload a new image to replace it." : 'PNG, JPG or GIF. Optional.'}>
