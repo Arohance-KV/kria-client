@@ -138,6 +138,7 @@ const PlayerTournamentDetailPage = () => {
                 const order = await createPaymentOrder({
                     tournamentId: tournament._id,
                     categoryId: registeringCategoryId,
+                    profile: buildProfile(),
                 });
 
                 const options = {

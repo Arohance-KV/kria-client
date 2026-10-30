@@ -3,6 +3,15 @@ import API from './axios';
 export const createPaymentOrder = async (data: {
     tournamentId: string;
     categoryId: string;
+    // Saved on the order, so the entry is made even if verify never runs.
+    profile: {
+        firstName: string;
+        lastName: string;
+        age: number;
+        gender: string;
+        phone: string;
+        skillLevel?: string;
+    };
 }) => {
     const response = await API.post('/payments/create-order', data);
     return response.data?.data?.data || response.data?.data;

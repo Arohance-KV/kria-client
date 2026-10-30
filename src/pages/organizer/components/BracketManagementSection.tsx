@@ -351,7 +351,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 {loadError && <div role="alert"><Notice tone="red" icon={CircleAlert}>Couldn't refresh the bracket. {loadError}</Notice></div>}
                 {stale && !readOnly && (
                     <Notice tone="amber" icon={CircleAlert}>
-                        <span>The draw doesn't match the pairs any more. Redo draw to rebuild it.</span>{' '}
+                        <span>The draw doesn't match the pairs any more, so its matches can't be scored. Redo draw to rebuild it.</span>{' '}
                         <button type="button" onClick={() => setConfirm('redo')} className={cn(BTN_SECONDARY, BTN_SM, 'ml-1')}>Redo draw</button>
                     </Notice>
                 )}

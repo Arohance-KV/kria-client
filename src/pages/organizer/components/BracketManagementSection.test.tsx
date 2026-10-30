@@ -301,7 +301,7 @@ describe('BracketManagementSection, doubles after the draw', () => {
     it('says so when the pairs no longer match the draw, with its own Redo draw', async () => {
         mockDrawn(pairState({ drawn: true, sideIds: ['a', 'd', 'g'] }));
         renderBrackets([doubles({ status: 'bracket_configured' })]);
-        const notice = await screen.findByText("The draw doesn't match the pairs any more. Redo draw to rebuild it.");
+        const notice = await screen.findByText("The draw doesn't match the pairs any more, so its matches can't be scored. Redo draw to rebuild it.");
         await userEvent.click(within(notice.parentElement!).getByRole('button', { name: 'Redo draw' }));
         expect(screen.getByRole('alertdialog', { name: 'Redo draw' })).toBeInTheDocument();
     });
