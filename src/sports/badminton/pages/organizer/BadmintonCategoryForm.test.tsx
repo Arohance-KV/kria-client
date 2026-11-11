@@ -18,11 +18,39 @@ function renderForm() {
 }
 
 describe('BadmintonCategoryForm', () => {
-    // The server never builds a hybrid category's knockout stage, so it is no longer offered.
-    it('offers no groups-plus-knockout format to a new category', () => {
+    // The server plays groups, then a knockout (SERVER-GAPS #12), so it is offered again.
+    it('offers groups-plus-knockout to a new category', () => {
         renderForm();
         expect(screen.getByRole('radio', { name: /League/ })).toBeInTheDocument();
-        expect(screen.queryByRole('radio', { name: /Groups \+ knockout/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: /Groups \+ knockout/ })).toBeInTheDocument();
+    });
+
+    it('needs fewer to qualify than play in each group', async () => {
+        let posted = false;
+        server.use(http.post(`${API}/tournaments/t1/categories`, () => { posted = true; return HttpResponse.json({ data: { data: {} } }); }));
+        renderForm();
+        const user = userEvent.setup();
+
+        await user.type(screen.getByLabelText('Category name'), 'Open Singles');
+        await user.type(screen.getByLabelText('Age group label'), 'Open');
+        await user.click(screen.getByRole('radio', { name: /Groups \+ knockout/ }));
+        await user.clear(screen.getByLabelText('Group size'));
+        await user.type(screen.getByLabelText('Group size'), '4');
+        await user.clear(screen.getByLabelText('Qualify from each group'));
+        await user.type(screen.getByLabelText('Qualify from each group'), '4');
+        await user.click(screen.getByRole('button', { name: 'Create category' }));
+
+        expect(screen.getByText('Fewer must qualify than play in each group.')).toBeInTheDocument();
+        expect(posted).toBe(false);
+
+        // Groups of two could leave an odd entry alone in a group.
+        await user.clear(screen.getByLabelText('Group size'));
+        await user.type(screen.getByLabelText('Group size'), '2');
+        await user.clear(screen.getByLabelText('Qualify from each group'));
+        await user.type(screen.getByLabelText('Qualify from each group'), '1');
+        await user.click(screen.getByRole('button', { name: 'Create category' }));
+        expect(screen.getByText('Groups need at least 3 entries.')).toBeInTheDocument();
+        expect(posted).toBe(false);
     });
 
     it('still shows the format of an existing hybrid category', () => {

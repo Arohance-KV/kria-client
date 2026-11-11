@@ -6,7 +6,7 @@ import type { MatchResultSectionProps } from '@/sports/_contracts/SportPlugin';
 import { isDecidedFinal } from '@/lib/champion';
 import {
     CARD_H, CARD_W, CONN_W, bracketHeight, computeCardPositions,
-    getC1, getC2, isHiddenBye, isPlaceholderSlot, resolveSwapSlot,
+    getC1, getC2, isHiddenBye, isLeagueRound, isPlaceholderSlot, resolveSwapSlot,
     type LayoutMatch, type LayoutRound, type Slot,
 } from '@/lib/bracketLayout';
 import { cn } from '@/lib/utils';
@@ -259,8 +259,11 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 .sort((a, b) => (a.positionInRound ?? a.matchNumber) - (b.positionInRound ?? b.matchNumber)),
         }))
         .filter(r => r.matches.length > 0);
-    const league = layout.filter(r => r.name === 'League');
-    const knockout = layout.filter(r => r.name !== 'League');
+    // League and group rounds are all-play-all fixtures; everything else is the knockout tree.
+    const league = layout.filter(r => isLeagueRound(r.name));
+    const knockout = layout.filter(r => !isLeagueRound(r.name));
+    // Groups, then a knockout (SERVER-GAPS #12): the server draws the knockout when the groups finish.
+    const awaitingKnockout = category?.bracketType === 'hybrid' && league.length > 0 && knockout.length === 0;
     const openMatch = matches.find(m => m._id === openMatchId) ?? null;
 
     const cardProps: CardContext = {
@@ -288,11 +291,16 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                             <Users aria-hidden className="h-4 w-4" />{editPairs ? 'Done editing pairs' : 'Edit pairs'}
                         </button>
                     )}
-                    <button type="button" onClick={toggleSwap} className={swapMode ? BTN_PRIMARY : BTN_SECONDARY}>
-                        <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : isDoubles ? 'Swap pairs' : 'Swap players'}
-                    </button>
+                    {knockout.length > 0 && (
+                        <button type="button" onClick={toggleSwap} className={swapMode ? BTN_PRIMARY : BTN_SECONDARY}>
+                            <ArrowLeftRight aria-hidden className="h-4 w-4" />{swapMode ? 'Done swapping' : isDoubles ? 'Swap pairs' : 'Swap players'}
+                        </button>
+                    )}
                     <MoreMenu label="More bracket actions" items={[
-                        { label: 'Reshuffle round 1', icon: Shuffle, onSelect: () => setConfirm('reshuffle') },
+                        // Doubles fixtures redraw through Redo draw (from pairs); a second "Redraw" would do the same.
+                        ...(league.length && isDoubles ? [] : [
+                            { label: league.length ? 'Redraw' : 'Reshuffle round 1', icon: Shuffle, onSelect: () => setConfirm('reshuffle') },
+                        ]),
                         ...(isDoubles ? [{ label: 'Redo draw', icon: RefreshCw, onSelect: () => setConfirm('redo') }] : []),
                     ]} />
                 </>
@@ -358,14 +366,19 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 {editPairs && (
                     <PairingPanel key={pairsKey} categoryId={selectedCat} readOnly={readOnly} onChange={setPairs} onWrite={refresh} />
                 )}
-                {league.length > 0 && (
-                    <section className={PANEL} aria-label="League fixtures">
-                        <PanelHead title="League fixtures" meta={`${league[0].matches.filter(m => !isHiddenBye(m)).length} matches`} hint={hint} />
-                        <div className="grid grid-cols-1 gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                            {league[0].matches.filter(m => !isHiddenBye(m)).map(m => <MatchCard key={m._id} match={m} ctx={cardProps} />)}
-                        </div>
-                    </section>
-                )}
+                {league.map(r => {
+                    const title = r.name === 'League' ? 'League fixtures' : r.name;
+                    const shown = r.matches.filter(m => !isHiddenBye(m));
+                    return (
+                        <section key={r.name} className={PANEL} aria-label={title}>
+                            <PanelHead title={title} meta={`${shown.length} matches`} hint={hint} />
+                            <div className="grid grid-cols-1 gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                                {shown.map(m => <MatchCard key={m._id} match={m} ctx={cardProps} />)}
+                            </div>
+                        </section>
+                    );
+                })}
+                {awaitingKnockout && <p className="text-[13px] text-fg-subtle">The knockout is drawn when every group match is done.</p>}
                 {knockout.length > 0 && (
                     <section className={PANEL} aria-label="Knockout draw">
                         <PanelHead
@@ -441,8 +454,10 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 <div className={cn(PANEL, 'overflow-hidden')}>
                     <ConfirmBar
                         className="border-t-0"
-                        message="Reshuffle round 1? Every first-round pairing is redrawn at random."
-                        confirmLabel="Reshuffle"
+                        message={league.length
+                            ? 'Draw again? Everyone is placed again at random.'
+                            : 'Reshuffle round 1? Every first-round pairing is redrawn at random.'}
+                        confirmLabel={league.length ? 'Redraw' : 'Reshuffle'}
                         danger
                         busy={busy}
                         onConfirm={reshuffle}

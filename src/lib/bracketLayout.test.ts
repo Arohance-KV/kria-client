@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    BYE_SLOT_H, CARD_GAP, CARD_H, computeCardPositions, isHiddenBye, resolveSwapSlot,
+    BYE_SLOT_H, CARD_GAP, CARD_H, computeCardPositions, isGroupRound, isHiddenBye, isLeagueRound, resolveSwapSlot,
     type LayoutMatch, type LayoutRound,
 } from './bracketLayout';
 
@@ -151,6 +151,22 @@ describe('resolveSwapSlot', () => {
         const all = draw().map(x => (x._id === 'byeA' ? { ...x, status: 'completed', winReason: undefined } : x));
         const semi1 = all.find(x => x._id === 'semi1')!;
         expect(resolveSwapSlot(semi1, 'player1', all, 'player')).toBeNull();
+    });
+
+    it('refuses group and league fixtures: they are all-play-all, not a first round', () => {
+        const group = m({ _id: 'g1', bracketRound: 'Group A' });
+        const league = m({ _id: 'l1', bracketRound: 'League' });
+        expect(resolveSwapSlot(group, 'player1', [group], 'player')).toBeNull();
+        expect(resolveSwapSlot(league, 'player1', [league], 'player')).toBeNull();
+    });
+
+    it('tells league rounds from knockout rounds', () => {
+        expect(isLeagueRound('League')).toBe(true);
+        expect(isLeagueRound('Group C')).toBe(true);
+        expect(isLeagueRound('Quarter-Final')).toBe(false);
+        expect(isLeagueRound('Group AB')).toBe(false);
+        expect(isGroupRound('Group C')).toBe(true);
+        expect(isGroupRound('League')).toBe(false);
     });
 
     it('refuses an empty slot', () => {

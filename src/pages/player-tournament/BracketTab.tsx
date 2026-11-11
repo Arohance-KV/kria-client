@@ -4,6 +4,7 @@ import { Loader2, Trophy, ExternalLink } from 'lucide-react';
 import { Category } from '../../store/slices/registrationSlice';
 import { Match } from '../../store/slices/matchSlice';
 import API from '../../api/axios';
+import { isGroupRound } from '../../lib/bracketLayout';
 
 interface Props {
     categories: Category[];
@@ -106,7 +107,8 @@ const BracketTab: React.FC<Props> = ({ categories, tournamentId }) => {
         fetch();
     }, [selectedCat, categories]);
 
-    const sortedRoundNames = Object.keys(rounds).sort((a, b) => {
+    // A hybrid's group fixtures aren't knockout rounds; the tree shows only its knockout.
+    const sortedRoundNames = Object.keys(rounds).filter(name => !isGroupRound(name)).sort((a, b) => {
         const aM = rounds[a]?.[0];
         const bM = rounds[b]?.[0];
         return ((aM as any)?.roundNumber || 0) - ((bM as any)?.roundNumber || 0);

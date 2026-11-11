@@ -106,6 +106,25 @@ describe('TournamentDetailPage', () => {
         expect(screen.queryByRole('button', { name: 'Edit team' })).not.toBeInTheDocument();
     });
 
+    // The section reads matchType to know a category is doubles; without it the pairing
+    // panel never showed, and the server refuses a doubles draw with no pairs.
+    it('opens Brackets on the pairing panel for a doubles category', async () => {
+        mockApi();
+        server.use(
+            http.get(`${API}/tournaments/t1/categories`, () => HttpResponse.json({ data: [
+                { _id: 'c1', name: "Men's Doubles", status: 'registration', bracketType: 'knockout', matchType: 'doubles', sport: 'badminton' },
+            ] })),
+            http.get(`${API}/matches/categories/c1`, () => HttpResponse.json({ data: { matches: [], rounds: {}, competitorType: 'player' } })),
+            http.get(`${API}/registrations/categories/c1/pairs`, () => HttpResponse.json({ data: { data: {
+                players: [{ registrationId: 'a', name: 'Asha Rao', teamId: 't1', partnerRegistrationId: null }],
+                teams: [{ _id: 't1', name: 'Smashers' }], drawn: false, locked: false, sideIds: [],
+            } } })),
+        );
+        renderPage('brackets');
+
+        expect(await screen.findByRole('heading', { name: 'Pairs' })).toBeInTheDocument();
+    });
+
     it('keeps Announcements open on a completed tournament', async () => {
         mockApi({ status: 'completed' });
         server.use(http.get(`${API}/tournaments/t1/announcements`, () => HttpResponse.json({ data: { data: [] } })));

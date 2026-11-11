@@ -217,6 +217,40 @@ const pairState = (over: Record<string, unknown> = {}) => ({
 });
 const doubles = (over: Partial<Cat> & { matchType?: string } = {}) => cat({ name: "Men's Doubles", status: 'registration', matchType: 'doubles', ...over } as Partial<Cat>);
 
+/** Groups, then a knockout (SERVER-GAPS #12): a group's matches carry its name as their round. */
+const groupDraw = (withKnockout = false) => [
+    { _id: 'g1', bracketRound: 'Group A', roundNumber: 1, positionInRound: 0, matchNumber: 1, status: 'scheduled', competitorType: 'player', player1: p('r1', 'Karan Patel'), player2: p('r2', 'Rohit Iyer') },
+    { _id: 'g2', bracketRound: 'Group B', roundNumber: 1, positionInRound: 0, matchNumber: 2, status: 'scheduled', competitorType: 'player', player1: p('r3', 'Manish Gowda'), player2: p('r4', 'Akash Nair') },
+    ...(withKnockout ? [{ _id: 'k1', bracketRound: 'Final', roundNumber: 2, positionInRound: 0, matchNumber: 1, status: 'scheduled', competitorType: 'player', player1: p('r1', 'Karan Patel'), player2: p('r3', 'Manish Gowda') }] : []),
+];
+
+describe('BracketManagementSection, groups then a knockout', () => {
+    it('shows each group, says when the knockout comes, and redraws instead of swapping', async () => {
+        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(groupDraw()))));
+        renderBrackets([cat({ status: 'bracket_configured', bracketType: 'hybrid' })]);
+
+        const groupA = await screen.findByRole('region', { name: 'Group A' });
+        expect(within(groupA).getByText('Karan Patel')).toBeInTheDocument();
+        expect(within(screen.getByRole('region', { name: 'Group B' })).getByText('Manish Gowda')).toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'Knockout draw' })).toBeNull();
+        expect(screen.getByText('The knockout is drawn when every group match is done.')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Swap players' })).toBeNull();
+
+        await userEvent.click(screen.getByRole('button', { name: 'More bracket actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Redraw' })).toBeInTheDocument();
+        expect(screen.queryByRole('menuitem', { name: 'Reshuffle round 1' })).toBeNull();
+    });
+
+    it('shows the knockout under the groups once it is drawn', async () => {
+        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(groupDraw(true)))));
+        renderBrackets([cat({ status: 'ongoing', bracketType: 'hybrid' })]);
+
+        expect(await screen.findByRole('region', { name: 'Group A' })).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Knockout draw' })).toBeInTheDocument();
+        expect(screen.queryByText('The knockout is drawn when every group match is done.')).toBeNull();
+    });
+});
+
 describe('BracketManagementSection, doubles before the draw', () => {
     it('shows the pairing panel instead of the empty draw', async () => {
         server.use(
@@ -266,6 +300,15 @@ describe('BracketManagementSection, doubles after the draw', () => {
         );
         return hits;
     };
+
+    it('offers one redraw for doubles groups: Redo draw, not Redraw as well', async () => {
+        mockDrawn(pairState({ drawn: true, sideIds: ['r1', 'r3'] }), groupDraw());
+        renderBrackets([doubles({ status: 'bracket_configured', bracketType: 'hybrid' })]);
+
+        await userEvent.click(await screen.findByRole('button', { name: 'More bracket actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Redo draw' })).toBeInTheDocument();
+        expect(screen.queryByRole('menuitem', { name: 'Redraw' })).toBeNull();
+    });
 
     it('Edit pairs opens the pairing panel above the draw', async () => {
         mockDrawn();

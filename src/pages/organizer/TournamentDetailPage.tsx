@@ -470,7 +470,8 @@ const TournamentDetailPage = () => {
             case 'registrations': return <RegistrationsSection tournamentId={id} />;
             case 'payments': return <PaymentsSection tournamentId={id} />;
             case 'auction': return <AuctionSection tournamentId={id} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))} />;
-            case 'brackets': return <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: c.sport }))} />;
+            // matchType tells the section a category is doubles: its draw is built from pairs.
+            case 'brackets': return <BracketManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, bracketType: c.bracketType, sport: c.sport, matchType: c.matchType }))} />;
             case 'matches': return <MatchManagementSection tournamentId={id} sports={tournamentSports} categories={categories.map(c => ({ _id: c._id, name: c.name, status: c.status, sport: c.sport }))} />;
             case 'team_league': {
                 if (!teamLeagueSection) return null;

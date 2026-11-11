@@ -79,8 +79,10 @@ function validate(f: BadmintonFormState): Errors {
     const e: Errors = validateCommonFields(f);
     if (notInt(f.matchFormat.pointsPerGame, 1)) e.pointsPerGame = 'Enter at least 1 point per game.';
     if (f.bracketType === 'hybrid') {
-        if (notInt(f.hybridConfig.leagueSize, 2)) e.leagueSize = 'Groups need at least 2 entries.';
+        // Groups of 3 or more never leave anyone alone in a group, however the entries divide.
+        if (notInt(f.hybridConfig.leagueSize, 3)) e.leagueSize = 'Groups need at least 3 entries.';
         if (notInt(f.hybridConfig.topN, 1)) e.topN = 'At least 1 must qualify from each group.';
+        else if (Number(f.hybridConfig.topN) >= Number(f.hybridConfig.leagueSize)) e.topN = 'Fewer must qualify than play in each group.';
     }
     if (f.bracketType === 'team_league') {
         const t = f.teamLeagueConfig;
@@ -167,12 +169,12 @@ export default function BadmintonCategoryForm({ tournamentId, category, onSucces
 
             <FormGroup title="Format">
                 <FormatChoice value={formData.bracketType} onChange={bracketType => setField({ bracketType })}
-                    formats={['knockout', 'league', 'team_league']} />
+                    formats={['knockout', 'league', 'hybrid', 'team_league']} />
 
                 {formData.bracketType === 'hybrid' && (
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field id="bd-group-size" label="Group size" help="Entries in each group." error={errors.leagueSize}>
-                            {numInput('bd-group-size', formData.hybridConfig.leagueSize, leagueSize => setHybrid({ leagueSize }), 2, errors.leagueSize)}
+                            {numInput('bd-group-size', formData.hybridConfig.leagueSize, leagueSize => setHybrid({ leagueSize }), 3, errors.leagueSize)}
                         </Field>
                         <Field id="bd-top-n" label="Qualify from each group" error={errors.topN}>
                             {numInput('bd-top-n', formData.hybridConfig.topN, topN => setHybrid({ topN }), 1, errors.topN)}

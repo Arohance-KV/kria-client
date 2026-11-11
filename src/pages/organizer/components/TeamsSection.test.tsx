@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -73,6 +73,26 @@ describe('TeamsSection', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't create the team. Maximum team limit (8) reached.");
         expect(screen.getByRole('dialog', { name: 'Add team' })).toBeInTheDocument();
+    });
+
+    it('removes a saved logo and WhatsApp link on edit', async () => {
+        let body: Record<string, unknown> | null = null;
+        const saved = { ...existing, logo: 'https://cdn.example.com/nn.png', whatsappGroupLink: 'https://chat.whatsapp.com/abc' };
+        server.use(http.put(`${API}/teams/tm1`, async ({ request }) => {
+            body = await request.json() as Record<string, unknown>;
+            return HttpResponse.json({ data: { ...saved, logo: undefined, whatsappGroupLink: undefined } });
+        }));
+        renderSection();
+        server.use(http.get(`${API}/tournaments/t1/teams`, () => HttpResponse.json({ data: [saved] })));
+        await userEvent.click(await screen.findByRole('button', { name: /Net Ninjas/ }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit team' }));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+        await userEvent.clear(screen.getByLabelText('WhatsApp group link'));
+        expect(screen.queryByText(/can't be removed yet/)).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await vi.waitFor(() => expect(body).toMatchObject({ logo: '', whatsappGroupLink: '' }));
     });
 
     it('hides Delete team from staff', async () => {

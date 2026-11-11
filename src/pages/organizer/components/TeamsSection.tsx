@@ -333,15 +333,15 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
         if (!validate()) return;
         setBusy(true);
         setError('');
-        // The server rejects empty strings for these optional fields (422), so leave them out when blank.
-        // Omitting logo or WhatsApp link on edit keeps the saved value: the API has no way to clear them.
-        // A short name can be cleared: the server takes "" and the app then shows the full name.
+        // A new team leaves blank optional fields out. An edit sends short name, logo and
+        // WhatsApp link as "" when emptied, which the server takes as "remove it".
         const blank = (v: string) => v.trim() || undefined;
+        const kept = (v: string) => (team ? v.trim() : blank(v));
         const data = {
-            name: f.name.trim(), shortName: team ? f.shortName.trim() : blank(f.shortName), logo: blank(f.logo),
+            name: f.name.trim(), shortName: kept(f.shortName), logo: kept(f.logo),
             primaryColor: f.primaryColor, secondaryColor: f.secondaryColor,
             owner: { name: f.ownerName.trim(), phone: f.ownerPhone.trim(), email: blank(f.ownerEmail) },
-            whatsappGroupLink: blank(f.whatsappGroupLink),
+            whatsappGroupLink: kept(f.whatsappGroupLink),
         };
         const budget = Number(f.budget);
         let failure: unknown = null;
@@ -391,7 +391,7 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
                         <input {...bind('shortName')} maxLength={12} placeholder="e.g. Smash K" className={INPUT} />
                     </Field>
                     <Field label="Logo" error={uploadError}
-                        help={team?.logo && !f.logo ? "A saved logo can't be removed yet, so the current one stays. Upload a new image to replace it." : 'PNG, JPG or GIF. Optional.'}>
+                        help="PNG, JPG or GIF. Optional.">
                         <span className="flex items-center gap-3">
                             {f.logo
                                 ? <TeamLogo name={f.name || '?'} logo={f.logo} size="lg" />
@@ -421,8 +421,7 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
                         <Field id="team-ownerEmail" label="Owner email" error={errors.ownerEmail}>
                             <input {...bind('ownerEmail')} type="email" placeholder="Optional" aria-invalid={!!errors.ownerEmail} className={INPUT} />
                         </Field>
-                        <Field id="team-whatsappGroupLink" label="WhatsApp group link"
-                            help={team?.whatsappGroupLink && !f.whatsappGroupLink.trim() ? "A saved link can't be removed yet, so the current one stays." : undefined}>
+                        <Field id="team-whatsappGroupLink" label="WhatsApp group link">
                             <input {...bind('whatsappGroupLink')} type="url" placeholder="Optional" className={INPUT} />
                         </Field>
                     </div>

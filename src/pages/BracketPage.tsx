@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Loader2, Trophy, ArrowLeft } from 'lucide-react';
 import { Match } from '../store/slices/matchSlice';
 import API from '../api/axios';
+import { isGroupRound } from '../lib/bracketLayout';
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const CARD_H = 100;   // px — fixed card height
@@ -103,7 +104,8 @@ const BracketPage: React.FC = () => {
         fetchData();
     }, [categoryId]);
 
-    const sortedRoundNames = Object.keys(rounds).sort((a, b) => {
+    // A hybrid's group fixtures aren't knockout rounds; the tree shows only its knockout.
+    const sortedRoundNames = Object.keys(rounds).filter(name => !isGroupRound(name)).sort((a, b) => {
         const aM = rounds[a]?.[0];
         const bM = rounds[b]?.[0];
         return ((aM as any)?.roundNumber || 0) - ((bM as any)?.roundNumber || 0);

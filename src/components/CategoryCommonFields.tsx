@@ -119,7 +119,7 @@ const FORMATS: Record<string, { label: string; text: string }> = {
 
 /** Bracket format as radio cards. Each sport passes the formats it supports. */
 export function FormatChoice({ value, onChange, formats }: { value: string; onChange: (v: string) => void; formats: string[] }) {
-    // A category keeps its current format on screen even once it is no longer offered (hybrid).
+    // A category keeps its current format on screen even once it is no longer offered (cricket shows hybrid this way).
     const shown = formats.includes(value) || !FORMATS[value] ? formats : [...formats, value];
     return (
         <div role="radiogroup" aria-label="Format" className="grid gap-2 sm:grid-cols-2">

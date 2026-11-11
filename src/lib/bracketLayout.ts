@@ -63,6 +63,16 @@ export function isHiddenBye(m: LayoutMatch) {
     return m.status === 'walkover' && m.winReason === 'bye';
 }
 
+/** A group's round ("Group A"): groups, then a knockout. Same rule as the server. */
+export function isGroupRound(name?: string) {
+    return /^Group [A-Z]$/.test(name ?? '');
+}
+
+/** A flat league's round or a group's: all-play-all fixtures, not a bracket. */
+export function isLeagueRound(name?: string) {
+    return name === 'League' || isGroupRound(name);
+}
+
 /**
  * Vertical position of every card, keyed by match id.
  *
@@ -130,6 +140,7 @@ export function resolveSwapSlot(
     all: LayoutMatch[],
     ct: CompetitorType,
 ): { matchId: string; slot: Slot } | null {
+    if (isLeagueRound(match.bracketRound)) return null;
     if (isPlaceholderSlot(getSlot(match, slot, ct))) return null;
     if (match.status === 'completed' || match.status === 'in_progress') return null;
 
