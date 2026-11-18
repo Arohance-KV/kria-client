@@ -31,6 +31,7 @@ function HoverFooter() {
             links: [
                 { label: "FAQs", href: "/support", internal: true },
                 { label: "Support", href: "/support", internal: true },
+                { label: "Delete account", href: "/delete-account", internal: true },
                 {
                     label: "Live Demo",
                     href: "#",

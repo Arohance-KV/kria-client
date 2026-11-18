@@ -19,6 +19,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://kria.club/delete-account</loc>
+    <lastmod>2026-11-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://kria.club/forgot-password</loc>
     <lastmod>2026-04-07</lastmod>
     <changefreq>yearly</changefreq>

@@ -19,6 +19,7 @@ const TournamentDetailPage = lazy(() => import('./pages/organizer/TournamentDeta
 const AuctionDisplay = lazy(() => import('./pages/AuctionDisplay'));
 const BracketPage = lazy(() => import('./pages/BracketPage'));
 const ContactPage = lazy(() => import('./pages/ContactPage'));
+const DeleteAccountPage = lazy(() => import('./pages/DeleteAccountPage'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
 const OurStoryPage = lazy(() => import('./pages/OurStoryPage'));
 const LiveScoreboardPage = lazy(() => import('./pages/LiveScoreboardPage'));
@@ -46,6 +47,8 @@ function App() {
                     <Routes>
                         <Route path="/" element={<HomePage />} />
                         <Route path="/contact" element={<ContactPage />} />
+                        {/* Account deletion without the app (Google Play requirement, LAUNCH-AUDIT B7) */}
+                        <Route path="/delete-account" element={<DeleteAccountPage />} />
                         <Route path="/support" element={<SupportPage />} />
                         <Route path="/story" element={<OurStoryPage />} />
                         <Route path="/login" element={<SignInPage />} />
