@@ -109,7 +109,7 @@ describe('AuctionSection', () => {
 
         current = status({ liveBid: { currentPrice: 10000, highestBidderId: 't2', highestBidderName: 'Indiranagar Smashers' } });
         await userEvent.click(screen.getByRole('button', { name: /Indiranagar Smashers.*Bid ₹10,000/ }));
-        expect(posted('/auction/bid')[0].body).toMatchObject({ tournamentId: 't1', categoryId: 'c1', teamId: 't2' });
+        expect(posted('/auction/bid')[0].body).toMatchObject({ tournamentId: 't1', categoryId: 'c1', teamId: 't2', registrationId: 'r13' });
         expect(await screen.findByRole('button', { name: /Indiranagar Smashers.*Leading/ })).toBeDisabled();
 
         act(() => sock.handlers['auction:update'](status({ liveBid: { currentPrice: 11000, highestBidderId: 't3', highestBidderName: 'HSR Hawks' } })));
@@ -153,9 +153,10 @@ describe('AuctionSection', () => {
         renderSection();
 
         const sell = await screen.findByRole('button', { name: 'Sell to Koramangala Kings · ₹9,000' });
-        current = status({ status: 'sold', logsCount: 2, lastSoldResult: { playerName: 'Ananya Rao', teamId: 't1', teamName: 'Koramangala Kings', teamColor: '#FACC15', soldPrice: 9000, timestamp: '' } });
+        current = status({ status: 'sold', logsCount: 2, lastSoldResult: { registrationId: 'r13', playerName: 'Ananya Rao', teamId: 't1', teamName: 'Koramangala Kings', teamColor: '#FACC15', soldPrice: 9000, timestamp: '' } });
         await userEvent.click(sell);
-        expect(posted('/auction/sell')[0].body).toMatchObject({ teamId: 't1', soldPrice: 9000 });
+        // It names the player and price it showed, so a stale screen can't sell someone else (LAUNCH-AUDIT H11).
+        expect(posted('/auction/sell')[0].body).toMatchObject({ teamId: 't1', soldPrice: 9000, registrationId: 'r13', livePrice: 9000 });
 
         // Sold: the result, Undo and Next, with purses and the sold list still on screen.
         expect(await screen.findByText('Sold', { selector: 'span' })).toBeInTheDocument();
@@ -171,6 +172,7 @@ describe('AuctionSection', () => {
         current = status();
         await userEvent.click(within(bar).getByRole('button', { name: 'Undo sale' }));
         expect(posted('/auction/undo')).toHaveLength(1);
+        expect(posted('/auction/undo')[0].body).toMatchObject({ registrationId: 'r13' });
         expect(await screen.findByText('On the block')).toBeInTheDocument();
     });
 
@@ -180,7 +182,7 @@ describe('AuctionSection', () => {
         renderSection();
 
         await userEvent.click(await screen.findByRole('button', { name: 'Sell to HSR Hawks · ₹20,000' }));
-        expect(posted('/auction/resolve-hard-limit')[0].body).toMatchObject({ winnerTeamId: 't3' });
+        expect(posted('/auction/resolve-hard-limit')[0].body).toMatchObject({ winnerTeamId: 't3', registrationId: 'r13' });
         expect(posted('/auction/sell')).toHaveLength(0);
     });
 
@@ -213,6 +215,27 @@ describe('AuctionSection', () => {
         await userEvent.click(within(dialog).getByRole('button', { name: 'Sell for ₹9,000' }));
         expect(await within(dialog).findByRole('alert')).toHaveTextContent('Auction is not in progress.');
         expect(screen.getByRole('dialog', { name: 'Sell manually' })).toBeInTheDocument();
+    });
+
+    // LAUNCH-AUDIT H11: each action names the player it was for, so a second console,
+    // a double click or a request still in flight is refused instead of hitting the next one.
+    it('names the player on screen when it marks them unsold, sells them manually or moves on', async () => {
+        mockApi();
+        renderSection();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Mark unsold' }));
+        expect(posted('/auction/skip')[0].body).toMatchObject({ registrationId: 'r13' });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Sell manually…' }));
+        const dialog = screen.getByRole('dialog', { name: 'Sell manually' });
+        await userEvent.click(within(dialog).getByRole('radio', { name: /HSR Hawks/ }));
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Sell for ₹9,000' }));
+        expect(posted('/auction/sell')[0].body).toMatchObject({ teamId: 't3', registrationId: 'r13', livePrice: 9000 });
+
+        current = status({ status: 'sold', lastSoldResult: { registrationId: 'r13', playerName: 'Ananya Rao', teamId: 't3', teamName: 'HSR Hawks', teamColor: '#fff', soldPrice: 9000, timestamp: '' } });
+        act(() => sock.handlers['auction:update'](current));
+        await userEvent.click(await screen.findByRole('button', { name: /Next player/ }));
+        expect(posted('/auction/next')[0].body).toMatchObject({ registrationId: 'r13' });
     });
 
     it('ends the auction only after the inline confirmation', async () => {

@@ -63,19 +63,23 @@ describe('CategoriesSection', () => {
         expect(calls.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('starts the auction with both calls', async () => {
+    // LAUNCH-AUDIT H12: starting the auction here used the server's default increment and
+    // no limit, and they can't be changed once it runs. The Auction console starts it with its settings.
+    it('moves the category to Auction but leaves the auction itself to the Auction console', async () => {
         setup([cat({ status: 'registration' })]);
         const hits: string[] = [];
         server.use(
             http.post(`${API}/categories/c1/start-auction`, () => { hits.push('start-auction'); return envelope(cat({ status: 'auction' })); }),
-            http.post(`${API}/auction/start`, async ({ request }) => { hits.push(`auction/start ${JSON.stringify(await request.json())}`); return envelope({}); }),
+            http.post(`${API}/auction/start`, () => { hits.push('auction/start'); return envelope({}); }),
         );
         const user = userEvent.setup();
 
         await user.click(await screen.findByRole('button', { name: 'Start auction' }));
+        expect(screen.getByText(/Set the bid increment and price limit in Auction/)).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'Yes, start auction' }));
 
-        await waitFor(() => expect(hits).toEqual(['start-auction', 'auction/start {"tournamentId":"t1","categoryId":"c1"}']));
+        expect(await screen.findByRole('button', { name: 'Set up bracket' })).toBeInTheDocument();
+        expect(hits).toEqual(['start-auction']);
     });
 
     it('sends auction categories to Brackets and team leagues to Team league instead of acting here', async () => {

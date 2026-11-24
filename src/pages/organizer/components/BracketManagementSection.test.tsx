@@ -111,11 +111,12 @@ describe('BracketManagementSection', () => {
         await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     });
 
-    it('locks the draw once a result is in', async () => {
-        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(draw('completed')))));
+    // LAUNCH-AUDIT M10: a match being scored could be swapped or reshuffled from under the scorer.
+    it.each(['completed', 'in_progress'])('locks the draw once a match is %s', async (status) => {
+        server.use(http.get(`${API}/matches/categories/c1`, () => HttpResponse.json(payload(draw(status)))));
         renderBrackets([cat({ status: 'ongoing' })]);
 
-        expect(await screen.findByText('Draw locked: results are in')).toBeInTheDocument();
+        expect(await screen.findByText('Draw locked: play has started')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Swap players' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'More bracket actions' })).toBeNull();
     });

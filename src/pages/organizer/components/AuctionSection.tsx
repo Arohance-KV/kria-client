@@ -179,14 +179,15 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
         const atLimit = limit > 0 && price >= limit;
         const tied = lb.tiedTeams ?? [];
         const p = s.currentPlayer;
+        const onBlock = p?._id ?? ''; // the player every action below is meant for
         const name = p ? `${p.profile.firstName} ${p.profile.lastName}` : '';
         const base = p?.auctionData?.basePrice ?? 0;
         const last = !a.remainingCount && !a.unsoldCount;
         const lastLog = log?.logs[log.logs.length - 1];
         const left = (a.remainingCount || 0) + (a.unsoldCount || 0) + (sold ? 0 : 1);
 
-        const bid = (teamId: string) => run(`bid-${teamId}`, 'grid', () => auctionApi.bid(tournamentId, catId, teamId), "Couldn't record the bid.");
-        const undo = (at: string) => run('undo', at, () => auctionApi.undo(tournamentId, catId), "Couldn't undo the sale.");
+        const bid = (teamId: string) => run(`bid-${teamId}`, 'grid', () => auctionApi.bid(tournamentId, catId, teamId, onBlock), "Couldn't record the bid.");
+        const undo = (at: string) => run('undo', at, () => auctionApi.undo(tournamentId, catId, (sold ? a.lastSoldResult?.registrationId : undefined) ?? lastLog?.registrationId ?? ''), "Couldn't undo the sale.");
 
         const strip = (
             <div className={cn(PANEL, 'overflow-hidden')}>
@@ -251,7 +252,7 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
                             <Undo2 aria-hidden className={ICON} />Undo sale
                         </button>
                         <button type="button" disabled={!!busy} className={BTN_PRIMARY}
-                            onClick={() => run('next', 'sold', () => auctionApi.next(tournamentId, catId), "Couldn't move on.")}>
+                            onClick={() => run('next', 'sold', () => auctionApi.next(tournamentId, catId, onBlock), "Couldn't move on.")}>
                             {last ? 'Finish auction' : 'Next player'}
                             {busy === 'next' ? <Loader2 aria-hidden className={SPIN} /> : <ArrowRight aria-hidden className={ICON} />}
                         </button>
@@ -392,8 +393,8 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
         ) : (
             <button type="button" disabled={!winnerId || paused || !!busy} className={cn(BTN_PRIMARY, 'min-w-0 basis-full sm:basis-auto')}
                 onClick={() => run('sell', 'bar', () => atLimit
-                    ? auctionApi.resolveHardLimit(tournamentId, catId, winnerId)
-                    : auctionApi.sell(tournamentId, catId, winnerId, price), "Couldn't record the sale.")}>
+                    ? auctionApi.resolveHardLimit(tournamentId, catId, winnerId, onBlock)
+                    : auctionApi.sell(tournamentId, catId, winnerId, price, onBlock, price), "Couldn't record the sale.")}>
                 {busy === 'sell' ? <Loader2 aria-hidden className={SPIN} /> : <Gavel aria-hidden className={ICON} />}
                 <span className="truncate">{winnerId ? `Sell to ${winnerName} · ${inr(atLimit ? limit : price)}` : 'Sell · waiting for a bid'}</span>
             </button>
@@ -403,7 +404,7 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
             <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-2 rounded-xl bg-raised p-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.5)] ring-1 ring-line">
                 {primary}
                 <button type="button" disabled={paused || !p || !!busy} className={BTN_SECONDARY}
-                    onClick={() => run('skip', 'bar', () => auctionApi.skip(tournamentId, catId), "Couldn't mark the player unsold.")}>
+                    onClick={() => run('skip', 'bar', () => auctionApi.skip(tournamentId, catId, onBlock), "Couldn't mark the player unsold.")}>
                     {busy === 'skip' && <Loader2 aria-hidden className={SPIN} />}Mark unsold
                 </button>
                 <button type="button" disabled={paused || !p || !!busy} onClick={() => setDialog('manual')} className={cn(BTN_GHOST, 'sm:ml-auto')}>Sell manually…</button>
@@ -435,12 +436,12 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
                 {dialog === 'manual' && p && (
                     <ManualSell name={name} base={base} teams={teams} defaultTeam={lb.highestBidderId} defaultPrice={lb.highestBidderId ? price : base}
                         onClose={() => setDialog(null)}
-                        onSell={async (teamId, soldPrice) => { await auctionApi.sell(tournamentId, catId, teamId, soldPrice); setDialog(null); await load(); }} />
+                        onSell={async (teamId, soldPrice) => { await auctionApi.sell(tournamentId, catId, teamId, soldPrice, onBlock, price); setDialog(null); await load(); }} />
                 )}
                 {dialog === 'tie' && !sold && tiedTeams.length >= 2 && (
                     <TieBreak teams={tiedTeams} limit={limit} winnerId={lb.spinWinnerId} onClose={() => setDialog(null)}
                         onSpin={() => auctionApi.triggerSpinWheel(tournamentId, catId)}
-                        onSell={async teamId => { await auctionApi.resolveHardLimit(tournamentId, catId, teamId); setDialog(null); await load(); }} />
+                        onSell={async teamId => { await auctionApi.resolveHardLimit(tournamentId, catId, teamId, onBlock); setDialog(null); await load(); }} />
                 )}
             </div>
         );

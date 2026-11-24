@@ -10,6 +10,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { registerUser, verifyOtp, setPassword, Role, resetRegistration, clearError } from '../../store/slices/authSlice';
 import logo from '@/assets/logo.png';
+import API, { serverMessage } from '@/api/axios';
+import { ageAt, isMinor, MIN_AGE } from '@/lib/age';
 
 export default function SignUpPage() {
     const [role, setRole] = useState<Role | null>(null);
@@ -34,8 +36,13 @@ export default function SignUpPage() {
         phone: '',
         otp: '',
         pwd: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        dateOfBirth: '',
     });
+    // Players give a date of birth to sign up (LAUNCH-AUDIT H26, your call): 13 and
+    // over, and 13-17 with a parent or guardian's agreement. Checked here and by the server.
+    const [guardianConsent, setGuardianConsent] = useState(false);
+    const [ageError, setAgeError] = useState<string | null>(null);
 
     useEffect(() => {
         dispatch(clearError());
@@ -56,13 +63,21 @@ export default function SignUpPage() {
         if (!role) return;
 
         if (registrationStep === 1) {
+            setAgeError(null);
+            if (role === 'player') {
+                const age = ageAt(formData.dateOfBirth);
+                if (Number.isNaN(age) || age > 120) { setAgeError('Add your date of birth.'); return; }
+                if (age < MIN_AGE) { setAgeError(`Kria is for players ${MIN_AGE} and over.`); return; }
+                if (age < 18 && !guardianConsent) { setAgeError('Players under 18 need a parent or guardian to agree. Tick the box once they do.'); return; }
+            }
             dispatch(registerUser({
                 role,
                 data: {
                     firstName: formData.firstName,
                     lastName: formData.lastName,
                     email: formData.email,
-                    phone: formData.phone
+                    phone: formData.phone,
+                    ...(role === 'player' ? { dateOfBirth: formData.dateOfBirth, ...(isMinor(formData.dateOfBirth) ? { guardianConsent: true } : {}) } : {}),
                 }
             }));
         } else if (registrationStep === 2) {
@@ -95,6 +110,19 @@ export default function SignUpPage() {
             dispatch(resetRegistration());
         } else {
             setRole(null);
+        }
+    };
+
+    // LAUNCH-AUDIT H24: the button had no handler.
+    const [resend, setResend] = useState<string | null>(null);
+    const resendCode = async () => {
+        if (!role) return;
+        setResend('sending');
+        try {
+            await API.post(`/${role}/auth/resend-otp`, { email: registrationEmail || formData.email });
+            setResend('A new code is on its way.');
+        } catch (err) {
+            setResend(serverMessage(err, "Couldn't send a new code. Try again."));
         }
     };
 
@@ -185,11 +213,11 @@ export default function SignUpPage() {
                     </div>
                 )}
 
-                {error && (
+                {(ageError || error) && (
                     <Alert variant="error" className="mb-4 bg-red-900/20 border-red-900/50 text-red-200">
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>{error}</AlertDescription>
+                        <AlertDescription>{ageError || error}</AlertDescription>
                     </Alert>
                 )}
 
@@ -240,6 +268,26 @@ export default function SignUpPage() {
                                 onChange={handleChange}
                             />
                         </div>
+                        {role === 'player' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="dateOfBirth" className="text-white">Date of birth</Label>
+                                <Input
+                                    id="dateOfBirth"
+                                    type="date"
+                                    max={new Date().toISOString().slice(0, 10)}
+                                    className="bg-white/5 border-white/10 text-white"
+                                    value={formData.dateOfBirth}
+                                    onChange={handleChange}
+                                />
+                                <p className="text-xs text-gray-500">You need to be {MIN_AGE} or over. Also used for age-group categories.</p>
+                                {isMinor(formData.dateOfBirth) && (
+                                    <label className="flex items-start gap-2 text-left text-xs text-gray-300">
+                                        <input type="checkbox" className="mt-0.5 accent-primary" checked={guardianConsent} onChange={e => setGuardianConsent(e.target.checked)} />
+                                        <span><span className="font-medium text-white">My parent or guardian agrees</span><br />Players under 18 need a parent or guardian's OK to use Kria and enter tournaments.</span>
+                                    </label>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -267,7 +315,8 @@ export default function SignUpPage() {
                                 onChange={handleChange}
                             />
                         </div>
-                        <Button variant="link" className="text-primary text-sm">Resend Code</Button>
+                        <Button type="button" variant="link" className="text-primary text-sm" disabled={resend === 'sending'} onClick={resendCode}>Resend Code</Button>
+                        {resend && resend !== 'sending' && <p role="status" className="text-sm text-gray-400">{resend}</p>}
                     </div>
                 )}
 

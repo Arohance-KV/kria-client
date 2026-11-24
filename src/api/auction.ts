@@ -6,7 +6,7 @@ export interface AuctionState {
     auction: AuctionStatus & {
         /** Players after the current one in this round's queue. Unsold players wait for the next round. */
         remainingCount: number;
-        lastSoldResult?: AuctionStatus['lastSoldResult'] & { teamId?: string };
+        lastSoldResult?: AuctionStatus['lastSoldResult'] & { teamId?: string; registrationId?: string };
     };
     currentPlayer: Player | null;
     /** The next 10 players in queue order. */
@@ -35,15 +35,17 @@ export const auctionApi = {
         return res.data?.data?.data as SoldLog;
     },
 
-    // Protected organizer actions
+    // Protected organizer actions. `registrationId` is the player the console shows (for undo,
+    // the sale it offers to undo), and a sale also sends the live price it shows: the server
+    // refuses an action meant for a screen that has since changed (LAUNCH-AUDIT H11).
     start: (tournamentId: string, categoryId: string, opts?: { bidIncrement?: number; hardLimit?: number }) =>
         API.post('/auction/start', { tournamentId, categoryId, ...opts }),
 
-    sell: (tournamentId: string, categoryId: string, teamId: string, soldPrice: number) =>
-        API.post('/auction/sell', { tournamentId, categoryId, teamId, soldPrice }),
+    sell: (tournamentId: string, categoryId: string, teamId: string, soldPrice: number, registrationId: string, livePrice: number) =>
+        API.post('/auction/sell', { tournamentId, categoryId, teamId, soldPrice, registrationId, livePrice }),
 
-    bid: (tournamentId: string, categoryId: string, teamId: string) =>
-        API.post('/auction/bid', { tournamentId, categoryId, teamId }),
+    bid: (tournamentId: string, categoryId: string, teamId: string, registrationId: string) =>
+        API.post('/auction/bid', { tournamentId, categoryId, teamId, registrationId }),
 
     startTieBreaker: (tournamentId: string, categoryId: string) =>
         API.post('/auction/start-tie-breaker', { tournamentId, categoryId }),
@@ -54,22 +56,22 @@ export const auctionApi = {
         return res.data?.data?.data?.winnerId as string;
     },
 
-    resolveHardLimit: (tournamentId: string, categoryId: string, winnerTeamId: string) =>
-        API.post('/auction/resolve-hard-limit', { tournamentId, categoryId, winnerTeamId }),
+    resolveHardLimit: (tournamentId: string, categoryId: string, winnerTeamId: string, registrationId: string) =>
+        API.post('/auction/resolve-hard-limit', { tournamentId, categoryId, winnerTeamId, registrationId }),
 
-    next: (tournamentId: string, categoryId: string) =>
-        API.post('/auction/next', { tournamentId, categoryId }),
+    next: (tournamentId: string, categoryId: string, registrationId: string) =>
+        API.post('/auction/next', { tournamentId, categoryId, registrationId }),
 
     distribute: async (tournamentId: string, categoryId: string) => {
         const res = await API.post('/auction/distribute', { tournamentId, categoryId });
         return res.data?.data?.data as { assigned: number; teams: number };
     },
 
-    skip: (tournamentId: string, categoryId: string) =>
-        API.post('/auction/skip', { tournamentId, categoryId }),
+    skip: (tournamentId: string, categoryId: string, registrationId: string) =>
+        API.post('/auction/skip', { tournamentId, categoryId, registrationId }),
 
-    undo: (tournamentId: string, categoryId: string) =>
-        API.post('/auction/undo', { tournamentId, categoryId }),
+    undo: (tournamentId: string, categoryId: string, registrationId: string) =>
+        API.post('/auction/undo', { tournamentId, categoryId, registrationId }),
 
     pause: (tournamentId: string, categoryId: string) =>
         API.post('/auction/pause', { tournamentId, categoryId }),

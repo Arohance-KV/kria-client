@@ -4,12 +4,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import API, { serverMessage } from '@/api/axios';
 
+// LAUNCH-AUDIT H24: both steps used to be a setTimeout. The role comes from the
+// tab picked on Sign in; organiser when opened without one.
 export default function ForgotPasswordPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [step, setStep] = useState<1 | 2>(1); // 1: Email, 2: Reset
+    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
+    const role = useSearchParams()[0].get('role') === 'player' ? 'player' : 'organizer';
 
     const [email, setEmail] = useState('');
     const [otp, setOtp] = useState('');
@@ -18,21 +23,27 @@ export default function ForgotPasswordPage() {
     const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        // Simulate API call
-        setTimeout(() => {
-            setIsLoading(false);
+        setError(null);
+        try {
+            await API.post(`/${role}/auth/forgot-password`, { email: email.trim() });
             setStep(2);
-        }, 1500);
+        } catch (err) {
+            setError(serverMessage(err, "Couldn't send the code. Try again."));
+        }
+        setIsLoading(false);
     };
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        // Simulate API call
-        setTimeout(() => {
-            setIsLoading(false);
+        setError(null);
+        try {
+            await API.post(`/${role}/auth/reset-password`, { email: email.trim(), otp: otp.trim(), newPassword });
             navigate('/login');
-        }, 1500);
+        } catch (err) {
+            setError(serverMessage(err, "Couldn't reset the password. Try again."));
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -45,6 +56,7 @@ export default function ForgotPasswordPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
+                    {error && <p role="alert" className="mb-4 text-sm text-red-300">{error}</p>}
                     {step === 1 ? (
                         <form onSubmit={handleSendOtp} className="space-y-4">
                             <div className="space-y-2">

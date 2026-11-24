@@ -146,13 +146,11 @@ export const openCategoryRegistration = createAsyncThunk(
 
 export const startCategoryAuction = createAsyncThunk(
     'category/startAuction',
-    async ({ id, tournamentId }: { id: string; tournamentId: string }, { rejectWithValue }) => {
+    async (id: string, { rejectWithValue }) => {
         try {
-            // Step 1: Update category status to auction
-            const result = await performStatusAction(`/categories/${id}/start-auction`);
-            // Step 2: Create the Auction document with player queue
-            await API.post('/auction/start', { tournamentId, categoryId: id });
-            return result;
+            // Status only. The Auction console starts the auction itself, with its
+            // increment and limit; starting it here used the defaults (LAUNCH-AUDIT H12).
+            return await performStatusAction(`/categories/${id}/start-auction`);
         } catch (error) {
             return rejectWithValue(extractError(error));
         }

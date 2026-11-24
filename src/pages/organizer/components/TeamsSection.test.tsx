@@ -95,6 +95,28 @@ describe('TeamsSection', () => {
         await vi.waitFor(() => expect(body).toMatchObject({ logo: '', whatsappGroupLink: '' }));
     });
 
+    // LAUNCH-AUDIT H11: a sale can change the purse while the form is open. Sending the
+    // purse the form showed lets the server refuse instead of overwriting the sale's charge.
+    it('changes the budget from the purse the form showed', async () => {
+        let budgetBody: Record<string, unknown> | null = null;
+        server.use(
+            http.put(`${API}/teams/tm1`, () => HttpResponse.json({ data: existing })),
+            http.put(`${API}/teams/tm1/budget`, async ({ request }) => {
+                budgetBody = await request.json() as Record<string, unknown>;
+                return HttpResponse.json({ data: { ...existing, budget: 60000 } });
+            }),
+        );
+        renderSection();
+        await userEvent.click(await screen.findByRole('button', { name: /Net Ninjas/ }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit team' }));
+
+        await userEvent.clear(screen.getByLabelText('Remaining budget'));
+        await userEvent.type(screen.getByLabelText('Remaining budget'), '60000');
+        await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await vi.waitFor(() => expect(budgetBody).toEqual({ budget: 60000, previousBudget: 48500 }));
+    });
+
     it('hides Delete team from staff', async () => {
         renderSection('staff');
         await userEvent.click(await screen.findByRole('button', { name: /Net Ninjas/ }));

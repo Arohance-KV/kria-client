@@ -14,6 +14,19 @@
 
 # ── Headers ───────────────────────────────────────────────────────────────────
 
+# Every page (LAUNCH-AUDIT H5). The sign-in token lives in localStorage, so the
+# CSP only lets scripts come from this site and Razorpay Checkout. connect-src
+# is the API and its socket, venue search and Razorpay; images may come from any
+# https URL because team logos are links organisers paste. A new third-party
+# script, font, frame or API host has to be added here or the browser blocks it.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy   = "default-src 'self'; script-src 'self' https://*.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.kria.club wss://api.kria.club https://nominatim.openstreetmap.org https://*.razorpay.com; frame-src https://*.razorpay.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    Strict-Transport-Security = "max-age=31536000"
+    X-Content-Type-Options    = "nosniff"
+    Referrer-Policy           = "strict-origin-when-cross-origin"
+
 [[headers]]
   for = "/sitemap.xml"
   [headers.values]

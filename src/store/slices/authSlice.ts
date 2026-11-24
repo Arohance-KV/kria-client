@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction, type Dispatch } from '@reduxjs/toolkit';
 import API from '../../api/axios';
 
 export type Role = 'player' | 'organizer';
@@ -43,6 +43,8 @@ interface AuthState {
     // Registration specific state
     registrationStep: number;
     registrationEmail: string | null;
+    /** From the code step; set-password needs it (LAUNCH-AUDIT M1). */
+    registrationToken: string | null;
 
     // Stats
     playerStats: PlayerStats | null;
@@ -58,6 +60,7 @@ const initialState: AuthState = {
     error: null,
     registrationStep: 1,
     registrationEmail: null,
+    registrationToken: null,
     playerStats: null,
     organizerStats: null,
     statsLoading: false,
@@ -70,22 +73,44 @@ const extractError = (err: any) => {
 
 // --- THUNKS ---
 
-// Re-fetch logged-in user's profile (used on page refresh)
+// Re-fetch logged-in user's profile (used on page refresh). Only a 401 ends the
+// session; offline, a 5xx or a deploy keep it (LAUNCH-AUDIT H20).
 export const fetchProfile = createAsyncThunk(
     'auth/fetchProfile',
-    async (_, { getState, rejectWithValue }) => {
+    async (_, { getState, dispatch, rejectWithValue }) => {
         try {
             const state = getState() as { auth: AuthState };
             const role = state.auth.role;
-            if (!role) return rejectWithValue('No role found');
+            if (!role) {
+                dispatch(authSlice.actions.logout());
+                return rejectWithValue('No role found');
+            }
             const response = await API.get(`/${role}/auth/profile`);
             const responseData = response.data?.data?.data || response.data?.data;
+            void renewToken(role, dispatch);
             return responseData;
-        } catch (error) {
+        } catch (error: any) {
+            if (error.response?.status === 401) dispatch(authSlice.actions.logout());
             return rejectWithValue(extractError(error));
         }
     }
 );
+
+/**
+ * A later expiry for this session on every page load, so an organiser who
+ * visits at least weekly is never signed out (H20). Not awaited: the old token
+ * works until it expires. A logout meanwhile wins.
+ */
+async function renewToken(role: Role, dispatch: Dispatch) {
+    const token = localStorage.getItem('accessToken');
+    try {
+        const res = await API.post(`/${role}/auth/refresh-token`);
+        const renewed: string | undefined = res.data?.data?.data?.accessToken ?? res.data?.data?.accessToken;
+        if (renewed && localStorage.getItem('accessToken') === token) dispatch(authSlice.actions.tokenRenewed(renewed));
+    } catch {
+        // Kept the old token; the next page load tries again.
+    }
+}
 
 export const loginUser = createAsyncThunk(
     'auth/login',
@@ -143,8 +168,8 @@ export const verifyOtp = createAsyncThunk(
     'auth/verifyOtp',
     async ({ role, data }: { role: Role; data: { email: string; otp: string } }, { rejectWithValue }) => {
         try {
-            await API.post(`/${role}/auth/verify-otp`, data);
-            return true;
+            const response = await API.post(`/${role}/auth/verify-otp`, data);
+            return ((response.data?.data?.data || response.data?.data)?.setupToken ?? null) as string | null;
         } catch (error) {
             return rejectWithValue(extractError(error));
         }
@@ -154,9 +179,10 @@ export const verifyOtp = createAsyncThunk(
 // Registration Step 3
 export const setPassword = createAsyncThunk(
     'auth/setPassword',
-    async ({ role, data }: { role: Role; data: { email: string; password: string } }, { rejectWithValue }) => {
+    async ({ role, data }: { role: Role; data: { email: string; password: string } }, { getState, rejectWithValue }) => {
         try {
-            const response = await API.post(`/${role}/auth/set-password`, data);
+            const setupToken = (getState() as { auth: AuthState }).auth.registrationToken;
+            const response = await API.post(`/${role}/auth/set-password`, { ...data, setupToken });
             const responseData = response.data?.data?.data || response.data?.data;
             return { role, responseData };
         } catch (error) {
@@ -226,7 +252,7 @@ export const uploadOrganizerProfileImage = createAsyncThunk(
 // Profile Update
 export const updateProfile = createAsyncThunk(
     'auth/updateProfile',
-    async ({ role, data }: { role: Role; data: { firstName?: string; lastName?: string; phone?: string; gender?: string; dateOfBirth?: string; sport?: string; location?: string } }, { rejectWithValue }) => {
+    async ({ role, data }: { role: Role; data: { firstName?: string; lastName?: string; phone?: string; gender?: string; dateOfBirth?: string; sport?: string; location?: string; guardianConsent?: boolean } }, { rejectWithValue }) => {
         try {
             const response = await API.patch(`/${role}/auth/profile`, data);
             const responseData = response.data?.data?.data || response.data?.data;
@@ -256,8 +282,11 @@ export const changePassword = createAsyncThunk(
     'auth/changePassword',
     async ({ role, data }: { role: Role; data: { currentPassword: string; newPassword: string } }, { rejectWithValue }) => {
         try {
-            await API.post(`/${role}/auth/change-password`, data);
-            return true;
+            const res = await API.post(`/${role}/auth/change-password`, data);
+            // The server ends every older session, this one's too, and hands back the token that still works.
+            const token: string | undefined = res.data?.data?.data?.accessToken ?? res.data?.data?.accessToken;
+            if (token) localStorage.setItem('accessToken', token);
+            return token;
         } catch (error) {
             return rejectWithValue(extractError(error));
         }
@@ -278,11 +307,16 @@ export const authSlice = createSlice({
         resetRegistration: (state) => {
             state.registrationStep = 1;
             state.registrationEmail = null;
+            state.registrationToken = null;
             state.error = null;
         },
         clearError: (state) => {
             state.error = null;
-        }
+        },
+        tokenRenewed: (state, action: PayloadAction<string>) => {
+            state.accessToken = action.payload;
+            localStorage.setItem('accessToken', action.payload);
+        },
     },
     extraReducers: (builder) => {
         const handleLoginSuccess = (state: AuthState, action: any) => {
@@ -321,9 +355,10 @@ export const authSlice = createSlice({
 
         // VERIFY OTP (REGISTRATION)
         builder.addCase(verifyOtp.pending, (state) => { state.isLoading = true; state.error = null; });
-        builder.addCase(verifyOtp.fulfilled, (state) => {
+        builder.addCase(verifyOtp.fulfilled, (state, action) => {
             state.isLoading = false;
             state.registrationStep = 3;
+            state.registrationToken = action.payload;
         });
         builder.addCase(verifyOtp.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
 
@@ -333,6 +368,7 @@ export const authSlice = createSlice({
             handleLoginSuccess(state, action);
             state.registrationStep = 1; // reset
             state.registrationEmail = null;
+            state.registrationToken = null;
         });
         builder.addCase(setPassword.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
 
@@ -387,19 +423,26 @@ export const authSlice = createSlice({
             state.isLoading = false;
             state.user = action.payload?.user || action.payload?.player || action.payload?.organizer || action.payload;
         });
+        builder.addCase(changePassword.fulfilled, (state, action) => {
+            if (action.payload) state.accessToken = action.payload;
+        });
+
         builder.addCase(fetchProfile.rejected, (state, action) => {
             state.isLoading = false;
             state.error = action.payload as string;
-            // If profile fetch fails (e.g. expired token), clear auth
-            state.user = null;
-            state.role = null;
-            state.accessToken = null;
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('role');
         });
     }
 });
 
-export const { logout, resetRegistration, clearError } = authSlice.actions;
+export const { resetRegistration, clearError } = authSlice.actions;
+
+/** Signs out here at once, and ends the session on the server so a copied token dies too (LAUNCH-AUDIT H1). */
+export const logout = () => (dispatch: Dispatch) => {
+    const token = localStorage.getItem('accessToken');
+    const role = localStorage.getItem('role');
+    // The header is set here: the request goes out after the line below has cleared the stored token.
+    if (token && role) API.post(`/${role}/auth/logout`, null, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    dispatch(authSlice.actions.logout());
+};
 
 export default authSlice.reducer;

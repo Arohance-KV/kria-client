@@ -6,7 +6,7 @@ import type { MatchResultSectionProps } from '@/sports/_contracts/SportPlugin';
 import { isDecidedFinal } from '@/lib/champion';
 import {
     CARD_H, CARD_W, CONN_W, bracketHeight, computeCardPositions,
-    getC1, getC2, isHiddenBye, isLeagueRound, isPlaceholderSlot, resolveSwapSlot,
+    drawLocked, getC1, getC2, isHiddenBye, isLeagueRound, isPlaceholderSlot, resolveSwapSlot,
     type LayoutMatch, type LayoutRound, type Slot,
 } from '@/lib/bracketLayout';
 import { cn } from '@/lib/utils';
@@ -138,7 +138,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
 
     const { matches, rounds, competitorType } = data;
     const hasBracket = matches.length > 0;
-    const hasResults = matches.some(m => m.status === 'completed');
+    const locked = drawLocked(matches);
 
     // A slow response for a category the organizer has already left must not land.
     const current = useRef(selectedCat);
@@ -172,7 +172,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
 
     // A drawn doubles category still open to edits: know its pairs even with the
     // panel closed, so a draw left stale by an unpair or a team change says so.
-    const drawnOpenDoubles = isDoubles && hasBracket && !hasResults;
+    const drawnOpenDoubles = isDoubles && hasBracket && !locked;
     useEffect(() => {
         if (!drawnOpenDoubles) return;
         const cat = selectedCat;
@@ -284,7 +284,7 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                 <button type="button" onClick={() => setConfirm('generate')} className={BTN_PRIMARY}
                     disabled={isDoubles && (pairCount?.pairs ?? 0) < 2}>Generate bracket</button>
             )}
-            {editable && hasBracket && !hasResults && (
+            {editable && hasBracket && !locked && (
                 <>
                     {isDoubles && (
                         <button type="button" onClick={() => setEditPairs(on => !on)} className={editPairs ? BTN_PRIMARY : BTN_SECONDARY}>
@@ -305,9 +305,9 @@ const BracketManagementSection: React.FC<Props> = ({ tournamentId, sports, categ
                     ]} />
                 </>
             )}
-            {ready && hasResults && (
+            {ready && locked && (
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-subtle">
-                    <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: results are in
+                    <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: play has started
                 </span>
             )}
         </>

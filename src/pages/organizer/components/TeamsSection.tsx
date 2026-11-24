@@ -349,7 +349,7 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
             const res = await dispatch(updateTeam({ id: team._id, data }));
             if (updateTeam.rejected.match(res)) failure = res.payload;
             else if (team.budget !== budget) {
-                const b = await dispatch(updateTeamBudget({ id: team._id, amount: budget }));
+                const b = await dispatch(updateTeamBudget({ id: team._id, amount: budget, previousBudget: team.budget }));
                 if (updateTeamBudget.rejected.match(b)) failure = `Details were saved, but the budget wasn't. ${errText(b.payload)}`;
             }
         } else {

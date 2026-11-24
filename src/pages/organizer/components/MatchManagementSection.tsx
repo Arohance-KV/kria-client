@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, CircleAlert, ExternalLink, Lock, Network } from 'lucide-react';
 import { sportRegistry } from '@/sports/registry';
-import { getC1, getC2, isHiddenBye } from '@/lib/bracketLayout';
+import { drawLocked, getC1, getC2, isHiddenBye } from '@/lib/bracketLayout';
 import { cn } from '@/lib/utils';
 import { useAppSelector } from '@/store/hooks';
 import { BTN_GHOST, BTN_SECONDARY, ToneBadge } from '../shared';
@@ -86,7 +86,7 @@ const MatchManagementSection: React.FC<Props> = ({ sports, categories }) => {
         .map(name => [name, (rounds[name] || []).filter(m => !isHiddenBye(m) && shown(m))] as const)
         .filter(([, ms]) => ms.length > 0);
     const hasGames = matches.some(m => m.gameScores?.length);
-    const hasResults = matches.some(m => m.status === 'completed');
+    const locked = drawLocked(matches);
     const config = matches[0]?.matchConfig;
     const configText = [config?.bestOf && `Best of ${config.bestOf}`, config?.pointsToWin && `${config.pointsToWin} points`].filter(Boolean).join(' · ');
 
@@ -112,9 +112,9 @@ const MatchManagementSection: React.FC<Props> = ({ sports, categories }) => {
                         onChange={setFilter}
                         items={(Object.keys(FILTER_LABEL) as Filter[]).map(k => ({ key: k, label: FILTER_LABEL[k], count: count(k) }))}
                     />
-                    {hasResults ? (
+                    {locked ? (
                         <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-subtle">
-                            <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: results are in
+                            <Lock aria-hidden className="h-3.5 w-3.5" />Draw locked: play has started
                         </span>
                     ) : configText && <span className="text-[12.5px] text-fg-subtle">{configText}</span>}
                 </Toolbar>

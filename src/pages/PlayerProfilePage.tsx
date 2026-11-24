@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { getMyPayments } from '@/api/payment';
 import TournamentHistoryView, { sportEmoji } from '../components/TournamentHistoryView';
 import { titleLabel, type Title } from '@/lib/titles';
+import { isMinor } from '@/lib/age';
 
 // ─── Dashboard card ──────────────────────────────────────────────────────────
 const DashboardCard = ({ icon: Icon, title, onClick }: { icon: any; title: string; onClick?: () => void }) => (
@@ -53,6 +54,7 @@ const PlayerProfilePage = () => {
     const { myRegistrations, isLoading: isRegLoading, tournamentHistory, historyLoading } = useAppSelector(s => s.registration);
 
     const [isEditing, setIsEditing] = useState(false);
+    const [guardianConsent, setGuardianConsent] = useState(false);
     const [editData,  setEditData]  = useState({ firstName: '', lastName: '', phone: '', gender: '', dateOfBirth: '', sport: '', location: '' });
     const [activeView, setActiveView] = useState<'dashboard' | 'registrations' | 'history' | 'invoices'>('dashboard');
     const [invoices, setInvoices]     = useState<any[]>([]);
@@ -111,7 +113,7 @@ const PlayerProfilePage = () => {
         // The server validators use `.optional()`, which only skips `undefined` —
         // an empty string (e.g. dateOfBirth: "") still hits isISO8601() and 400s.
         // Omitting blank keys also leaves existing values untouched ($set semantics).
-        const payload: Record<string, string> = {
+        const payload: Record<string, string | boolean> = {
             firstName: editData.firstName,
             lastName:  editData.lastName,
             phone:     editData.phone,
@@ -120,6 +122,7 @@ const PlayerProfilePage = () => {
             const val = editData[key]?.trim();
             if (val) payload[key] = val;
         });
+        if (guardianConsent) payload.guardianConsent = true;
         const result = await dispatch(updateProfile({ role, data: payload }));
         if (updateProfile.fulfilled.match(result)) setIsEditing(false);
     };
@@ -236,6 +239,13 @@ const PlayerProfilePage = () => {
                                     value={editData.dateOfBirth}
                                     onChange={val => setEditData(p => ({ ...p, dateOfBirth: val }))}
                                 />
+                                {/* 13-17 need a parent or guardian to agree, once (LAUNCH-AUDIT H26); the server refuses under 13. */}
+                                {isMinor(editData.dateOfBirth) && !user?.guardianConsentAt && (
+                                    <label className="flex items-start gap-2 text-left text-xs text-gray-300">
+                                        <input type="checkbox" className="mt-0.5 accent-primary" checked={guardianConsent} onChange={e => setGuardianConsent(e.target.checked)} />
+                                        <span><span className="font-medium text-white">My parent or guardian agrees</span><br />Players under 18 need a parent or guardian's OK to use Kria and enter tournaments.</span>
+                                    </label>
+                                )}
                                 {[
                                     { key: 'sport',    placeholder: 'Sport (e.g. Badminton)' },
                                     { key: 'location', placeholder: 'Location (e.g. Bangalore)' },

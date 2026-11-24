@@ -59,6 +59,19 @@ describe('PaymentsSection', () => {
         expect(screen.getByRole('button', { name: 'Copy order ID' })).toBeInTheDocument();
     });
 
+    // LAUNCH-AUDIT H13: a paid entry that was rejected or cancelled is owed its money back.
+    it('shows a refund due, with its own tab and what happens next', async () => {
+        server.use(http.get(`${API}/payments/tournaments/t1`, () => HttpResponse.json({
+            data: [pay('a', 'refund_due', 500, { registrationId: 'r1' }), pay('b', 'paid', 800, { registrationId: 'r2', playerId: 'p2' })],
+        })));
+        renderSection();
+
+        await userEvent.click(await screen.findByRole('button', { name: /^Refund due/ }));
+        expect(screen.queryByRole('button', { name: /Sanya Gupta/ })).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: /Aditya Rao/ }));
+        expect(screen.getByText(/Kria refunds this through Razorpay/)).toBeInTheDocument();
+    });
+
     it('says the load failed instead of showing an empty list', async () => {
         server.use(http.get(`${API}/payments/tournaments/t1`, () =>
             HttpResponse.json({ message: 'Payments service is down.' }, { status: 500 })));

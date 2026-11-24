@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { BTN_SECONDARY, FOCUS, inr, Tone, ToneBadge } from '../shared';
 import { Avatar, COLHEAD, EmptyState, PageHead, PANEL, ROW, SearchInput, SegTabs, Spinner, Toolbar } from '../ui';
 
-type PayStatus = 'created' | 'paid' | 'failed' | 'refunded';
+type PayStatus = 'created' | 'paid' | 'failed' | 'refund_due' | 'refunded';
 type Payment = {
     _id: string; playerId: string; categoryId: string; registrationId?: string;
     razorpayOrderId: string; razorpayPaymentId?: string;
@@ -20,11 +20,12 @@ const PAY_STATUS: Record<PayStatus, { label: string; tone: Tone }> = {
     paid: { label: 'Paid', tone: 'green' },
     created: { label: 'Checkout started', tone: 'neutral' },
     failed: { label: 'Failed', tone: 'red' },
+    refund_due: { label: 'Refund due', tone: 'amber' },
     refunded: { label: 'Refunded', tone: 'blue' },
 };
 const TABS: { key: 'all' | PayStatus; label: string }[] = [
     { key: 'all', label: 'All' }, { key: 'paid', label: 'Paid' }, { key: 'created', label: 'Checkout started' },
-    { key: 'failed', label: 'Failed' }, { key: 'refunded', label: 'Refunded' },
+    { key: 'failed', label: 'Failed' }, { key: 'refund_due', label: 'Refund due' }, { key: 'refunded', label: 'Refunded' },
 ];
 
 const COLS = 'grid-cols-[minmax(0,1fr)_auto] @5xl:grid-cols-[minmax(0,1.4fr)_7.5rem_9.5rem_5rem_minmax(0,1fr)_2rem]';
@@ -196,6 +197,9 @@ export default function PaymentsSection({ tournamentId }: { tournamentId: string
                                                         </div>
                                                         {p.status === 'created' && (
                                                             <p className="text-[12.5px] text-fg-subtle">The player opened checkout but didn't finish paying. No money was taken.</p>
+                                                        )}
+                                                        {p.status === 'refund_due' && (
+                                                            <p className="text-[12.5px] text-fg-subtle">The entry was rejected or the tournament cancelled. Kria refunds this through Razorpay, and it shows Refunded once done.</p>
                                                         )}
                                                     </div>
                                                 )}

@@ -3,6 +3,7 @@ import Navbar from '@/components/Navbar';
 import HoverFooter from '@/components/HoverFooter';
 import SmoothScroll from '@/components/SmoothScroll';
 import { Mail, Phone, MapPin, Send, CheckCircle } from 'lucide-react';
+import API, { serverMessage } from '@/api/axios';
 
 const ContactPage: React.FC = () => {
     const [formData, setFormData] = useState({
@@ -14,6 +15,7 @@ const ContactPage: React.FC = () => {
     });
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -21,13 +23,23 @@ const ContactPage: React.FC = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // LAUNCH-AUDIT H24: this used to be a setTimeout; nothing reached Kria.
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Simulate API call
-        await new Promise((r) => setTimeout(r, 1200));
+        setError(null);
+        const phone = formData.phone.trim();
+        try {
+            await API.post('/contact', {
+                fullName: formData.name.trim(), email: formData.email.trim(),
+                ...(phone ? { isdCode: '+91', phoneNumber: phone } : {}),
+                subject: formData.subject, message: formData.message.trim(), iss: 'kria.club/contact',
+            });
+            setSubmitted(true);
+        } catch (err) {
+            setError(serverMessage(err, "Your message didn't send. Try again, or email us."));
+        }
         setLoading(false);
-        setSubmitted(true);
     };
 
     const contactCards = [
@@ -256,6 +268,8 @@ const ContactPage: React.FC = () => {
                                             className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-primary/60 focus:bg-white/8 transition-all duration-200 text-sm resize-none"
                                         />
                                     </div>
+
+                                    {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
 
                                     <button
                                         type="submit"

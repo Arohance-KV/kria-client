@@ -32,7 +32,7 @@ const GENDER: Record<string, string> = { male: 'Men', female: 'Women', mixed: 'M
 // auction/groups_configured → Team league, are links rather than actions.
 const NEXT: Record<string, { label: string; text: string }> = {
     setup: { label: 'Open registration', text: 'Players can register for this category.' },
-    registration: { label: 'Start auction', text: 'Registration closes for this category and its auction opens.' },
+    registration: { label: 'Start auction', text: 'Registration closes for this category. Set the bid increment and price limit in Auction, then start it there.' },
     bracket_configured: { label: 'Start category', text: 'Moves the category to In progress so matches can be played.' },
     ongoing: { label: 'Complete category', text: 'Marks the category as finished. Results become final.' },
 };
@@ -124,7 +124,7 @@ export default function CategoriesSection({ tournamentId, sports }: Props) {
         const id = c._id;
         switch (c.status) {
             case 'setup': return run(c, id, dispatch(openCategoryRegistration(id)));
-            case 'registration': return run(c, id, dispatch(startCategoryAuction({ id, tournamentId })));
+            case 'registration': return run(c, id, dispatch(startCategoryAuction(id)));
             case 'bracket_configured': return run(c, id, dispatch(startCategory(id)));
             case 'ongoing': return run(c, id, dispatch(completeCategory(id)));
         }

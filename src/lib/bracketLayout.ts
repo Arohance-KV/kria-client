@@ -18,6 +18,14 @@ export interface LayoutMatch {
     teams?: { team1Id: string; team2Id: string; team1Name: string; team2Name: string };
 }
 
+/**
+ * Once any match has started or been decided, the draw can't change: no swap,
+ * reshuffle or redraw. A bye nobody played doesn't count (LAUNCH-AUDIT M10;
+ * the server's `wasPlayed` is the same rule).
+ */
+export const drawLocked = (matches: LayoutMatch[]) => matches.some(m =>
+    m.status === 'in_progress' || m.status === 'completed' || (m.status === 'walkover' && m.winReason !== 'bye'));
+
 export interface LayoutRound { name: string; matches: LayoutMatch[] }
 
 export type CompetitorType = 'player' | 'team';

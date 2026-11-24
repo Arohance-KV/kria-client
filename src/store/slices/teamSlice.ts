@@ -100,9 +100,11 @@ export const deleteTeam = createAsyncThunk(
 
 export const updateTeamBudget = createAsyncThunk(
     'team/updateTeamBudget',
-    async ({ id, amount }: { id: string; amount: number }, { rejectWithValue }) => {
+    // `previousBudget` is the purse the form showed: the server refuses the edit if a sale
+    // or refund changed it meanwhile, instead of overwriting it (LAUNCH-AUDIT H11).
+    async ({ id, amount, previousBudget }: { id: string; amount: number; previousBudget?: number }, { rejectWithValue }) => {
         try {
-            const response = await API.put(`/teams/${id}/budget`, { budget: amount });
+            const response = await API.put(`/teams/${id}/budget`, { budget: amount, previousBudget });
             const data = response.data?.data?.data || response.data?.data;
             return data;
         } catch (error) {
