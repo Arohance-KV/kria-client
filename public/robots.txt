@@ -16,7 +16,4 @@ Disallow: /organizer/
 Disallow: /auction/
 Disallow: /bracket/
 
-# Block Vite build assets (no SEO value)
-Disallow: /assets/
-
 Sitemap: https://kria.club/sitemap.xml

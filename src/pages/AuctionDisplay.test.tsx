@@ -129,7 +129,8 @@ describe('AuctionDisplay', () => {
         unmount();
         expect(sock.emit).toHaveBeenLastCalledWith('leave:auction', { tournamentId: 't1', categoryId: 'c1' });
         expect(sock.off).toHaveBeenCalledWith('auction:update', expect.any(Function));
-        expect(sock.disconnect).toHaveBeenCalled();
+        // The socket is shared with other screens: leave the room, keep the connection.
+        expect(sock.disconnect).not.toHaveBeenCalled();
     });
 
     it('follows a raised bid from the socket', async () => {

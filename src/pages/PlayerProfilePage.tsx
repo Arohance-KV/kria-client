@@ -11,6 +11,7 @@ import { logout, updateProfile, fetchPlayerStats, uploadPlayerProfileImage } fro
 import { fetchMyRegistrations, withdrawRegistration, fetchPlayerTournamentHistory } from '../store/slices/registrationSlice';
 import { Badge } from '@/components/ui/badge';
 import { getMyPayments } from '@/api/payment';
+import { inr } from './organizer/shared';
 import TournamentHistoryView, { sportEmoji } from '../components/TournamentHistoryView';
 import { titleLabel, type Title } from '@/lib/titles';
 import { isMinor } from '@/lib/age';
@@ -220,6 +221,7 @@ const PlayerProfilePage = () => {
                                 ].map(({ key, placeholder }) => (
                                     <input
                                         key={key}
+                                        aria-label={placeholder}
                                         value={(editData as any)[key]}
                                         onChange={e => setEditData(p => ({ ...p, [key]: e.target.value }))}
                                         placeholder={placeholder}
@@ -227,6 +229,7 @@ const PlayerProfilePage = () => {
                                     />
                                 ))}
                                 <select
+                                    aria-label="Gender"
                                     value={(editData as any).gender}
                                     onChange={e => setEditData(p => ({ ...p, gender: e.target.value }))}
                                     className="w-full px-4 py-2.5 rounded-full bg-black/50 border border-white/10 text-white text-center focus:outline-none focus:border-primary text-sm appearance-none"
@@ -247,11 +250,12 @@ const PlayerProfilePage = () => {
                                     </label>
                                 )}
                                 {[
-                                    { key: 'sport',    placeholder: 'Sport (e.g. Badminton)' },
-                                    { key: 'location', placeholder: 'Location (e.g. Bangalore)' },
-                                ].map(({ key, placeholder }) => (
+                                    { key: 'sport',    label: 'Sport',    placeholder: 'Sport (e.g. Badminton)' },
+                                    { key: 'location', label: 'Location', placeholder: 'Location (e.g. Bangalore)' },
+                                ].map(({ key, label, placeholder }) => (
                                     <input
                                         key={key}
+                                        aria-label={label}
                                         value={(editData as any)[key]}
                                         onChange={e => setEditData(p => ({ ...p, [key]: e.target.value }))}
                                         placeholder={placeholder}
@@ -470,7 +474,7 @@ const PlayerProfilePage = () => {
                                                 <div className="flex flex-col items-end justify-center shrink-0">
                                                     <span className="text-[10px] text-gray-500 uppercase tracking-wider font-oswald">Amount Paid</span>
                                                     <span className="text-2xl font-mono font-black text-primary">
-                                                        ₹{inv.amount?.toLocaleString()}
+                                                        {inr(inv.amount ?? 0)}
                                                     </span>
                                                 </div>
                                             </div>
@@ -482,7 +486,7 @@ const PlayerProfilePage = () => {
                                         <div className="flex items-center gap-3 bg-primary/10 border border-primary/30 rounded-xl px-6 py-3">
                                             <span className="text-sm font-oswald uppercase tracking-wider text-gray-300">Total Paid</span>
                                             <span className="text-2xl font-mono font-black text-primary">
-                                                ₹{invoices.reduce((s, i) => s + (i.amount || 0), 0).toLocaleString()}
+                                                {inr(invoices.reduce((s, i) => s + (i.amount || 0), 0))}
                                             </span>
                                         </div>
                                     </div>
@@ -586,6 +590,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
             <div className="flex gap-2 w-full">
                 {/* Day */}
                 <select
+                    aria-label="Birth day"
                     value={day}
                     onChange={e => pickDay(e.target.value)}
                     className={selectCls}
@@ -601,6 +606,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
 
                 {/* Month */}
                 <select
+                    aria-label="Birth month"
                     value={month}
                     onChange={e => pickMonth(e.target.value)}
                     className={selectCls}
@@ -616,6 +622,7 @@ const DOBPicker = ({ value, onChange }: { value: string; onChange: (v: string) =
 
                 {/* Year */}
                 <select
+                    aria-label="Birth year"
                     value={year}
                     onChange={e => pickYear(e.target.value)}
                     className={selectCls}

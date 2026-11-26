@@ -23,9 +23,11 @@ export function readGames(games: Game[]) {
         : bad.a === null || bad.b === null ? `Game ${bad.n} needs both scores.`
         : bad.a === bad.b ? `Game ${bad.n} can't end level.`
         : `Game ${bad.n} needs whole numbers of 0 or more.`;
-    const won1 = played.filter(g => g.a > g.b).length;
-    const won2 = played.filter(g => g.b > g.a).length;
-    return { played, problem, won1, won2, leader: problem || won1 === won2 ? 0 : won1 > won2 ? 1 : 2 };
+    // With no problem, every played game has both scores.
+    const scored = played.filter((g): g is { n: number; a: number; b: number } => g.a !== null && g.b !== null);
+    const won1 = scored.filter(g => g.a > g.b).length;
+    const won2 = scored.filter(g => g.b > g.a).length;
+    return { played: scored, problem, won1, won2, leader: problem || won1 === won2 ? 0 : won1 > won2 ? 1 : 2 };
 }
 
 export default function SubMatchResultModal({ match, onClose, onSaved }: Props) {

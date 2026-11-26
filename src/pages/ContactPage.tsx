@@ -184,11 +184,12 @@ const ContactPage: React.FC = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {/* Name */}
                                         <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                                            <label htmlFor="contact-name" className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                                                 Full Name <span className="text-primary">*</span>
                                             </label>
                                             <input
                                                 type="text"
+                                                id="contact-name"
                                                 name="name"
                                                 required
                                                 value={formData.name}
@@ -200,11 +201,12 @@ const ContactPage: React.FC = () => {
 
                                         {/* Email */}
                                         <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                                            <label htmlFor="contact-email" className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                                                 Email Address <span className="text-primary">*</span>
                                             </label>
                                             <input
                                                 type="email"
+                                                id="contact-email"
                                                 name="email"
                                                 required
                                                 value={formData.email}
@@ -216,11 +218,12 @@ const ContactPage: React.FC = () => {
 
                                         {/* Phone */}
                                         <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                                            <label htmlFor="contact-phone" className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                                                 Phone Number
                                             </label>
                                             <input
                                                 type="tel"
+                                                id="contact-phone"
                                                 name="phone"
                                                 value={formData.phone}
                                                 onChange={handleChange}
@@ -231,10 +234,11 @@ const ContactPage: React.FC = () => {
 
                                         {/* Subject */}
                                         <div className="flex flex-col gap-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                                            <label htmlFor="contact-subject" className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                                                 Subject <span className="text-primary">*</span>
                                             </label>
                                             <select
+                                                id="contact-subject"
                                                 name="subject"
                                                 required
                                                 value={formData.subject}
@@ -255,10 +259,11 @@ const ContactPage: React.FC = () => {
 
                                     {/* Message */}
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                                        <label htmlFor="contact-message" className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                                             Message <span className="text-primary">*</span>
                                         </label>
                                         <textarea
+                                            id="contact-message"
                                             name="message"
                                             required
                                             rows={5}

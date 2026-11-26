@@ -290,7 +290,7 @@ function AddStaffDrawer({ tournamentId, staff, staffIds, listState, listError, o
                             <Field id="staff-last" label="Last name" error={errors.lastName}>
                                 <input id="staff-last" className={INPUT} autoComplete="off" aria-invalid={!!errors.lastName} value={form.lastName} onChange={setField('lastName')} />
                             </Field>
-                            <Field id="staff-email" label="Email" className="sm:col-span-2" error={errors.email} help="We email a temporary password to this address.">
+                            <Field id="staff-email" label="Email" className="sm:col-span-2" error={errors.email} help="We email them here. They set their own password with Forgot password on the sign-in page.">
                                 <input id="staff-email" type="email" className={INPUT} autoComplete="off" aria-invalid={!!errors.email} value={form.email} onChange={setField('email')} />
                             </Field>
                             <Field id="staff-phone" label="Phone" className="sm:col-span-2" error={errors.phone}>

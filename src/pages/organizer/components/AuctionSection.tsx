@@ -103,7 +103,6 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
             socket.off('connect', join);
             socket.off('auction:update', onUpdate);
             socket.emit('leave:auction', room);
-            socket.disconnect();
         };
     }, [tournamentId, catId, load]);
 
@@ -231,9 +230,7 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
 
         const r = a.lastSoldResult;
         const up = s.upcoming?.[0];
-        const block = !p && !sold ? (
-            <section className={PANEL}><EmptyState title="Waiting for the next player" text="The next player shows here as soon as the server has them on the block." /></section>
-        ) : sold ? (
+        const block = sold ? (
             <section aria-label="Sale" className={cn(PANEL, 'overflow-hidden')}>
                 <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
                     <Photo name={r?.playerName ?? name} src={p?.profile.photo} />
@@ -271,6 +268,8 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
                             : 'That was the last player.'}
                 </p>
             </section>
+        ) : !p ? (
+            <section className={PANEL}><EmptyState title="Waiting for the next player" text="The next player shows here as soon as the server has them on the block." /></section>
         ) : (() => {
             const leaderName = lb.highestBidderId ? teamOf(lb.highestBidderId)?.name ?? lb.highestBidderName : '';
             const history = lb.bidHistory ?? [];
@@ -411,7 +410,7 @@ export default function AuctionSection({ tournamentId, categories }: { tournamen
             </div>
         );
 
-        const tiedTeams = tied.map(teamOf).filter(Boolean);
+        const tiedTeams = tied.map(teamOf).filter((t): t is Team => !!t);
         return (
             <div className="space-y-4">
                 {strip}
@@ -776,6 +775,7 @@ function TieBreak({ teams, limit, winnerId, onSpin, onSell, onClose }: {
         }
     };
     const sell = async () => {
+        if (!winner) return;
         setBusy('sell'); setError('');
         try { await onSell(winner); } catch (e) {
             setError(errText(e, "Couldn't record the sale. Check your connection and try again."));

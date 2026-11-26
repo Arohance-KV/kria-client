@@ -160,8 +160,9 @@ export const PlayerFilterMenu = ({ filters, onFilterChange }: PlayerFilterMenuPr
                 </div>
 
                 {/* Search */}
-                <button 
+                <button
                     onClick={handleApply}
+                    aria-label="Search tournaments"
                     className="bg-primary hover:bg-primary/90 text-white p-4 mx-1.5 rounded-full flex items-center justify-center transition-transform hover:scale-105 shadow-md shadow-primary/30 flex-shrink-0 active:scale-95"
                 >
                     <Search className="h-5 w-5" />
@@ -209,7 +210,7 @@ export const PlayerFilterMenu = ({ filters, onFilterChange }: PlayerFilterMenuPr
                             
                             <div className="flex items-center justify-between mb-8">
                                 <h2 className="text-2xl font-oswald font-bold text-white tracking-wide">Filters</h2>
-                                <button onClick={() => setIsMobileModalOpen(false)} className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-95">
+                                <button onClick={() => setIsMobileModalOpen(false)} aria-label="Close filters" className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-95">
                                     <X className="h-4 w-4" />
                                 </button>
                             </div>

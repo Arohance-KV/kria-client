@@ -6,7 +6,6 @@ const baseURL = API_URL;
 
 const API = axios.create({
     baseURL,
-    withCredentials: true,
     // A stalled request gives up instead of locking a page, e.g. the scoring pad (LAUNCH-AUDIT H21).
     timeout: 15000,
 });

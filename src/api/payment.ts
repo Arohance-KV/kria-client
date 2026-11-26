@@ -1,5 +1,18 @@
 import API from './axios';
 
+/** What an entry costs, from the server's fee formula. Show `amount` as-is: it is what Razorpay charges. */
+export type PaymentQuote = {
+    baseAmount: number;
+    feeBreakdown: { razorpayFee: number; platformFee: number; gst: number };
+    convenienceFee: number;
+    amount: number;
+};
+
+export const getPaymentQuote = async (categoryId: string): Promise<PaymentQuote> => {
+    const response = await API.get('/payments/quote', { params: { categoryId } });
+    return response.data?.data?.data || response.data?.data;
+};
+
 export const createPaymentOrder = async (data: {
     tournamentId: string;
     categoryId: string;

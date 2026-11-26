@@ -91,7 +91,7 @@ export default function CategoryCommonFields({ value, onChange, errors = {} }: P
                             value={value.maxRegistrations} onChange={e => onChange({ maxRegistrations: num(e.target.value) })} />
                     </Field>
                     {value.isPaidRegistration && (
-                        <Field id="cat-fee" label="Entry fee" help="Players pay this when they register." error={errors.fee}>
+                        <Field id="cat-fee" label="Entry fee" help="You receive this. Players pay it plus fees and GST when they register." error={errors.fee}>
                             <div className="relative">
                                 <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-fg-subtle">₹</span>
                                 <input id="cat-fee" type="number" min={1} className={cn(INPUT, 'pl-7')} placeholder="e.g. 500" aria-invalid={!!errors.fee}

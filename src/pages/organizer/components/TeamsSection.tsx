@@ -359,7 +359,7 @@ const TeamForm = ({ tournamentId, defaultBudget, team, onClose, onSaved }: {
         }
         setBusy(false);
         if (failure !== null) setError(team ? `Couldn't save ${team.name}. ${errText(failure)}` : `Couldn't create the team. ${errText(failure)}`);
-        else onSaved(team._id);
+        else if (team) onSaved(team._id); // a new team returned above
     };
 
     const colour = (k: 'primaryColor' | 'secondaryColor', label: string) => (

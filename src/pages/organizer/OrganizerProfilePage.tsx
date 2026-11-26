@@ -30,7 +30,7 @@ const detailErrors = (d: ReturnType<typeof detailsOf>) => {
     else if (!/^\+?[\d\s-]+$/.test(phone) || !/^\d{10,15}$/.test(phone.replace(/\D/g, ''))) e['pf-phone'] = 'Enter a 10-digit mobile number.';
     return e;
 };
-const orgErrors = (o: ReturnType<typeof orgOf>) =>
+const orgErrors = (o: ReturnType<typeof orgOf>): Record<string, string> =>
     !o.name.trim() && o.description.trim() ? { 'pf-org': 'Add a name for the organization you describe.' } : {};
 
 const EMPTY_PWD = { current: '', next: '', confirm: '' };

@@ -124,7 +124,7 @@ export default function PaymentsSection({ tournamentId }: { tournamentId: string
             <section aria-label="Payment summary" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line @4xl:grid-cols-4">
                 <Metric label="You receive" value={inr(receive)} sub={`Entry fees from ${paid.length} paid ${paid.length === 1 ? 'entry' : 'entries'}`} />
                 <Metric label="Players paid" value={inr(gross)} sub="Including fees and GST" />
-                <Metric label="Fees and GST" value={inr(money(gross - receive))} sub="Gateway 2% · platform 2% · 18% GST" />
+                <Metric label="Fees and GST" value={inr(money(gross - receive))} sub="Gateway 2% of total · platform 2% of entry fee · 18% GST" />
                 <Metric label="Not completed" value={count('created') + count('failed')} sub={`${count('created')} checkout started · ${count('failed')} failed`} />
             </section>
 
@@ -151,7 +151,7 @@ export default function PaymentsSection({ tournamentId }: { tournamentId: string
                                         const isOpen = open === p._id;
                                         const fb = p.feeBreakdown;
                                         const lines: [string, number][] = fb
-                                            ? [['Gateway fee (2%)', fb.razorpayFee], ['Platform fee (2%)', fb.platformFee], ['GST on fees (18%)', fb.gst]]
+                                            ? [['Gateway fee (2% of total)', fb.razorpayFee], ['Platform fee (2% of entry fee)', fb.platformFee], ['GST on fees (18%)', fb.gst]]
                                             : [['Fees and GST', money(p.amount - p.base)]];
                                         return (
                                             <li key={p._id}>

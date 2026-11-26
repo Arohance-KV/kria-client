@@ -125,7 +125,6 @@ export default function AuctionDisplay() {
             socket.off('disconnect', onDisconnect);
             socket.off('auction:update', onUpdate);
             socket.emit('leave:auction', room);
-            socket.disconnect();
         };
     }, [tournamentId, categoryId, load, loadLog]);
 

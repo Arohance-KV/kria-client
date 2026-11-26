@@ -94,7 +94,7 @@ export default function AnnouncementsPanel({ tournamentId, canManage = false }: 
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-lg font-oswald font-bold text-white">{editingId ? 'Edit Announcement' : 'New Announcement'}</h3>
-                        <button onClick={resetForm} className="text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
+                        <button onClick={resetForm} aria-label="Close" className="text-gray-400 hover:text-white"><X className="h-5 w-5" /></button>
                     </div>
                     <input
                         type="text" placeholder="Title (optional)" value={form.title} maxLength={140}
@@ -161,8 +161,8 @@ export default function AnnouncementsPanel({ tournamentId, canManage = false }: 
                                     </div>
                                     {canManage && (
                                         <div className="flex gap-1 shrink-0">
-                                            <button onClick={() => startEdit(a)} className="p-1.5 text-primary hover:text-white hover:bg-primary/20 rounded transition-colors"><Edit2 className="h-4 w-4" /></button>
-                                            <button onClick={() => remove(a._id)} className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                            <button onClick={() => startEdit(a)} aria-label="Edit announcement" className="p-1.5 text-primary hover:text-white hover:bg-primary/20 rounded transition-colors"><Edit2 className="h-4 w-4" /></button>
+                                            <button onClick={() => remove(a._id)} aria-label="Delete announcement" className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"><Trash2 className="h-4 w-4" /></button>
                                         </div>
                                     )}
                                 </div>

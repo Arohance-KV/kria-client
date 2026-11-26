@@ -20,16 +20,11 @@ export function LenisProvider({ children }: { children: ReactNode }) {
             smoothWheel: true,
             wheelMultiplier: 1,
             touchMultiplier: 1,
+            // Lenis runs its own frame loop and cancels it in destroy(); a hand-rolled loop outlived unmount.
+            autoRaf: true,
         });
 
         appLenis = lenis;
-
-        function raf(time: number) {
-            lenis.raf(time);
-            requestAnimationFrame(raf);
-        }
-
-        requestAnimationFrame(raf);
 
         return () => {
             lenis.destroy();

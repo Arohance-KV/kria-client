@@ -158,6 +158,30 @@ describe('CreateTournamentPage', () => {
         expect(sent[0].venue).toMatchObject({ city: 'Yelahanka', address: 'Gate 2, Arena Road', coordinates: { lat: 13.1, lng: 77.5 } });
     });
 
+    // LAUNCH-AUDIT Low/Web: Nominatim's usage policy forbids autocomplete, so it searches only when asked.
+    it('searches for the venue on Enter or the Search button, never while typing', async () => {
+        const queries: string[] = [];
+        server.use(http.get('https://nominatim.openstreetmap.org/search', ({ request }) => {
+            queries.push(new URL(request.url).searchParams.get('q') ?? '');
+            return HttpResponse.json([{ place_id: 1, lat: '12.9', lon: '77.6', display_name: 'Koramangala Indoor Stadium, Bengaluru', address: { city: 'Bengaluru' } }]);
+        }));
+        const user = renderPage();
+
+        await user.type(field('Search for a place'), 'Koramangala stadium');
+        await new Promise(r => setTimeout(r, 600)); // longer than the old autocomplete's debounce
+        expect(queries).toHaveLength(0);
+
+        await user.keyboard('{Enter}');
+        await user.click(await screen.findByRole('button', { name: 'Koramangala Indoor Stadium, Bengaluru' }));
+        expect(queries).toEqual(['Koramangala stadium']);
+        expect(field('City')).toHaveValue('Bengaluru');
+        expect(screen.getByText('12.900000, 77.600000')).toBeInTheDocument();
+        expect(screen.queryByText('Give the tournament a name.')).not.toBeInTheDocument(); // Enter didn't submit the form
+
+        await user.click(screen.getByRole('button', { name: 'Search' }));
+        await waitFor(() => expect(queries).toEqual(['Koramangala stadium', 'Koramangala Indoor Stadium, Bengaluru']));
+    });
+
     it("shows the server's message when the create fails", async () => {
         server.use(http.post(CREATE, () => HttpResponse.json({ message: 'Insufficient permissions.' }, { status: 403 })));
         const user = renderPage();

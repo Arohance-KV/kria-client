@@ -96,7 +96,7 @@ afterEach(() => {
 describe('AuctionSection', () => {
     it('opens the live category, records a bid and follows socket updates', async () => {
         mockApi();
-        renderSection();
+        const { unmount } = renderSection();
 
         expect(await screen.findByText('Ananya Rao')).toBeInTheDocument();
         expect(screen.getByRole('tab', { name: /Men's doubles/ })).toHaveAttribute('aria-selected', 'true');
@@ -114,6 +114,12 @@ describe('AuctionSection', () => {
 
         act(() => sock.handlers['auction:update'](status({ liveBid: { currentPrice: 11000, highestBidderId: 't3', highestBidderName: 'HSR Hawks' } })));
         expect(screen.getByRole('button', { name: 'Sell to HSR Hawks · ₹11,000' })).toBeEnabled();
+
+        // The socket is shared with other screens: leave the room, keep the connection.
+        unmount();
+        expect(sock.emit).toHaveBeenLastCalledWith('leave:auction', { tournamentId: 't1', categoryId: 'c1' });
+        expect(sock.off).toHaveBeenCalledWith('auction:update', expect.any(Function));
+        expect(sock.disconnect).not.toHaveBeenCalled();
     });
 
     it('names the unsold players waiting for the next round', async () => {

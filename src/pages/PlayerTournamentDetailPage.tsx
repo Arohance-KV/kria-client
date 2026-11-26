@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import SmoothScroll from '@/components/SmoothScroll';
 import { PlayerNavigation } from '@/components/PlayerNavigation';
 import HoverFooter from '@/components/HoverFooter';
-import { createPaymentOrder, verifyPayment } from '@/api/payment';
+import { createPaymentOrder, getPaymentQuote, PaymentQuote, verifyPayment } from '@/api/payment';
+import { inr } from './organizer/shared';
 
 // Tab sub-components
 import OverviewTab from './player-tournament/OverviewTab';
@@ -43,6 +44,8 @@ const PlayerTournamentDetailPage = () => {
     const [showRegisterModal, setShowRegisterModal] = useState(false);
     const [regForm, setRegForm] = useState({ skillLevel: 'intermediate' });
     const [paymentLoading, setPaymentLoading] = useState(false);
+    // The server's quote per category: missing while it loads, null if it failed.
+    const [quotes, setQuotes] = useState<Record<string, PaymentQuote | null>>({});
 
     // ─── Data fetching ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -87,6 +90,12 @@ const PlayerTournamentDetailPage = () => {
         if (!user) { navigate('/player/auth/login'); return; }
         setRegisteringCategoryId(categoryId);
         setShowRegisterModal(true);
+        // The total comes from the server, which charges it; the page never works the fee out itself.
+        if (categories.find(c => c._id === categoryId)?.isPaidRegistration) {
+            getPaymentQuote(categoryId)
+                .then(q => setQuotes(m => ({ ...m, [categoryId]: q })))
+                .catch(() => setQuotes(m => ({ ...m, [categoryId]: null })));
+        }
     };
 
     const computeAge = () => {
@@ -441,30 +450,31 @@ const PlayerTournamentDetailPage = () => {
                             {(() => {
                                 const selectedCategory = categories.find(c => c._id === registeringCategoryId);
                                 if (!selectedCategory?.isPaidRegistration) return null;
-                                const base = selectedCategory.registrationFee;
-                                const razorpayFee = Math.round(base * 0.02 * 100) / 100;
-                                const platformFee = Math.round(base * 0.02 * 100) / 100;
-                                const gst = Math.round((razorpayFee + platformFee) * 0.18 * 100) / 100;
-                                const convenienceFee = Math.round((razorpayFee + platformFee + gst) * 100) / 100;
-                                const total = Math.round((base + convenienceFee) * 100) / 100;
+                                const quote = quotes[selectedCategory._id];
                                 return (
                                     <div className="mb-4 p-4 bg-primary/10 border border-primary/30 rounded-xl">
                                         <p className="text-primary font-semibold text-sm mb-3">Payment Summary</p>
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex justify-between text-gray-300">
-                                                <span>Registration Fee</span>
-                                                <span className="font-mono">₹{base.toFixed(2)}</span>
+                                        {quote ? (
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between text-gray-300">
+                                                    <span>Registration Fee</span>
+                                                    <span className="font-mono">{inr(quote.baseAmount)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-gray-400">
+                                                    <span>Convenience Fee <span className="text-[10px] text-gray-500">(incl. GST)</span></span>
+                                                    <span className="font-mono">{inr(quote.convenienceFee)}</span>
+                                                </div>
+                                                <div className="h-px bg-white/10 my-1" />
+                                                <div className="flex justify-between text-white font-bold">
+                                                    <span>Total</span>
+                                                    <span className="font-mono text-primary">{inr(quote.amount)}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between text-gray-400">
-                                                <span>Convenience Fee <span className="text-[10px] text-gray-500">(incl. GST)</span></span>
-                                                <span className="font-mono">₹{convenienceFee.toFixed(2)}</span>
-                                            </div>
-                                            <div className="h-px bg-white/10 my-1" />
-                                            <div className="flex justify-between text-white font-bold">
-                                                <span>Total</span>
-                                                <span className="font-mono text-primary">₹{total.toFixed(2)}</span>
-                                            </div>
-                                        </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-400">
+                                                {quote === null ? "Couldn't get the total. Razorpay shows it before you pay." : 'Getting the total…'}
+                                            </p>
+                                        )}
                                         <p className="text-xs text-gray-500 mt-2">Payment secured via Razorpay.</p>
                                     </div>
                                 );
@@ -526,9 +536,8 @@ const PlayerTournamentDetailPage = () => {
                                     {(() => {
                                         const cat = categories.find(c => c._id === registeringCategoryId);
                                         if (!cat?.isPaidRegistration) return 'Submit';
-                                        const b = cat.registrationFee;
-                                        const fees = Math.round((b * 0.02 + b * 0.02) * 1.18 * 100) / 100;
-                                        return `Pay ₹${(b + fees).toFixed(2)} & Register`;
+                                        const quote = quotes[cat._id];
+                                        return quote ? `Pay ${inr(quote.amount)} & Register` : 'Pay & Register';
                                     })()}
                                 </button>
                             </div>

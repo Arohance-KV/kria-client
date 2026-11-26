@@ -138,6 +138,10 @@ const STYLES = `
     from { opacity: 0; transform: translateX(-10px); }
     to   { opacity: 1; transform: translateX(0); }
 }
+@keyframes slideProgress {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
 
 /* utility classes */
 .anim-fadeup    { animation: fadeInUp .45s ease both; }
@@ -1786,7 +1790,8 @@ function BroadcastMode({
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
-    const [progress, setProgress] = useState(0);
+    // Bumped each time a slide's timer (re)starts, so the CSS progress bar restarts with it.
+    const [run, setRun] = useState(0);
 
     // Reset index if slide list shrinks (e.g., scorecard cleared)
     useEffect(() => {
@@ -1798,16 +1803,11 @@ function BroadcastMode({
     useEffect(() => {
         if (isPaused || slides.length === 0) return;
         const slide = slides[currentIndex % slides.length];
-        const startTime = Date.now();
-        setProgress(0);
-        const tick = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            setProgress(Math.min(100, (elapsed / slide.duration) * 100));
-        }, 80);
+        setRun(r => r + 1);
         const advance = setTimeout(() => {
             setCurrentIndex(i => (i + 1) % slides.length);
         }, slide.duration);
-        return () => { clearInterval(tick); clearTimeout(advance); };
+        return () => clearTimeout(advance);
     }, [currentIndex, isPaused, slides.length]);
 
     // Keyboard: Esc=exit, Space=pause, ←/→ skip
@@ -1897,11 +1897,12 @@ function BroadcastMode({
                     ))}
                 </div>
 
-                {/* Progress bar */}
+                {/* Progress bar: a CSS animation over the slide's duration, frozen while paused. */}
                 <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
                     <div
-                        className="h-full rounded-full bg-linear-to-r from-[#F97316] to-[#f59e0b]"
-                        style={{ width: `${progress}%`, transition: 'width .08s linear' }}
+                        key={run}
+                        className="h-full w-full origin-left rounded-full bg-linear-to-r from-[#F97316] to-[#f59e0b]"
+                        style={{ animation: `slideProgress ${slide.duration}ms linear both ${isPaused ? 'paused' : 'running'}` }}
                     />
                 </div>
 

@@ -114,26 +114,20 @@ const VenueMap = ({ pin, onChange }: { pin: Pin | null; onChange: (pin: Pin | nu
     // On touch screens the map ignores gestures until tapped, so swiping past it scrolls the page.
     // ponytail: once tapped it stays live; re-lock on scroll-away if organizers find it grabby.
     const [live, setLive] = useState(() => !window.matchMedia?.('(pointer: coarse)').matches);
-    const justPicked = useRef(false);
 
-    // Debounced Nominatim autocomplete. 500ms respects the free tier's ~1 req/s policy.
-    useEffect(() => {
+    // Searches only on Enter or the Search button: Nominatim's usage policy forbids autocomplete.
+    const search = () => {
         const q = query.trim();
-        if (justPicked.current || q.length < 3) { justPicked.current = false; setResults(null); return; }
+        if (!q || searching) return;
         setSearching(true);
-        const ctrl = new AbortController();
-        const t = setTimeout(() => {
-            fetch(`${NOMINATIM}/search?format=jsonv2&addressdetails=1&limit=8&accept-language=en&q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
-                .then(r => (r.ok ? r.json() : Promise.reject(r)))
-                .then(d => { setResults(Array.isArray(d) ? d : []); setMessage(null); })
-                .catch(() => { if (!ctrl.signal.aborted) { setResults(null); setMessage("Search isn't working right now. Click the map to place the pin instead."); } })
-                .finally(() => { if (!ctrl.signal.aborted) setSearching(false); });
-        }, 500);
-        return () => { clearTimeout(t); ctrl.abort(); setSearching(false); };
-    }, [query]);
+        fetch(`${NOMINATIM}/search?format=jsonv2&addressdetails=1&limit=8&accept-language=en&q=${encodeURIComponent(q)}`)
+            .then(r => (r.ok ? r.json() : Promise.reject(r)))
+            .then(d => { setResults(Array.isArray(d) ? d : []); setMessage(null); })
+            .catch(() => { setResults(null); setMessage("Search isn't working right now. Click the map to place the pin instead."); })
+            .finally(() => setSearching(false));
+    };
 
     const pick = (r: Place) => {
-        justPicked.current = true;
         setQuery(r.display_name ?? '');
         setResults(null);
         onChange({ lat: round6(Number(r.lat)), lng: round6(Number(r.lon)) }, r);
@@ -161,9 +155,9 @@ const VenueMap = ({ pin, onChange }: { pin: Pin | null; onChange: (pin: Pin | nu
                         <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
                         <input type="search" value={query} placeholder="Search venue, area or landmark" autoComplete="off"
                             className={cn(INPUT_SM, 'w-full bg-panel pl-8 pr-8')}
-                            onChange={e => setQuery(e.target.value)}
+                            onChange={e => { setQuery(e.target.value); setResults(null); }}
                             onKeyDown={e => {
-                                if (e.key === 'Enter') { e.preventDefault(); if (results?.[0]) pick(results[0]); }
+                                if (e.key === 'Enter') { e.preventDefault(); search(); }
                                 if (e.key === 'Escape' && results) { e.preventDefault(); setResults(null); }
                             }} />
                     </label>
@@ -184,6 +178,7 @@ const VenueMap = ({ pin, onChange }: { pin: Pin | null; onChange: (pin: Pin | nu
                         </ul>
                     )}
                 </div>
+                <button type="button" onClick={search} disabled={searching} className={cn(BTN_SECONDARY, BTN_SM)}>Search</button>
                 <button type="button" onClick={locate} disabled={locating} className={cn(BTN_SECONDARY, BTN_SM)}>
                     {locating ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed aria-hidden className="h-3.5 w-3.5" />}
                     Use my location

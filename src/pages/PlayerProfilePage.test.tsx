@@ -34,6 +34,11 @@ describe('PlayerProfilePage', () => {
         const user = userEvent.setup();
 
         await user.click(screen.getByRole('button', { name: /Edit Profile/ }));
+        // Every field in the edit form has a name for screen readers.
+        expect(screen.getByLabelText('First Name')).toHaveValue('Asha');
+        for (const name of ['Last Name', 'Phone', 'Gender', 'Birth day', 'Birth month', 'Birth year', 'Sport', 'Location']) {
+            expect(screen.getByLabelText(name)).toBeInTheDocument();
+        }
         const consent = screen.getByRole('checkbox', { name: /^My parent or guardian agrees/ });
         await user.click(consent);
         await user.click(screen.getByRole('button', { name: /Save/ }));

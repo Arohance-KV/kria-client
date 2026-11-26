@@ -15,11 +15,12 @@ vi.mock('@/components/SmoothScroll', () => ({ default: ({ children }: { children
 const API = 'https://api.kria.club';
 
 async function fillAndSend(user: ReturnType<typeof userEvent.setup>) {
-    await user.type(screen.getByPlaceholderText('John Doe'), 'Ria Sen');
-    await user.type(screen.getByPlaceholderText('john@example.com'), 'ria@kria.test');
-    await user.type(screen.getByPlaceholderText('+91 98765 43210'), '98765 43210');
-    await user.selectOptions(screen.getByRole('combobox'), 'Tournament Setup');
-    await user.type(screen.getByPlaceholderText(/Tell us about your tournament/), 'We run a district open.');
+    // By label: every field is tied to its visible label.
+    await user.type(screen.getByLabelText(/Full Name/), 'Ria Sen');
+    await user.type(screen.getByLabelText(/Email Address/), 'ria@kria.test');
+    await user.type(screen.getByLabelText(/Phone Number/), '98765 43210');
+    await user.selectOptions(screen.getByLabelText(/Subject/), 'Tournament Setup');
+    await user.type(screen.getByLabelText(/Message/), 'We run a district open.');
     await user.click(screen.getByRole('button', { name: /Send Message/i }));
 }
 

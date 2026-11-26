@@ -55,7 +55,7 @@ describe('PaymentsSection', () => {
         expect(screen.getByRole('button', { name: /p404/ })).toBeInTheDocument();
 
         await userEvent.click(screen.getByRole('button', { name: /Sanya Gupta/ }));
-        expect(screen.getByText('Gateway fee (2%)').nextSibling).toHaveTextContent('₹16');
+        expect(screen.getByText('Gateway fee (2% of total)').nextSibling).toHaveTextContent('₹16');
         expect(screen.getByRole('button', { name: 'Copy order ID' })).toBeInTheDocument();
     });
 

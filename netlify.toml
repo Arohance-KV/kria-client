@@ -3,6 +3,10 @@
   command = "npm run build"
   publish = "dist"
 
+# Vite 7 needs Node 20.19+ or 22.12+.
+[build.environment]
+  NODE_VERSION = "22"
+
 # ── Redirects ─────────────────────────────────────────────────────────────────
 # Netlify serves static files before redirect rules automatically.
 # Only the SPA catch-all is needed here.
@@ -38,6 +42,12 @@
   [headers.values]
     Content-Type  = "text/plain; charset=utf-8"
     Cache-Control = "public, max-age=86400"
+
+# Vite puts a content hash in every file name under /assets, so a changed file gets a new URL.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
   for = "/og-image.png"
